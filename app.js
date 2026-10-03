@@ -502,6 +502,7 @@ function renderAvatarChoices(){
 }
 function updateModeDescription(){const info=MODE_INFO[$('#gameMode').value];$('#modeDescription').textContent=info.description}
 renderAvatarChoices();updateModeDescription();$('#gameMode').onchange=updateModeDescription;
+if(window.CAT_MATCH_ENABLED!==true){$('#quickMatch').disabled=true;$('#quickMatch').textContent='⚡ 快速配對（未啟用）';$('#quickMatch').title='此靜態版本未設定配對服務，請使用房號或邀請連結'}
 
 function sendItem(payload){
   const game=state.game;
