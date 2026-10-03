@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>貓咪捉迷藏｜P2P 雙人尋貓</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body><main>
+  <section id="setup" class="panel">
+    <header><div class="logo">🐾</div><div><small>GITHUB PAGES × WEBRTC</small><h1>貓咪捉迷藏</h1><p>房主權威的雙人尋貓</p></div></header>
+    <label>暱稱<input id="nick" maxlength="16" value="奶油虎斑"></label>
+    <label>棋盤<select id="size"><option value="12">12×12 入門</option><option value="20" selected>20×20 標準</option><option value="24">24×24 大盤</option></select></label>
+    <div class="settings">
+      <label>玩家1秒數<input id="secondsA" type="number" min="10" max="180" value="45"></label>
+      <label>玩家2秒數<input id="secondsB" type="number" min="10" max="180" value="45"></label>
+      <label><input id="capEnabled" type="checkbox" checked> 連抓上限</label>
+      <label>上限隻數<input id="cap" type="number" min="1" max="24" value="3"></label>
+    </div>
+    <label>加入用房號<input id="roomInput" maxlength="20" placeholder="輸入房主顯示的房號"></label>
+    <div class="actions">
+      <button id="host">建立房間</button><button id="join">加入房間</button><button id="resume" class="hidden">恢復房主局面</button>
+    </div>
+    <p class="privacy">房號連線使用免費 PeerJS Cloud 協調握手；對局資料在瀏覽器間直接傳送。沒有免費 TURN，部分嚴格網路可能失敗。</p>
+    <details><summary>進階：手動備援與自架說明</summary>
+      <p>若第三方服務不可用，可用下方兩段代碼手動連線。倉庫亦附可選的自架 signaling 範例，但第一版畫面尚未直接接入該服務。</p>
+    </details>
+    <div class="actions"><button id="manualHost">手動建立</button><button id="manualJoin">手動加入</button></div>
+    <div id="manual" class="hidden"><h2 id="manualTitle"></h2><textarea id="outCode" readonly placeholder="這裡會產生要傳給對方的碼"></textarea><button id="copyCode">複製上方代碼</button><textarea id="inCode" placeholder="貼上對方傳回的碼"></textarea><button id="applyCode">套用代碼</button></div>
+    <p id="setupStatus" class="status" aria-live="polite"></p>
+  </section>
+
+  <section id="game" class="hidden">
+    <header class="top"><div><small>P2P 私密對局</small><b id="room"></b></div><div class="turn"><span id="connection">連線中</span><strong id="turnText"></strong><em id="timer">45</em></div><button id="mute" aria-label="切換音效">🔊</button></header>
+    <div class="arena"><aside id="p0"></aside><section class="center">
+      <div class="modes"><button id="guessMode" class="active">🐾 找貓</button><button id="noteMode">× 私人記號</button><button id="hint">💡 共同提示</button><span id="message" aria-live="polite"></span></div>
+      <div id="board" role="grid" aria-label="尋貓棋盤"></div>
+      <p class="legend">× 公共排除　× 私人筆記　粗線＝區域邊界；方向鍵移動，Enter 操作</p>
+    </section><aside id="p1"></aside></div>
+    <footer><button id="pass">手動交棒</button><button class="emote">ฅ^•ﻌ•^ฅ</button><button class="emote">好眼力！</button><button class="emote">一起加油</button></footer>
+  </section>
+
+  <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
+  <div id="toast"></div>
+</main>
+<script src="./vendor/peerjs-1.5.5.min.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

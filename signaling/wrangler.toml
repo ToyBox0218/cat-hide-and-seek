@@ -1,0 +1,15 @@
+name = "cat-hide-and-seek-signal"
+main = "worker.js"
+compatibility_date = "2026-10-03"
+
+[[durable_objects.bindings]]
+name = "SIGNAL"
+class_name = "SignalRoom"
+
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "Matchmaker"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRoom", "Matchmaker"]
