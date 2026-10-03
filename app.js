@@ -9,9 +9,18 @@ const state = {
   role: null, you: 0, peer: null, transport: null, rtc: null, game: null,
   notes: new Set(), mode: 'guess', room: '', manual: false,
   muted: localStorage.p2pMuted === '1', audio: null,
-  observed: { found: 0, misses: 0, finished: false }
+  avatar:+localStorage.catAvatar||0,
+  observed: { found: 0, misses: 0, finished: false, turn: null, eventAt: 0 }
 };
 const colors = ['#f6ddd2','#d9ebe2','#f3e5b9','#dbe5f2','#eadcf0','#d5ece8','#f2dcdc','#e5eccb'];
+const AVATARS=[
+  {emoji:'😺',name:'橘子虎斑'},{emoji:'😸',name:'黑白燕尾'},{emoji:'😻',name:'奶油三花'},
+  {emoji:'🐱',name:'灰灰圓臉'},{emoji:'😽',name:'白桃小貓'},{emoji:'🙀',name:'蓬鬆棕貓'}
+];
+const MODE_INFO={
+  scout:{label:'🔎 偵探對戰',description:'猜空會公開八鄰貓數，線索留給下一位玩家。'},
+  coop:{label:'🤝 默契合作',description:'共享進度，一起找到全部貓；個人隻數只作紀念。'}
+};
 const tiles = {
   5:{c:[3,0,2,4,1],r:[1,1,0,0,0,1,1,1,3,3,1,4,2,3,3,1,4,3,3,3,1,4,4,3,3]},
   6:{c:[0,5,3,1,4,2],r:[0,0,0,5,5,5,0,0,5,5,1,1,0,5,5,2,2,1,0,3,5,5,2,1,3,3,5,5,4,4,3,5,5,5,5,4]},
@@ -68,23 +77,24 @@ function makePuzzle(size) {
 
 const cleanSettings = input => ({
   size:[12,20,24].includes(+input.size)?+input.size:20,
+  mode:['scout','coop'].includes(input.mode)?input.mode:'scout',
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),
   turnSecondsB:Math.max(10,Math.min(180,+input.turnSecondsB||45)),
   streakLimitEnabled:input.streakLimitEnabled!==false,
   streakLimit:Math.max(1,Math.min(24,+input.streakLimit||3))
 });
 const settingsFromUI = () => cleanSettings({
-  size:+$('#size').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
+  size:+$('#size').value, mode:$('#gameMode').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
   streakLimitEnabled:$('#capEnabled').checked, streakLimit:+$('#cap').value
 });
 
 function newGame(size) {
   return {
     puzzle:makePuzzle(size), settings:settingsFromUI(),
-    players:[{nickname:$('#nick').value||'奶油虎斑',score:0,connected:true},{nickname:'等待貓友',score:0,connected:false}],
+    players:[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,score:0,connected:true},{nickname:'等待貓友',avatar:1,score:0,connected:false}],
     status:'lobby', starter:randomInt(2), turn:0, turnId:0, deadline:null,
-    found:[], misses:[], streak:0, winner:null, round:0,
-    lastEmote:null, hint:null, hintVotes:[], actionIds:[]
+    found:[], misses:[], clues:{}, streak:0, winner:null, round:0,
+    lastEvent:null, lastEmote:null, hint:null, hintVotes:[], actionIds:[]
   };
 }
 
@@ -114,7 +124,7 @@ function setDeadline() {
   game.deadline=Date.now()+1000*(game.turn?game.settings.turnSecondsB:game.settings.turnSecondsA);
 }
 function switchTurn() {
-  const game=state.game; game.turn=1-game.turn; game.turnId++; game.streak=0; setDeadline();
+  const game=state.game; game.turn=1-game.turn; game.turnId++; game.streak=0; game.lastEvent={type:'switch',who:game.turn,at:Date.now()}; setDeadline();
 }
 function excluded(game,index) {
   const puzzle=game.puzzle, size=puzzle.size, row=Math.floor(index/size), column=index%size, region=puzzle.regions[index];
@@ -123,8 +133,29 @@ function excluded(game,index) {
     return row===catRow||column===catColumn||region===puzzle.regions[cat]||(Math.abs(row-catRow)<=1&&Math.abs(column-catColumn)<=1);
   });
 }
+function neighborIndexes(size,index) {
+  const row=Math.floor(index/size),column=index%size,out=[];
+  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+    if(!dr&&!dc)continue;const rr=row+dr,cc=column+dc;
+    if(rr>=0&&rr<size&&cc>=0&&cc<size)out.push(rr*size+cc);
+  }
+  return out;
+}
+function neighborCatCount(puzzle,index) {
+  const cats=new Set(puzzle.solution);
+  return neighborIndexes(puzzle.size,index).filter(cell=>cats.has(cell)).length;
+}
 function teachingHint(game) {
   const {size,regions}=game.puzzle, groups=[];
+  {
+    for(const [rawIndex,clue] of Object.entries(game.clues||{})){
+      const around=neighborIndexes(size,+rawIndex),found=around.filter(index=>game.found.includes(index)).length;
+      const unknown=around.filter(index=>!game.found.includes(index)&&!game.misses.includes(index)&&!excluded(game,index));
+      const remaining=clue-found;
+      if(unknown.length&&remaining===0)return `觀察數字 ${clue}：周圍需要的貓已確認，可排除其他相鄰格。`;
+      if(unknown.length&&remaining===unknown.length)return `觀察數字 ${clue}：剩下 ${unknown.length} 個相鄰候選都必須是貓。`;
+    }
+  }
   for (const type of ['行','列','區域']) for (let id=0;id<size;id++) {
     const members=[];
     for (let index=0;index<size*size;index++) {
@@ -165,12 +196,19 @@ function act(who,action) {
   if (!Number.isInteger(index)||index<0||index>=game.puzzle.size**2||excluded(game,index)||game.found.includes(index)||game.misses.includes(index)) return;
   if (game.puzzle.solution.includes(index)) {
     game.found.push(index); game.players[who].score++; game.streak++; game.hint=null; game.hintVotes=[];
+    game.lastEvent={type:'cat',index,who,streak:game.streak,at:Date.now()};
     if (game.found.length===game.puzzle.size) {
       game.status='finished'; game.deadline=null;
-      game.winner=game.players[0].score===game.players[1].score?'tie':game.players[0].score>game.players[1].score?0:1;
+      game.winner=game.settings.mode==='coop'?'coop':game.players[0].score===game.players[1].score?'tie':game.players[0].score>game.players[1].score?0:1;
     } else if (game.settings.streakLimitEnabled&&game.streak>=game.settings.streakLimit) switchTurn();
     else game.turnId++;
-  } else { game.misses.push(index); switchTurn(); }
+  } else {
+    game.misses.push(index);
+    game.clues[index]=neighborCatCount(game.puzzle,index);
+    game.lastEvent={type:'miss',index,who,at:Date.now()};
+    switchTurn();
+    game.lastEvent={type:'miss',index,who,next:game.turn,at:Date.now()};
+  }
   broadcast();
 }
 
@@ -179,6 +217,7 @@ function onMessage(message) {
   if (state.role==='host') {
     if (data.type==='hello') {
       state.game.players[1].nickname=String(data.nickname||'貓友').slice(0,16);
+      state.game.players[1].avatar=Math.max(0,Math.min(AVATARS.length-1,+data.avatar||0));
       state.game.players[1].connected=true;
       if (state.game.status==='lobby') {
         state.game.status='playing'; state.game.turn=state.game.starter; state.game.turnId++; setDeadline();
@@ -193,7 +232,7 @@ function onMessage(message) {
 function onOpen() {
   $('#connection').textContent='P2P 已連線';
   if (state.role==='host') { state.game.players[1].connected=true; broadcast(); }
-  else send({type:'hello',nickname:$('#nick').value||'小花貓'});
+  else send({type:'hello',nickname:$('#nick').value||'小花貓',avatar:state.avatar});
 }
 function onClose() {
   $('#connection').textContent='連線中斷－盤面已保留';
@@ -265,7 +304,9 @@ function manualJoin() {
 async function resumeHost() {
   const saved=JSON.parse(sessionStorage.p2pHost||'null');
   if (!saved?.game?.puzzle?.solution) throw Error('沒有可恢復的房主局面');
-  state.game=saved.game; state.room=`CAT-${crypto.randomUUID().slice(0,8).toUpperCase()}`; state.game.players[1].connected=false;
+  state.game=saved.game; state.game.settings=cleanSettings(state.game.settings||{}); state.game.clues=state.game.clues||{};
+  state.game.players.forEach((player,index)=>{if(player.avatar===undefined)player.avatar=index});
+  state.room=`CAT-${crypto.randomUUID().slice(0,8).toUpperCase()}`; state.game.players[1].connected=false;
   state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));
   startPeerHost(true);
 }
@@ -328,11 +369,76 @@ function render() {
   }
 }
 
+const escapeHTML=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+function playVisualEvent(event) {
+  if(!event||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const cell=Number.isInteger(event.index)?boardCell(event.index):null;
+  if(cell)cell.classList.add('reveal-pop');
+  if(event.type==='cat'&&cell){
+    const target=$(`#p${event.who} .basket`),from=cell.getBoundingClientRect(),to=target?.getBoundingClientRect();
+    if(to){const flyer=document.createElement('div');flyer.className='fly-cat';flyer.textContent='🐱';flyer.style.left=`${from.left}px`;flyer.style.top=`${from.top}px`;flyer.style.setProperty('--dx',`${to.left+to.width/2-from.left}px`);flyer.style.setProperty('--dy',`${to.top+to.height/2-from.top}px`);document.body.appendChild(flyer);setTimeout(()=>flyer.remove(),800)}
+    if(event.streak>1){const burst=document.createElement('div');burst.className='streak-burst';burst.textContent=`連抓 ${event.streak} 隻！`;$('#fxLayer').appendChild(burst);setTimeout(()=>burst.remove(),800)}
+  }
+}
+function renderV2() {
+  const game=state.game;if(!game)return;
+  game.clues=game.clues||{};game.settings=cleanSettings(game.settings||{});
+  const unseen=game.lastEvent?.at>state.observed.eventAt;
+  if(game.found.length>state.observed.found)tone('cat');
+  if(game.misses.length>state.observed.misses)tone('miss');
+  if(game.status==='finished'&&!state.observed.finished)tone('finish');
+  $('#setup').classList.add('hidden');$('#game').classList.remove('hidden');
+  $('#room').textContent=`房號 ${state.room||'手動連線'}`;
+  const info=MODE_INFO[game.settings.mode];
+  const capText=game.settings.streakLimitEnabled?`連抓 ${game.settings.streakLimit}`:'不限連抓';
+  $('#modeBadge').textContent=`${info.label}｜${game.settings.turnSecondsA}/${game.settings.turnSecondsB} 秒｜${capText}`;
+  $('#turnText').textContent=game.status==='finished'?'本局完成':game.turn===state.you?'輪到你囉！':`換 ${game.players[game.turn].nickname}`;
+  $('#message').textContent=game.hint||(game.hintVotes?.length?`${game.players[game.hintVotes[0]].nickname} 正在等待共同提示同意`:'')||(game.lastEmote?`${game.players[game.lastEmote.from].nickname}：${game.lastEmote.value}`:'')||(game.streak>1?`連抓 ${game.streak} 隻！`:'');
+  for(let playerIndex=0;playerIndex<2;playerIndex++){
+    const player=game.players[playerIndex],avatar=AVATARS[player.avatar]||AVATARS[playerIndex],element=$(`#p${playerIndex}`);
+    element.className=`player-card ${game.turn===playerIndex&&game.status==='playing'?'current':''}`;
+    element.innerHTML=`<div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${avatar.emoji}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${player.score}</div><small>${game.settings.mode==='coop'?'一起找到':'個人找到'} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${Array.from({length:player.score},(_,i)=>`<span class="basket-cat" style="animation-delay:${Math.min(i*.02,.3)}s">🐾</span>`).join('')}</div>`;
+  }
+  const board=$('#board'),size=game.puzzle.size,cellSize=Math.max(18,Math.min(30,(innerHeight-190)/size,(innerWidth-390)/size));
+  board.style.setProperty('--n',size);board.style.setProperty('--s',`${cellSize}px`);board.innerHTML='';
+  for(let index=0;index<size*size;index++){
+    const cell=document.createElement('button'),region=game.puzzle.regions[index],row=Math.floor(index/size),column=index%size;
+    cell.className='cell';cell.dataset.index=index;cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}`);cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',colors[region%colors.length]);
+    if(column===size-1||game.puzzle.regions[index+1]!==region)cell.classList.add('er');
+    if(row===size-1||game.puzzle.regions[index+size]!==region)cell.classList.add('eb');
+    if(game.found.includes(index)){cell.classList.add('cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到貓`)}
+    else if(game.misses.includes(index)){const clue=game.clues[index]??0;cell.classList.add('opened',`clue-${clue}`);cell.textContent=String(clue);cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻空格，周圍有 ${clue} 隻貓`)}
+    else if(excluded(game,index)){cell.classList.add('auto-x');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，規則自動排除`)}
+    else if(state.notes.has(index)){cell.classList.add('note');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記`)}
+    if(state.mode==='guess'&&game.turn!==state.you)cell.disabled=true;
+    cell.onclick=()=>{if(state.mode==='note'){state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();return}const action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};state.role==='host'?act(0,action):send({type:'action',action})};
+    board.appendChild(cell);
+  }
+  $('#pass').disabled=game.turn!==state.you;
+  if(game.status==='finished'&&!$('#result').open){
+    $('#resultTitle').textContent=game.winner==='coop'?'共同成功！全部貓都回家了':game.winner==='tie'?'平手！':game.winner===state.you?'你贏了！':'下一局再加油！';
+    $('#resultScore').textContent=game.winner==='coop'?`你們一起找到 ${game.found.length} 隻｜個人紀念 ${game.players[0].score}＋${game.players[1].score}`:`${game.players[0].score}：${game.players[1].score}`;$('#result').showModal();
+  }
+  state.observed={found:game.found.length,misses:game.misses.length,finished:game.status==='finished',turn:game.turn,eventAt:Math.max(state.observed.eventAt,game.lastEvent?.at||0)};
+  if(unseen)requestAnimationFrame(()=>playVisualEvent(game.lastEvent));
+}
+render=renderV2;
+
 setInterval(()=>{
   const game=state.game; if (!game) return;
   if (game.deadline) $('#timer').textContent=Math.max(0,Math.ceil((game.deadline-Date.now())/1000));
   if (state.role==='host'&&game.status==='playing'&&Date.now()>=game.deadline) { switchTurn(); broadcast(); }
 },250);
+
+function renderAvatarChoices(){
+  const root=$('#avatarChoices');root.innerHTML='';
+  AVATARS.forEach((avatar,index)=>{const button=document.createElement('button');button.type='button';button.className=`avatar-choice ${state.avatar===index?'selected':''}`;button.dataset.avatar=index;button.setAttribute('aria-label',avatar.name);button.innerHTML=`<span class="avatar avatar-${index}">${avatar.emoji}</span><small>${avatar.name}</small>`;button.onclick=()=>{state.avatar=index;localStorage.catAvatar=String(index);renderAvatarChoices()};root.appendChild(button)});
+}
+function updateModeDescription(){const info=MODE_INFO[$('#gameMode').value];$('#modeDescription').textContent=info.description}
+renderAvatarChoices();updateModeDescription();$('#gameMode').onchange=updateModeDescription;
+$('#helpButton').onclick=()=>$('#helpDialog').showModal();
+$('#closeHelp').onclick=()=>$('#helpDialog').close();
+$('#helpDialog').addEventListener('click',event=>{if(event.target===$('#helpDialog'))$('#helpDialog').close()});
 
 $('#host').onclick=()=>{try{startPeerHost(false)}catch(error){toast(error.message)}};
 $('#join').onclick=()=>{try{startPeerGuest()}catch(error){toast(error.message)}};
@@ -377,8 +483,8 @@ function rematchVote(who) {
   rematchVotes.add(who);
   if (state.role==='host'&&rematchVotes.size===2) {
     const game=state.game; game.round++; game.starter=1-game.starter; game.puzzle=makePuzzle(game.settings.size);
-    game.status='playing'; game.turn=game.starter; game.turnId++; game.found=[]; game.misses=[]; game.streak=0; game.winner=null;
-    game.hint=null; game.hintVotes=[]; game.actionIds=[]; game.players.forEach(player=>player.score=0); setDeadline();
+    game.status='playing'; game.turn=game.starter; game.turnId++; game.found=[]; game.misses=[]; game.clues={}; game.streak=0; game.winner=null;
+    game.lastEvent={type:'rematch',at:Date.now()};game.hint=null; game.hintVotes=[]; game.actionIds=[]; game.players.forEach(player=>player.score=0); setDeadline();
     rematchVotes.clear(); broadcast(); $('#result').close();
   }
 }
