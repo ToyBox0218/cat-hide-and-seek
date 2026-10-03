@@ -556,6 +556,12 @@ $('#quickMatch').onclick=async()=>{
     else $('#setupStatus').textContent='快速配對服務目前未啟用，仍可使用房號邀請';
   }finally{state.matchAbort=null;$('#quickMatch').textContent='⚡ 快速配對'}
 };
+$('#copyInvite').onclick=async()=>{
+  const room=(state.room||$('#roomInput').value).trim().toUpperCase();
+  if(!/^CAT-[A-Z0-9-]{6,}$/.test(room)){toast('請先建立房間或輸入房號');return}
+  const invite=new URL(location.href);invite.search='';invite.searchParams.set('room',room);
+  try{await navigator.clipboard.writeText(invite.href);toast('已複製邀請連結')}catch{toast(invite.href)}
+};
 $('#applyCode').onclick=async()=>{
   try {
     if (state.role==='host') { await useAnswer($('#inCode').value); $('#setupStatus').textContent='已套用回覆，正在建立連線'; }
@@ -606,5 +612,7 @@ $('#rematch').onclick=()=>{if(state.role==='host')rematchVote(0);else send({type
 if (sessionStorage.p2pHost) $('#resume').classList.remove('hidden');
 const guestSaved=JSON.parse(sessionStorage.p2pGuest||'null');
 if (guestSaved?.room?.startsWith('CAT-')) { $('#roomInput').value=guestSaved.room; $('#setupStatus').textContent='找到上次房號，可按「加入房間」重新連線'; }
+const invitedRoom=new URLSearchParams(location.search).get('room')?.toUpperCase();
+if(/^CAT-[A-Z0-9-]{6,}$/.test(invitedRoom||'')){ $('#roomInput').value=invitedRoom; $('#setupStatus').textContent='邀請房號已填入，請按「加入房間」'; }
 try { state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-guest')||'[]')); } catch {}
 try { state.intel=JSON.parse(sessionStorage.getItem('p2pIntel-guest')||'[]'); } catch {}
