@@ -9,7 +9,7 @@
 <body><main>
   <button id="helpButton" class="help-fab" aria-label="打開玩法說明">？ 怎麼玩</button>
   <section id="setup" class="panel setup-card">
-    <div class="quick-actions"><button id="quickMatch">⚡ 快速配對</button><button id="copyInvite">🔗 複製邀請</button></div>
+    <div class="quick-actions"><button id="quickMatch">⚡ 快速配對</button></div>
     <header class="brand"><div class="logo">🐾</div><div><small>GITHUB PAGES × WEBRTC</small><h1>貓咪捉迷藏</h1><p>兩個瀏覽器，一起找出躲起來的貓！</p></div></header>
     <div class="setup-grid">
       <label>暱稱<span class="nick-row"><input id="nick" maxlength="16" value="奶油虎斑" autocomplete="off"><button id="randomNick" type="button" title="隨機產生暱稱" aria-label="隨機產生暱稱">🎲</button></span></label>
@@ -19,7 +19,7 @@
         <option value="items">🐟 魚乾道具戰｜翻空格集魚乾</option>
         <option value="treasure">🔔 寶藏派對｜鈴鐺貓值 2 分</option>
         <option value="coop">🤝 默契合作｜共享魚乾與道具</option>
-      </select><small id="modeDescription">猜空格會公開八鄰貓數，線索留給下一位玩家。</small></label>
+      </select><small id="modeDescription">猜空會公開空格並換手；不顯示周圍貓數。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>
     <div class="settings">
@@ -28,7 +28,7 @@
       <label><input id="capEnabled" type="checkbox"> 連抓上限</label>
       <label id="capField">上限隻數<input id="cap" type="number" min="1" max="24" value="3" disabled></label>
     </div>
-    <label>加入用房號<input id="roomInput" maxlength="20" placeholder="輸入房主顯示的房號"></label>
+    <label>加入用房號<span class="room-copy-row"><input id="roomInput" maxlength="24" placeholder="例如 CAT-1234"><button id="copyRoom" type="button">複製房號</button><button id="copyInvite" type="button">邀請連結</button></span></label>
     <div class="actions"><button id="host">🐾 建立房間</button><button id="join">🚪 加入房間</button><button id="resume" class="hidden">↻ 恢復房主局面</button></div>
     <p class="privacy">房號連線使用免費 PeerJS Cloud 協調握手；對局資料在瀏覽器間直接傳送。沒有免費 TURN，部分嚴格網路可能失敗。</p>
     <details><summary>進階：手動備援</summary><p>若第三方服務不可用，可用下方兩段代碼手動連線。</p></details>
@@ -39,18 +39,18 @@
 
   <section id="game" class="hidden">
     <div id="turnBanner" aria-live="polite"></div>
-    <header class="top"><div class="room-tag"><small>P2P 私密對局</small><b id="room"></b><span id="modeBadge"></span></div><div class="turn"><span id="connection">連線中</span><strong id="turnText"></strong><em id="timer">45</em></div><button id="mute" aria-label="切換音效">🔊</button></header>
+    <header class="top"><div class="room-tag"><small>P2P 私密對局</small><span class="room-code"><b id="room"></b><button id="copyGameRoom" type="button">複製</button></span><span id="modeBadge"></span></div><div class="turn"><span id="connection">連線中</span><strong id="turnText"></strong><em id="timer">45</em></div><button id="mute" aria-label="切換音效">🔊</button></header>
     <div class="arena"><aside id="p0" class="player-card"></aside><section class="center">
       <div class="modes"><button id="guessMode" class="active">🐾 找貓</button><button id="noteMode">◇ 私人筆記</button><button id="hint">💡 共同提示</button><span id="message" aria-live="polite"></span></div>
       <section id="toolbox" class="toolbox hidden" aria-label="魚乾道具"><div class="fish-bank">🐟 <b id="fishCount">0</b>/4</div><button data-item="magnifier" title="2 魚乾：私人查看中心周圍貓數">🔍 貓爪放大鏡 <small>2</small></button><button data-item="yarn" title="2 魚乾：選 2–3 個相連格，得知其中有沒有貓">🧶 毛線探路 <small>2</small></button><button data-item="shield" title="3 魚乾：本輪下一次翻空格不換手">🐾 肉球護墊 <small>3</small></button><button data-item="hourglass" title="2 魚乾：本輪增加 10 秒">⏳ 小貓沙漏 <small>2</small></button><button id="confirmYarn" class="hidden">確認探路</button><button id="cancelItem" class="hidden">取消</button><span id="itemStatus"></span></section>
       <div class="board-tools" aria-label="棋盤縮放"><button id="zoomOut" type="button" aria-label="縮小棋盤">−</button><span id="zoomLabel">100%</span><button id="zoomIn" type="button" aria-label="放大棋盤">＋</button></div>
       <div id="boardWrap"><div id="board" role="grid" aria-label="尋貓棋盤"></div><div id="fxLayer" aria-hidden="true"></div></div>
-      <div class="legend" aria-label="盤面圖例"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample">1</i>翻過空格</span><span><i class="sample auto-sample">×</i>規則排除</span><span><i class="sample note-sample">◇</i>私人筆記</span><span><i class="sample boundary-sample"></i>區域邊界</span></div>
+      <div class="legend" aria-label="盤面圖例"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample"></i>翻過空格</span><span><i class="sample auto-sample">×</i>規則排除</span><span><i class="sample note-sample">◇</i>私人筆記</span><span><i class="sample boundary-sample"></i>區域邊界</span></div>
     </section><aside id="p1" class="player-card"></aside></div>
     <footer><button id="pass">↪ 手動交棒</button><button class="emote">ฅ^•ﻌ•^ฅ</button><button class="emote">好眼力！</button><button class="emote">一起加油</button></footer>
   </section>
 
-  <dialog id="helpDialog" class="help-dialog"><button id="closeHelp" class="dialog-close" aria-label="關閉">×</button><h2>怎麼玩？</h2><p class="timer-warning">⏱ 打開說明不會暫停對局計時。</p><div class="help-rules"><article><b>1｜每行一隻</b><p>每一橫行剛好有一隻貓。</p></article><article><b>2｜每列一隻</b><p>每一直列剛好有一隻貓。</p></article><article><b>3｜每區一隻</b><p>粗線圍住的每個區域剛好一隻。</p></article><article><b>4｜不能貼貼</b><p>兩隻貓不能在八方向相鄰。</p></article></div><h3>共同基礎</h3><p>找中貓後續手；猜空、交棒、超時或到達連抓上限就換人。翻過的空格會固定顯示周圍八格總貓數，包含已找到的貓；0 不會連鎖展開。</p><h3>四種模式</h3><p><b>基本對戰：</b>找到最多貓獲勝。<br><b>魚乾道具戰：</b>首次正常翻空格得 1 魚乾（餘額最多 4），每個自己的回合最多用一個道具。<br><b>寶藏派對：</b>少數鈴鐺貓值 2 分，普通貓 1 分；帶有少量運氣，以總分決勝。<br><b>默契合作：</b>共享魚乾、道具與偵查結果，找完全部貓共同成功，沒有隱藏失敗條件。</p><h3>四個道具</h3><p>🔍 放大鏡（2）：私人查看中心八鄰貓數，中心不翻。🧶 毛線（2）：選同區 2–3 個相連未解格，只得知其中有沒有貓。🐾 護墊（3）：本輪下一次正常翻空格仍可繼續，不得魚乾且不重設時間。⏳ 沙漏（2）：本輪加 10 秒，不增加連抓上限。合作模式的偵查會共享給雙方。</p><h3>操作與圖例</h3><p>先選「找貓」或「私人筆記」再點格子。正式猜測不能撤回，私人筆記可改且對手看不到。方向鍵移動，Enter／Space 操作。</p><div class="legend help-legend"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample">1</i>真正翻過</span><span><i class="sample auto-sample">×</i>規則排除</span><span><i class="sample note-sample">◇</i>私人筆記</span></div></dialog>
+  <dialog id="helpDialog" class="help-dialog"><button id="closeHelp" class="dialog-close" aria-label="關閉">×</button><h2>怎麼玩？</h2><p class="timer-warning">⏱ 打開說明不會暫停對局計時。</p><div class="help-rules"><article><b>1｜每行一隻</b><p>每一橫行剛好有一隻貓。</p></article><article><b>2｜每列一隻</b><p>每一直列剛好有一隻貓。</p></article><article><b>3｜每區一隻</b><p>粗線圍住的每個區域剛好一隻。</p></article><article><b>4｜不能貼貼</b><p>兩隻貓不能在八方向相鄰。</p></article></div><h3>共同基礎</h3><p>找中貓後續手；猜空、交棒、超時或到達連抓上限就換人。猜空只會公開該空格，不顯示周圍貓數。系統只會依已找到的貓，直接排除同一行、同一列、同一區及八方向相鄰格。</p><h3>四種模式</h3><p><b>基本對戰：</b>找到最多貓獲勝。<br><b>魚乾道具戰：</b>首次正常翻空格得 1 魚乾（餘額最多 4），每個自己的回合最多用一個道具。<br><b>寶藏派對：</b>少數鈴鐺貓值 2 分，普通貓 1 分；帶有少量運氣，以總分決勝。<br><b>默契合作：</b>共享魚乾、道具與偵查結果，找完全部貓共同成功，沒有隱藏失敗條件。</p><h3>四個道具</h3><p>🔍 放大鏡（2）：私人查看中心八鄰貓數，中心不翻；這是道具專屬偵查，不會把數字印在普通空格。🧶 毛線（2）：選同區 2–3 個相連未解格，只得知其中有沒有貓。🐾 護墊（3）：本輪下一次正常翻空格仍可繼續，不得魚乾且不重設時間。⏳ 沙漏（2）：本輪加 10 秒，不增加連抓上限。合作模式的偵查會共享給雙方。</p><h3>操作與圖例</h3><p>先選「找貓」或「私人筆記」再點格子。正式猜測不能撤回，私人筆記可改且對手看不到。方向鍵移動，Enter／Space 操作。</p><div class="legend help-legend"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample"></i>真正翻過</span><span><i class="sample auto-sample">×</i>規則排除</span><span><i class="sample note-sample">◇</i>私人筆記</span></div></dialog>
   <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
   <div id="toast"></div>
 </main>

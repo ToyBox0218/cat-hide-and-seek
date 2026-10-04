@@ -13,7 +13,17 @@ const state = {
   avatar:+localStorage.catAvatar||0,
   observed: { found: 0, misses: 0, finished: false, turn: null, eventAt: 0 }
 };
-const colors = ['#f6ddd2','#d9ebe2','#f3e5b9','#dbe5f2','#eadcf0','#d5ece8','#f2dcdc','#e5eccb'];
+const REGION_COLORS=['#f2b6a8','#9fd5bf','#b4c8ee','#dfb7df','#efd17f','#8fd0dc','#d8b891','#b8d58e','#e7a9c5','#b4a5dc','#efbd8e','#91b7cd'];
+const paletteCache=new Map();
+function colorDistance(a,b){const rgb=value=>[1,3,5].map(at=>parseInt(value.slice(at,at+2),16)),aa=rgb(a),bb=rgb(b);return aa.reduce((sum,value,index)=>sum+(value-bb[index])**2,0)}
+function regionPalette(puzzle){
+  if(paletteCache.has(puzzle.id))return paletteCache.get(puzzle.id);
+  const size=puzzle.size,adjacency=Array.from({length:size},()=>new Set());
+  for(let index=0;index<size*size;index++){const row=Math.floor(index/size),column=index%size,region=puzzle.regions[index];for(const [dr,dc] of [[1,0],[0,1]]){const rr=row+dr,cc=column+dc;if(rr>=size||cc>=size)continue;const other=puzzle.regions[rr*size+cc];if(other!==region){adjacency[region].add(other);adjacency[other].add(region)}}}
+  const assigned=Array(size),usage=Array(REGION_COLORS.length).fill(0),order=[...Array(size).keys()].sort((a,b)=>adjacency[b].size-adjacency[a].size);
+  for(const region of order){let best=0,bestScore=-Infinity;for(let color=0;color<REGION_COLORS.length;color++){const neighbors=[...adjacency[region]].map(other=>assigned[other]).filter(Boolean),contrast=neighbors.length?Math.min(...neighbors.map(other=>colorDistance(REGION_COLORS[color],other))):50000,score=contrast-usage[color]*20;if(score>bestScore){bestScore=score;best=color}}assigned[region]=REGION_COLORS[best];usage[best]++}
+  paletteCache.set(puzzle.id,assigned);return assigned;
+}
 const AVATARS=[
   {name:'橘子虎斑'},{name:'黑白燕尾'},{name:'奶油三花'},
   {name:'灰灰摺耳'},{name:'白桃暹羅'},{name:'蓬鬆棕貓'}
@@ -24,15 +34,15 @@ function catCharacter(variant,extra=''){return `<span class="cat-character cat-c
 function stableHash(value){let hash=2166136261;for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
 const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
-  basic:{label:'🔎 基本對戰',description:'翻空格看八鄰貓數；找到最多貓獲勝。'},
+  basic:{label:'🔎 基本對戰',description:'猜空會公開空格並換手；找到最多貓獲勝。'},
   items:{label:'🐟 魚乾道具戰',description:'翻空格集魚乾；每輪最多用一個道具。'},
   treasure:{label:'🔔 寶藏派對',description:'鈴鐺貓值 2 分，普通貓 1 分，含少量運氣。'},
   coop:{label:'🤝 默契合作',description:'共享魚乾、道具與偵查，一起找完全部貓。'}
 };
 const tiles = {
-  5:{c:[3,0,2,4,1],r:[1,1,0,0,0,1,1,1,3,3,1,4,2,3,3,1,4,3,3,3,1,4,4,3,3]},
-  6:{c:[0,5,3,1,4,2],r:[0,0,0,5,5,5,0,0,5,5,1,1,0,5,5,2,2,1,0,3,5,5,2,1,3,3,5,5,4,4,3,5,5,5,5,4]},
-  7:{c:[3,1,4,0,5,2,6],r:[0,0,0,0,2,2,2,0,1,0,0,2,2,2,0,3,0,2,2,2,2,3,3,3,2,2,2,4,3,3,3,5,2,4,4,3,3,5,5,4,4,6,3,3,5,5,4,4,6]}
+  5:{c:[3,0,2,4,1],r:[1,1,0,0,0,1,1,0,3,3,2,2,2,3,3,2,4,3,3,3,4,4,3,3,3]},
+  6:{c:[0,5,3,1,4,2],r:[0,0,0,0,0,0,0,0,0,1,1,1,0,0,2,2,1,1,0,3,2,2,2,2,3,3,5,4,4,4,3,3,5,5,5,5]},
+  7:{c:[3,1,4,0,5,2,6],r:[1,1,0,0,2,2,2,3,1,0,0,2,2,2,3,3,4,4,2,4,6,3,3,4,4,4,4,6,3,5,4,4,4,4,6,3,5,5,4,5,6,6,5,5,5,5,5,6,6]}
 };
 const layouts = {
   12:[[5,7],[6,6],[7,5]],
@@ -80,6 +90,12 @@ function makePuzzle(size) {
       }
     }
   }
+  const regionCounts=Array(size).fill(0);
+  for(const region of regions){
+    if(!Number.isInteger(region)||region<0||region>=size)throw new Error('Puzzle generation left an invalid region');
+    regionCounts[region]++;
+  }
+  if(regionCounts.some(count=>count<3))throw new Error('Puzzle generation produced a region smaller than three cells');
   return { id:`p2p-${size}-${Date.now()}-${randomInt(1e6)}`, size, regions, solution };
 }
 
@@ -198,15 +214,6 @@ function neighborCatCount(puzzle,index) {
 }
 function teachingHint(game) {
   const {size,regions}=game.puzzle, groups=[];
-  {
-    for(const [rawIndex,clue] of Object.entries(game.clues||{})){
-      const around=neighborIndexes(size,+rawIndex),found=around.filter(index=>game.found.includes(index)).length;
-      const unknown=around.filter(index=>!game.found.includes(index)&&!game.misses.includes(index)&&!excluded(game,index));
-      const remaining=clue-found;
-      if(unknown.length&&remaining===0)return `觀察數字 ${clue}：周圍需要的貓已確認，可排除其他相鄰格。`;
-      if(unknown.length&&remaining===unknown.length)return `觀察數字 ${clue}：剩下 ${unknown.length} 個相鄰候選都必須是貓。`;
-    }
-  }
   for (const type of ['行','列','區域']) for (let id=0;id<size;id++) {
     const members=[];
     for (let index=0;index<size*size;index++) {
@@ -257,7 +264,6 @@ function act(who,action) {
     else game.turnId++;
   } else {
     game.misses.push(index);
-    game.clues[index]=neighborCatCount(game.puzzle,index);
     game.lastEvent={type:'miss',index,who,at:Date.now()};
     if(game.shield?.owner===who){game.shield=null;game.turnId++;game.lastEvent={type:'shield',index,who,at:Date.now()}}
     else{if(itemMode(game))changeFish(game,who,1);switchTurn();game.lastEvent={type:'miss',index,who,next:game.turn,at:Date.now()}}
@@ -306,27 +312,35 @@ function attachDataChannel(channel) {
 }
 
 function peerOptions() { return {debug:1,config:ICE}; }
-function startPeerHost(restored=false,forcedRoom=null) {
+const ROOM_RE=/^CAT-(?:\d{4}|[A-Z0-9-]{6,})$/;
+const SHORT_ROOM_RE=/^CAT-\d{4}$/;
+const normalizeRoom=value=>String(value||'').trim().toUpperCase().replace(/\s+/g,'');
+const randomRoom=()=>`CAT-${String(randomInt(10000)).padStart(4,'0')}`;
+const peerIdForRoom=room=>SHORT_ROOM_RE.test(room)?`cat-hide-seek-v1-${room.toLowerCase()}`:room;
+function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`房號 ${room}`}
+function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
   state.role='host'; state.you=0; state.manual=false;
-  if (!restored) { state.room=forcedRoom||`CAT-${crypto.randomUUID().slice(0,8).toUpperCase()}`; state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
+  if (!restored) { state.room=forcedRoom||randomRoom(); state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
+  $('#roomInput').value='';
   $('#setupStatus').textContent='正在向免費 PeerJS Cloud 登記房號…';
-  const peer=new Peer(state.room,peerOptions()); state.peer=peer;
-  peer.on('open',id=>{$('#setupStatus').textContent=`房號 ${id}，請傳給另一位玩家`; $('#roomInput').value=id;});
+  const peer=new Peer(peerIdForRoom(state.room),peerOptions()); state.peer=peer;
+  peer.on('open',()=>{$('#setupStatus').textContent=`房號 ${state.room}，請傳給另一位玩家`;showRoom(state.room)});
   peer.on('connection',connection=>attachPeerConnection(connection));
   peer.on('error',error=>{
-    const message=error.type==='unavailable-id'?'房號仍被占用，請稍候重試或建立新房間':error.type||error.message;
+    if(error.type==='unavailable-id'&&!forcedRoom&&SHORT_ROOM_RE.test(state.room)&&collisionAttempt<24){peer.destroy();$('#setupStatus').textContent='房號剛好重複，正在自動換一組…';state.room=randomRoom();startPeerHost(true,null,collisionAttempt+1);return}
+    const message=error.type==='unavailable-id'?'房號已被占用，請重新建立房間':error.type||error.message;
     toast(`PeerJS：${message}`); $('#setupStatus').textContent=`連線服務錯誤：${message}`;
   });
 }
 function startPeerGuest() {
-  const room=$('#roomInput').value.trim().toUpperCase();
+  const room=normalizeRoom($('#roomInput').value);
   const saved=JSON.parse(sessionStorage.p2pGuest||'null');
   if(saved?.room!==room){state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]}
-  if (!/^CAT-[A-Z0-9-]{6,}$/.test(room)) throw Error('請輸入房主顯示的 CAT- 房號');
+  if (!ROOM_RE.test(room)) throw Error('請輸入房主顯示的 CAT- 房號');
   state.role='guest'; state.you=1; state.room=room; state.manual=false;
   $('#setupStatus').textContent='正在透過 PeerJS Cloud 尋找房主…';
   const peer=new Peer(undefined,peerOptions()); state.peer=peer;
-  peer.on('open',()=>attachPeerConnection(peer.connect(room,{reliable:true,serialization:'json'})));
+  peer.on('open',()=>attachPeerConnection(peer.connect(peerIdForRoom(room),{reliable:true,serialization:'json'})));
   peer.on('error',error=>{toast(`PeerJS：${error.type||error.message}`); $('#setupStatus').textContent='房主不存在、尚未就緒或網路無法 P2P 連線';});
 }
 
@@ -367,7 +381,7 @@ async function resumeHost() {
   state.game.foundBy=state.game.foundBy||{};state.game.sharedFish=state.game.sharedFish||0;state.game.sharedIntel=state.game.sharedIntel||[];state.game.itemUsedThisTurn=Boolean(state.game.itemUsedThisTurn);state.game.shield=state.game.shield||null;
   state.game.treasures=state.game.treasures||shuffle(state.game.puzzle.solution.slice()).slice(0,state.game.puzzle.size===12?2:3);
   syncSettingsUI(state.game.settings);
-  state.room=`CAT-${crypto.randomUUID().slice(0,8).toUpperCase()}`; state.game.players[1].connected=false;
+  state.room=randomRoom(); state.game.players[1].connected=false;
   state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));
   state.intel=JSON.parse(sessionStorage.getItem('p2pIntel-host')||'[]');
   startPeerHost(true);
@@ -477,16 +491,16 @@ function renderV2() {
   }
   const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'本輪已使用道具':state.tool==='magnifier'?'請選未翻中心格':state.tool==='yarn'?`已選 ${state.yarnTargets.length}/3 個相連同區格`:game.shield?'護墊待命中':'';
   document.querySelectorAll('#toolbox [data-item]').forEach(button=>{const cost={magnifier:2,yarn:2,shield:3,hourglass:2}[button.dataset.item];button.disabled=!tools||game.turn!==state.you||game.itemUsedThisTurn||balance<cost;button.classList.toggle('selected',state.tool===button.dataset.item)});$('#confirmYarn').classList.toggle('hidden',state.tool!=='yarn');$('#cancelItem').classList.toggle('hidden',!state.tool);
-  const board=$('#board'),size=game.puzzle.size,mobile=innerWidth<=700,baseSize=mobile?Math.max(18,Math.min(24,(innerWidth-18)/Math.min(size,20))):Math.max(18,Math.min(30,(innerHeight-190)/size,(innerWidth-390)/size)),cellSize=Math.round(baseSize*state.zoom);
+  const board=$('#board'),size=game.puzzle.size,mobile=innerWidth<=700,baseSize=mobile?Math.max(18,Math.min(24,(innerWidth-18)/Math.min(size,20))):Math.max(18,Math.min(36,(innerHeight-165)/size,(innerWidth-360)/size)),cellSize=Math.round(baseSize*state.zoom),palette=regionPalette(game.puzzle);
   $('#zoomLabel').textContent=`${Math.round(state.zoom*100)}%`;$('#zoomOut').disabled=state.zoom<=.75;$('#zoomIn').disabled=state.zoom>=1.75;
   board.style.setProperty('--n',size);board.style.setProperty('--s',`${cellSize}px`);board.innerHTML='';
   for(let index=0;index<size*size;index++){
     const cell=document.createElement('button'),region=game.puzzle.regions[index],row=Math.floor(index/size),column=index%size;
-    cell.className='cell';cell.dataset.index=index;cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}`);cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',colors[region%colors.length]);
+    cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}`);cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',palette[region]);
     if(column===size-1||game.puzzle.regions[index+1]!==region)cell.classList.add('er');
     if(row===size-1||game.puzzle.regions[index+size]!==region)cell.classList.add('eb');
     if(game.found.includes(index)){cell.classList.add('cat');cell.innerHTML=catCharacter(catVariant(game,index),'board-character');const treasure=game.settings.mode==='treasure'&&(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));if(treasure)cell.classList.add('treasure-cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到${treasure?'鈴鐺':''}貓`)}
-    else if(game.misses.includes(index)){const clue=game.clues[index]??0;cell.classList.add('opened',`clue-${clue}`);cell.textContent=String(clue);cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻空格，周圍有 ${clue} 隻貓`)}
+    else if(game.misses.includes(index)){cell.classList.add('opened');cell.textContent='';cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻開的空格`)}
     else if(excluded(game,index)){const reason=exclusionReason(game,index);cell.classList.add('auto-x');cell.disabled=true;cell.title=`${cell.title}｜${reason}`;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，規則自動排除：${reason}`)}
     else if(state.notes.has(index)){cell.classList.add('note');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記`)}
     if(probed.has(index)&&!game.found.includes(index)&&!game.misses.includes(index)&&!excluded(game,index))cell.classList.add('probed');
@@ -581,7 +595,7 @@ $('#quickMatch').onclick=async()=>{
   try{
     const key=btoa(JSON.stringify(settingsFromUI())),response=await fetch(`/match?key=${encodeURIComponent(key)}`,{signal:controller.signal});
     if(!response.ok)throw Error(`HTTP ${response.status}`);const match=await response.json();
-    if(!/^CAT-[A-Z0-9-]{6,}$/.test(match.room)||!['host','guest'].includes(match.role))throw Error('配對服務回應無效');
+    if(!ROOM_RE.test(normalizeRoom(match.room))||!['host','guest'].includes(match.role))throw Error('配對服務回應無效');
     $('#roomInput').value=match.room;
     if(match.role==='host')startPeerHost(false,match.room);else startPeerGuest();
   }catch(error){
@@ -590,11 +604,18 @@ $('#quickMatch').onclick=async()=>{
   }finally{state.matchAbort=null;$('#quickMatch').textContent='⚡ 快速配對'}
 };
 $('#copyInvite').onclick=async()=>{
-  const room=(state.room||$('#roomInput').value).trim().toUpperCase();
-  if(!/^CAT-[A-Z0-9-]{6,}$/.test(room)){toast('請先建立房間或輸入房號');return}
+  const room=normalizeRoom(state.room||$('#roomInput').value);
+  if(!ROOM_RE.test(room)){toast('請先建立房間或輸入房號');return}
   const invite=new URL(location.href);invite.search='';invite.searchParams.set('room',room);
   try{await navigator.clipboard.writeText(invite.href);toast('已複製邀請連結')}catch{toast(invite.href)}
 };
+async function copyRoomCode(button){
+  const room=normalizeRoom(state.room||$('#roomInput').value);
+  if(!ROOM_RE.test(room)){toast('請先建立房間或輸入房號');return}
+  try{await navigator.clipboard.writeText(room);const original=button.textContent;button.textContent='已複製';toast(`已複製房號 ${room}`);setTimeout(()=>button.textContent=original,1400)}catch{toast(`房號 ${room}`)}
+}
+$('#copyRoom').onclick=event=>copyRoomCode(event.currentTarget);
+$('#copyGameRoom').onclick=event=>copyRoomCode(event.currentTarget);
 $('#applyCode').onclick=async()=>{
   try {
     if (state.role==='host') { await useAnswer($('#inCode').value); $('#setupStatus').textContent='已套用回覆，正在建立連線'; }
@@ -645,7 +666,7 @@ $('#rematch').onclick=()=>{if(state.role==='host')rematchVote(0);else send({type
 if (sessionStorage.p2pHost) $('#resume').classList.remove('hidden');
 const guestSaved=JSON.parse(sessionStorage.p2pGuest||'null');
 if (guestSaved?.room?.startsWith('CAT-')) { $('#roomInput').value=guestSaved.room; $('#setupStatus').textContent='找到上次房號，可按「加入房間」重新連線'; }
-const invitedRoom=new URLSearchParams(location.search).get('room')?.toUpperCase();
-if(/^CAT-[A-Z0-9-]{6,}$/.test(invitedRoom||'')){ $('#roomInput').value=invitedRoom; $('#setupStatus').textContent='邀請房號已填入，請按「加入房間」'; }
+const invitedRoom=normalizeRoom(new URLSearchParams(location.search).get('room'));
+if(ROOM_RE.test(invitedRoom)){ $('#roomInput').value=invitedRoom; $('#setupStatus').textContent='邀請房號已填入，請按「加入房間」'; }
 try { state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-guest')||'[]')); } catch {}
 try { state.intel=JSON.parse(sessionStorage.getItem('p2pIntel-guest')||'[]'); } catch {}
