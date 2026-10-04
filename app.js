@@ -8,15 +8,21 @@ const ICE = { iceServers: [
 const state = {
   role: null, you: 0, peer: null, transport: null, rtc: null, game: null,
   notes: new Set(), intel: [], tool: null, yarnTargets: [], mode: 'guess', room: '', manual: false, matchAbort: null,
+  pendingAction: null, selectedCell: null, zoom: +(localStorage.catBoardZoom||1), turnBannerTimer: null,
   muted: localStorage.p2pMuted === '1', audio: null,
   avatar:+localStorage.catAvatar||0,
   observed: { found: 0, misses: 0, finished: false, turn: null, eventAt: 0 }
 };
 const colors = ['#f6ddd2','#d9ebe2','#f3e5b9','#dbe5f2','#eadcf0','#d5ece8','#f2dcdc','#e5eccb'];
 const AVATARS=[
-  {emoji:'😺',name:'橘子虎斑'},{emoji:'😸',name:'黑白燕尾'},{emoji:'😻',name:'奶油三花'},
-  {emoji:'🐱',name:'灰灰圓臉'},{emoji:'😽',name:'白桃小貓'},{emoji:'🙀',name:'蓬鬆棕貓'}
+  {name:'橘子虎斑'},{name:'黑白燕尾'},{name:'奶油三花'},
+  {name:'灰灰摺耳'},{name:'白桃暹羅'},{name:'蓬鬆棕貓'}
 ];
+const NICK_ADJECTIVES=['奶油','星星','棉花','蜂蜜','布丁','小雨','泡泡','月光','焦糖','草莓','栗子','雲朵'];
+const NICK_NOUNS=['虎斑','肉球','鈴鐺','鬍鬚','毛球','貓掌','小尾巴','探險家','瞇瞇眼','甜甜圈','小偵探','呼嚕'];
+function catCharacter(variant,extra=''){return `<span class="cat-character cat-character-${variant%8} ${extra}" aria-hidden="true"><i class="cat-ears"></i><i class="cat-face"></i><i class="cat-mark"></i><i class="cat-eyes"></i><i class="cat-accessory"></i></span>`}
+function stableHash(value){let hash=2166136261;for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
+const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
   basic:{label:'🔎 基本對戰',description:'翻空格看八鄰貓數；找到最多貓獲勝。'},
   items:{label:'🐟 魚乾道具戰',description:'翻空格集魚乾；每輪最多用一個道具。'},
@@ -82,7 +88,7 @@ const cleanSettings = input => ({
   mode:['basic','items','treasure','coop'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),
   turnSecondsB:Math.max(10,Math.min(180,+input.turnSecondsB||45)),
-  streakLimitEnabled:input.streakLimitEnabled!==false,
+  streakLimitEnabled:input.streakLimitEnabled===true,
   streakLimit:Math.max(1,Math.min(24,+input.streakLimit||3))
 });
 const settingsFromUI = () => cleanSettings({
@@ -96,7 +102,7 @@ function newGame(size) {
     puzzle,settings,
     players:[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,score:0,cats:0,fish:0,connected:true},{nickname:'等待貓友',avatar:1,score:0,cats:0,fish:0,connected:false}],
     status:'lobby', starter:randomInt(2), turn:0, turnId:0, deadline:null,
-    found:[], misses:[], clues:{}, streak:0, winner:null, round:0,
+    found:[], foundBy:{}, misses:[], clues:{}, streak:0, winner:null, round:0,
     treasures:shuffle(puzzle.solution.slice()).slice(0,treasureCount),sharedFish:0,sharedIntel:[],itemUsedThisTurn:false,shield:null,
     lastEvent:null, lastEmote:null, hint:null, hintVotes:[], actionIds:[]
   };
@@ -242,12 +248,12 @@ function act(who,action) {
   if (!Number.isInteger(index)||index<0||index>=game.puzzle.size**2||excluded(game,index)||game.found.includes(index)||game.misses.includes(index)) return;
   if (game.puzzle.solution.includes(index)) {
     const points=game.settings.mode==='treasure'&&game.treasures.includes(index)?2:1;
-    game.found.push(index); game.players[who].score+=points; game.players[who].cats=(game.players[who].cats||0)+1; game.streak++; game.hint=null; game.hintVotes=[];
+    game.found.push(index); game.foundBy[index]=who; game.players[who].score+=points; game.players[who].cats=(game.players[who].cats||0)+1; game.streak++; game.hint=null; game.hintVotes=[];
     game.lastEvent={type:'cat',index,who,streak:game.streak,at:Date.now()};
     if (game.found.length===game.puzzle.size) {
       game.status='finished'; game.deadline=null;
       game.winner=game.settings.mode==='coop'?'coop':game.players[0].score===game.players[1].score?'tie':game.players[0].score>game.players[1].score?0:1;
-    } else if (game.settings.streakLimitEnabled&&game.streak>=game.settings.streakLimit) switchTurn();
+    } else if (game.settings.streakLimitEnabled&&game.streak>=game.settings.streakLimit) { const catEvent=game.lastEvent;switchTurn();game.lastEvent={...catEvent,next:game.turn}; }
     else game.turnId++;
   } else {
     game.misses.push(index);
@@ -358,8 +364,9 @@ async function resumeHost() {
   if (!saved?.game?.puzzle?.solution) throw Error('沒有可恢復的房主局面');
   state.game=saved.game; state.game.settings=cleanSettings(state.game.settings||{}); state.game.clues=state.game.clues||{};
   state.game.players.forEach((player,index)=>{if(player.avatar===undefined)player.avatar=index;if(player.cats===undefined)player.cats=player.score||0;if(player.fish===undefined)player.fish=0});
-  state.game.sharedFish=state.game.sharedFish||0;state.game.sharedIntel=state.game.sharedIntel||[];state.game.itemUsedThisTurn=Boolean(state.game.itemUsedThisTurn);state.game.shield=state.game.shield||null;
+  state.game.foundBy=state.game.foundBy||{};state.game.sharedFish=state.game.sharedFish||0;state.game.sharedIntel=state.game.sharedIntel||[];state.game.itemUsedThisTurn=Boolean(state.game.itemUsedThisTurn);state.game.shield=state.game.shield||null;
   state.game.treasures=state.game.treasures||shuffle(state.game.puzzle.solution.slice()).slice(0,state.game.puzzle.size===12?2:3);
+  syncSettingsUI(state.game.settings);
   state.room=`CAT-${crypto.randomUUID().slice(0,8).toUpperCase()}`; state.game.players[1].connected=false;
   state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));
   state.intel=JSON.parse(sessionStorage.getItem('p2pIntel-host')||'[]');
@@ -435,10 +442,16 @@ function playVisualEvent(event) {
     if(event.streak>1){const burst=document.createElement('div');burst.className='streak-burst';burst.textContent=`連抓 ${event.streak} 隻！`;$('#fxLayer').appendChild(burst);setTimeout(()=>burst.remove(),800)}
   }
 }
+function showTurnBanner(isMine){
+  const banner=$('#turnBanner');if(!banner)return;
+  clearTimeout(state.turnBannerTimer);banner.textContent=isMine?'輪到你了！':'輪到對方';banner.className=`show ${isMine?'mine':'other'}`;
+  state.turnBannerTimer=setTimeout(()=>banner.className='',1050);
+}
 function renderV2() {
   const game=state.game;if(!game)return;
-  game.clues=game.clues||{};game.settings=cleanSettings(game.settings||{});game.sharedIntel=game.sharedIntel||[];game.sharedFish=game.sharedFish||0;
+  game.clues=game.clues||{};game.foundBy=game.foundBy||{};game.settings=cleanSettings(game.settings||{});game.sharedIntel=game.sharedIntel||[];game.sharedFish=game.sharedFish||0;
   game.players.forEach((player,index)=>{player.cats??=player.score||0;player.fish??=0;player.avatar??=index});
+  if(state.pendingAction&&(state.pendingAction.turnId!==game.turnId||game.turn!==state.you||game.found.includes(state.pendingAction.index)||game.misses.includes(state.pendingAction.index)||excluded(game,state.pendingAction.index)))state.pendingAction=null;
   if(game.turn!==state.you||game.itemUsedThisTurn||game.status!=='playing'){state.tool=null;state.yarnTargets=[]}
   const visibleIntel=game.settings.mode==='coop'?game.sharedIntel:state.intel,probed=new Set(visibleIntel.flatMap(intel=>intel.targets||[]));
   const unseen=game.lastEvent?.at>state.observed.eventAt;
@@ -458,25 +471,32 @@ function renderV2() {
     const scoreText=game.settings.mode==='treasure'?`${player.score} 分 · ${player.cats} 隻`:String(player.cats);
     const fishText=game.settings.mode==='items'?` · 🐟 ${player.fish}/4`:game.settings.mode==='coop'?` · 共用 🐟 ${game.sharedFish}/4`:'';
     const intelText=visibleIntel.slice(-2).map(intel=>intel.type==='magnifier'?`◎ 周圍有 ${intel.count} 隻貓`:`🧶 選取格${intel.hasCat?'有':'沒有'}貓`).join('<br>');
-    element.innerHTML=`<div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${avatar.emoji}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'共同進度':'個人成績'}${fishText} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${Array.from({length:player.cats},(_,i)=>`<span class="basket-cat" style="animation-delay:${Math.min(i*.02,.3)}s">🐾</span>`).join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
+    const captures=game.found.filter(index=>+game.foundBy[index]===playerIndex),fallback=Math.max(0,player.cats-captures.length);
+    const basketCats=[...captures.map((index,i)=>`<span class="basket-cat" title="已找到的貓" style="animation-delay:${Math.min(i*.02,.3)}s">${catCharacter(catVariant(game,index),'basket-character')}</span>`),...Array.from({length:fallback},(_,i)=>`<span class="basket-cat">${catCharacter((playerIndex*3+i)%8,'basket-character')}</span>`)];
+    element.innerHTML=`<div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${catCharacter(player.avatar||0,'avatar-character')}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'共同進度':'個人成績'}${fishText} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${basketCats.join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
   }
   const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'本輪已使用道具':state.tool==='magnifier'?'請選未翻中心格':state.tool==='yarn'?`已選 ${state.yarnTargets.length}/3 個相連同區格`:game.shield?'護墊待命中':'';
   document.querySelectorAll('#toolbox [data-item]').forEach(button=>{const cost={magnifier:2,yarn:2,shield:3,hourglass:2}[button.dataset.item];button.disabled=!tools||game.turn!==state.you||game.itemUsedThisTurn||balance<cost;button.classList.toggle('selected',state.tool===button.dataset.item)});$('#confirmYarn').classList.toggle('hidden',state.tool!=='yarn');$('#cancelItem').classList.toggle('hidden',!state.tool);
-  const board=$('#board'),size=game.puzzle.size,cellSize=Math.max(18,Math.min(30,(innerHeight-190)/size,(innerWidth-390)/size));
+  const board=$('#board'),size=game.puzzle.size,mobile=innerWidth<=700,baseSize=mobile?Math.max(18,Math.min(24,(innerWidth-18)/Math.min(size,20))):Math.max(18,Math.min(30,(innerHeight-190)/size,(innerWidth-390)/size)),cellSize=Math.round(baseSize*state.zoom);
+  $('#zoomLabel').textContent=`${Math.round(state.zoom*100)}%`;$('#zoomOut').disabled=state.zoom<=.75;$('#zoomIn').disabled=state.zoom>=1.75;
   board.style.setProperty('--n',size);board.style.setProperty('--s',`${cellSize}px`);board.innerHTML='';
   for(let index=0;index<size*size;index++){
     const cell=document.createElement('button'),region=game.puzzle.regions[index],row=Math.floor(index/size),column=index%size;
     cell.className='cell';cell.dataset.index=index;cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}`);cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',colors[region%colors.length]);
     if(column===size-1||game.puzzle.regions[index+1]!==region)cell.classList.add('er');
     if(row===size-1||game.puzzle.regions[index+size]!==region)cell.classList.add('eb');
-    if(game.found.includes(index)){cell.classList.add('cat');const treasure=game.settings.mode==='treasure'&&(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));if(treasure)cell.classList.add('treasure-cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到${treasure?'鈴鐺':''}貓`)}
+    if(game.found.includes(index)){cell.classList.add('cat');cell.innerHTML=catCharacter(catVariant(game,index),'board-character');const treasure=game.settings.mode==='treasure'&&(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));if(treasure)cell.classList.add('treasure-cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到${treasure?'鈴鐺':''}貓`)}
     else if(game.misses.includes(index)){const clue=game.clues[index]??0;cell.classList.add('opened',`clue-${clue}`);cell.textContent=String(clue);cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻空格，周圍有 ${clue} 隻貓`)}
     else if(excluded(game,index)){const reason=exclusionReason(game,index);cell.classList.add('auto-x');cell.disabled=true;cell.title=`${cell.title}｜${reason}`;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，規則自動排除：${reason}`)}
     else if(state.notes.has(index)){cell.classList.add('note');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記`)}
     if(probed.has(index)&&!game.found.includes(index)&&!game.misses.includes(index)&&!excluded(game,index))cell.classList.add('probed');
     if(state.yarnTargets.includes(index))cell.classList.add('yarn-picked');
-    if(state.mode==='guess'&&game.turn!==state.you)cell.disabled=true;
-    cell.onclick=()=>{if(state.tool==='magnifier'){sendItem({item:'magnifier',target:index});return}if(state.tool==='yarn'){state.yarnTargets.includes(index)?state.yarnTargets=state.yarnTargets.filter(value=>value!==index):state.yarnTargets.length<3&&state.yarnTargets.push(index);render();return}if(state.mode==='note'){state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();return}const action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};state.role==='host'?act(0,action):send({type:'action',action})};
+    if(game.lastEvent?.index===index)cell.classList.add('latest-result');
+    if(state.selectedCell===index)cell.classList.add('selected-cell');
+    if(state.pendingAction?.index===index)cell.classList.add('pending-cell');
+    if(state.mode==='guess'&&(game.turn!==state.you||state.pendingAction))cell.disabled=true;
+    cell.onpointerdown=()=>{if(!cell.disabled&&state.mode==='guess'&&!state.tool){state.selectedCell=index;cell.classList.add('selected-cell')}};
+    cell.onclick=()=>{state.selectedCell=null;if(state.tool==='magnifier'){sendItem({item:'magnifier',target:index});return}if(state.tool==='yarn'){state.yarnTargets.includes(index)?state.yarnTargets=state.yarnTargets.filter(value=>value!==index):state.yarnTargets.length<3&&state.yarnTargets.push(index);render();return}if(state.mode==='note'){state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();return}if(state.pendingAction)return;const action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};state.pendingAction={index,turnId:game.turnId,actionId:action.actionId};render();setTimeout(()=>{if(state.pendingAction?.actionId===action.actionId){state.pendingAction=null;render()}},1800);state.role==='host'?act(0,action):send({type:'action',action})};
     board.appendChild(cell);
   }
   $('#pass').disabled=game.turn!==state.you;
@@ -485,7 +505,9 @@ function renderV2() {
     $('#resultScore').textContent=game.winner==='coop'?`你們一起找到 ${game.found.length} 隻｜個人紀念 ${game.players[0].cats}＋${game.players[1].cats}`:game.settings.mode==='treasure'?`${game.players[0].score} 分（${game.players[0].cats} 隻） ： ${game.players[1].score} 分（${game.players[1].cats} 隻）`:`${game.players[0].cats}：${game.players[1].cats}`;$('#result').showModal();
   }
   if(game.status!=='finished'&&$('#result').open)$('#result').close();
+  const turnChanged=game.status==='playing'&&state.observed.turn!==game.turn;
   state.observed={found:game.found.length,misses:game.misses.length,finished:game.status==='finished',turn:game.turn,eventAt:Math.max(state.observed.eventAt,game.lastEvent?.at||0)};
+  if(turnChanged)showTurnBanner(game.turn===state.you);
   if(unseen)requestAnimationFrame(()=>playVisualEvent(game.lastEvent));
 }
 render=renderV2;
@@ -498,10 +520,18 @@ setInterval(()=>{
 
 function renderAvatarChoices(){
   const root=$('#avatarChoices');root.innerHTML='';
-  AVATARS.forEach((avatar,index)=>{const button=document.createElement('button');button.type='button';button.className=`avatar-choice ${state.avatar===index?'selected':''}`;button.dataset.avatar=index;button.setAttribute('aria-label',avatar.name);button.innerHTML=`<span class="avatar avatar-${index}">${avatar.emoji}</span><small>${avatar.name}</small>`;button.onclick=()=>{state.avatar=index;localStorage.catAvatar=String(index);renderAvatarChoices()};root.appendChild(button)});
+  AVATARS.forEach((avatar,index)=>{const button=document.createElement('button');button.type='button';button.className=`avatar-choice ${state.avatar===index?'selected':''}`;button.dataset.avatar=index;button.setAttribute('aria-label',avatar.name);button.innerHTML=`<span class="avatar avatar-${index}">${catCharacter(index,'avatar-character')}</span><small>${avatar.name}</small>`;button.onclick=()=>{state.avatar=index;localStorage.catAvatar=String(index);renderAvatarChoices()};root.appendChild(button)});
 }
 function updateModeDescription(){const info=MODE_INFO[$('#gameMode').value];$('#modeDescription').textContent=info.description}
-renderAvatarChoices();updateModeDescription();$('#gameMode').onchange=updateModeDescription;
+function updateCapUI(){const enabled=$('#capEnabled').checked;$('#cap').disabled=!enabled;$('#capField').classList.toggle('locked',!enabled);$('#capField').setAttribute('aria-disabled',String(!enabled))}
+function syncSettingsUI(settings){const clean=cleanSettings(settings);$('#size').value=String(clean.size);$('#gameMode').value=clean.mode;$('#secondsA').value=String(clean.turnSecondsA);$('#secondsB').value=String(clean.turnSecondsB);$('#capEnabled').checked=clean.streakLimitEnabled;$('#cap').value=String(clean.streakLimit);updateCapUI();updateModeDescription()}
+function randomNickname(){
+  const all=NICK_ADJECTIVES.flatMap(adjective=>NICK_NOUNS.map(noun=>`${adjective}${noun}`)),current=$('#nick').value.trim();let history=[];try{history=JSON.parse(localStorage.catNickHistory||'[]')}catch{}
+  const blocked=new Set([current,...history.slice(-10)]),choices=all.filter(name=>!blocked.has(name)),name=choices[randomInt(choices.length)]||all[randomInt(all.length)];
+  $('#nick').value=name;history.push(name);localStorage.catNickHistory=JSON.stringify(history.slice(-20));localStorage.catNickname=name;
+}
+if(localStorage.catNickname)$('#nick').value=localStorage.catNickname.slice(0,16);
+renderAvatarChoices();updateModeDescription();updateCapUI();$('#gameMode').onchange=updateModeDescription;$('#capEnabled').onchange=updateCapUI;$('#randomNick').onclick=randomNickname;$('#nick').oninput=()=>{localStorage.catNickname=$('#nick').value.slice(0,16)};
 if(window.CAT_MATCH_ENABLED!==true){$('#quickMatch').disabled=true;$('#quickMatch').textContent='⚡ 快速配對（未啟用）';$('#quickMatch').title='此靜態版本未設定配對服務，請使用房號或邀請連結'}
 
 function sendItem(payload){
@@ -534,6 +564,8 @@ document.querySelectorAll('#toolbox [data-item]').forEach(button=>button.onclick
 });
 $('#confirmYarn').onclick=()=>sendItem({item:'yarn',targets:state.yarnTargets});
 $('#cancelItem').onclick=()=>{state.tool=null;state.yarnTargets=[];render()};
+$('#zoomOut').onclick=()=>{state.zoom=Math.max(.75,+(state.zoom-.25).toFixed(2));localStorage.catBoardZoom=String(state.zoom);render()};
+$('#zoomIn').onclick=()=>{state.zoom=Math.min(1.75,+(state.zoom+.25).toFixed(2));localStorage.catBoardZoom=String(state.zoom);render()};
 $('#helpButton').onclick=()=>$('#helpDialog').showModal();
 $('#closeHelp').onclick=()=>$('#helpDialog').close();
 $('#helpDialog').addEventListener('click',event=>{if(event.target===$('#helpDialog'))$('#helpDialog').close()});
@@ -601,7 +633,7 @@ function rematchVote(who) {
   rematchVotes.add(who);
   if (state.role==='host'&&rematchVotes.size===2) {
     const game=state.game; game.round++; game.starter=1-game.starter; game.puzzle=makePuzzle(game.settings.size);
-    game.status='playing'; game.turn=game.starter; game.turnId++; game.found=[]; game.misses=[]; game.clues={}; game.streak=0; game.winner=null;
+    game.status='playing'; game.turn=game.starter; game.turnId++; game.found=[]; game.foundBy={}; game.misses=[]; game.clues={}; game.streak=0; game.winner=null;
     game.treasures=shuffle(game.puzzle.solution.slice()).slice(0,game.puzzle.size===12?2:3);game.sharedFish=0;game.sharedIntel=[];game.itemUsedThisTurn=false;game.shield=null;
     game.lastEvent={type:'rematch',at:Date.now()};game.hint=null; game.hintVotes=[]; game.actionIds=[]; game.players.forEach(player=>{player.score=0;player.cats=0;player.fish=0});
     state.intel=[];state.notes.clear();state.tool=null;state.yarnTargets=[];setDeadline();
