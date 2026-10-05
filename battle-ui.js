@@ -19,6 +19,7 @@ function battleMessage(){
 }
 function renderBattle(){
   const game=state.game;if(!game||!game.boards)return;
+  const silentAudio=Boolean(state.suppressBattleFX||document.hidden);prepareGameAudio(game.id,game.status);
   const event=game.lastEvent,sourceRect=battleEventCellRect(event);
   if(['finished','aborted','paused'].includes(game.status))clearBattleFX();
   document.body.classList.add('is-battle');$('#setup').classList.add('hidden');$('#game').classList.remove('hidden');$('#battleArena').classList.remove('hidden');
@@ -28,10 +29,10 @@ function renderBattle(){
   if(state.pendingAction&&(state.pendingAction.boardId!==own.puzzle.id||own.found.includes(state.pendingAction.index)||own.misses.includes(state.pendingAction.index)||game.status!=='playing'))state.pendingAction=null;
   $('#battleConnection').textContent=state.practice?'本機練習 · 對手不會行動':game.status==='paused'?'已暫停 · 等待重連':game.status==='aborted'?'本局已中止':`${state.room} · ${game.status==='lobby'?'同步就緒中':game.status==='countdown'?'開賽讀秒':'P2P 連線'}`;
   $('#leavePractice').classList.toggle('hidden',!state.practice);$('#battleCopyRoom').classList.toggle('hidden',!!state.practice);
-  $('#battleMute').textContent=state.muted?'🔇':'🔊';$('#battleMute').setAttribute('aria-pressed',String(state.muted));
+  syncAudioControls();syncNoteModeUI();
   $('#battleReconnect').classList.toggle('hidden',game.status!=='paused'||state.manual||state.role!=='guest');
   $('#battleAbort').classList.toggle('hidden',game.status!=='paused');$('#battleReturn').classList.toggle('hidden',game.status!=='aborted');
-  $('#battleGuess').classList.toggle('active',state.mode==='guess');$('#battleNote').classList.toggle('active',state.mode==='note');
+
   const focused=document.activeElement?.closest('.battle-board .cell')?.dataset.index;
   for(const [side,who] of [['local',state.you],['opponent',1-state.you]]){
     const board=game.boards[who],player=game.players[who],root=$(`.battle-side.${side}`),local=side==='local',maxHP=player.maxHP||game.settings.maxHP||150;
@@ -57,8 +58,9 @@ function renderBattle(){
   if(focused!==undefined)$(`.battle-side.local .cell[data-index="${focused}"]`)?.focus({preventScroll:true});
   $('#battleNotice').textContent=battleMessage();
   observeBattleEvent(event,sourceRect);
-  refreshBattleOverlays();
-  if(game.status==='finished'&&!$('#result').open){$('#resultTitle').textContent=game.winner===state.you?'你贏了！喵～':'下一局再加油！';$('#resultScore').textContent=`剩餘血量 ${game.players[state.you].hp}：${game.players[1-state.you].hp}｜最後一擊 ${game.lastEvent?.damage||0} 傷害`;$('#rematch').textContent=state.practice?'再練習一局':'雙方同意，再來一局';$('#result').showModal();tone('finish')}
+  refreshBattleOverlays({silent:silentAudio});
+  if(game.status==='finished'&&!$('#result').open){$('#resultTitle').textContent=game.winner===state.you?'你贏了！喵～':'下一局再加油！';$('#resultScore').textContent=`剩餘血量 ${game.players[state.you].hp}：${game.players[1-state.you].hp}｜最後一擊 ${game.lastEvent?.damage||0} 傷害`;$('#rematch').textContent=state.practice?'再練習一局':'雙方同意，再來一局';$('#result').showModal()}
+  if(game.status==='finished'&&state.battleTerminalCue!==game.id){state.battleTerminalCue=game.id;if(!silentAudio)soundCue(game.winner===state.you?'win':'lose',{id:`${game.id}:finished`});}
   if(game.status!=='finished'&&$('#result').open)$('#result').close();
   state.battleCooldownActive=own.cooldownUntil>battleNow();
 }
@@ -85,6 +87,7 @@ function battleEventCellRect(event){
   return cell?.getBoundingClientRect()||null;
 }
 function clearBattleFX(){
+  for(const effect of state.battleClassEffects||[])effect.node.classList.remove(effect.className);state.battleClassEffects=new Set();
   for(const timer of state.battleFXTimers||[])clearTimeout(timer);
   for(const node of state.battleFXNodes||[])node.remove();
   state.battleFXTimers=new Set();state.battleFXNodes=new Set();state.battleFXBatches=[];
@@ -102,9 +105,33 @@ function observeBattleEvent(event,sourceRect){
   state.battleEventHighWater=Math.max(state.battleEventHighWater??-1,sequence);
   if(state.suppressBattleFX){state.suppressBattleFX=false;return false;}
   if(duplicate||document.hidden||game.status!=='playing'||battleNow()-(event.at||0)>1800)return false;
-  if(event.type==='hit'){tone('cat');battleAttackFX(event,sourceRect);return true;}
-  if(event.type==='miss'){tone('miss');return true;}
+  if(event.type==='hit'){playBattleEventSound(event);battleAttackFX(event,sourceRect);return true;}
+  if(event.type==='miss'){playBattleEventSound(event);return true;}
+  if(event.type==='start')soundCue('start',{id:event.id||`${game.id}:start`});
   return false;
+}
+function playBattleEventSound(event){
+  const game=state.game,id=event.id||`${game.id}:${event.sequence}:${event.at}`;
+  if(event.type==='hit'){
+    if(event.who===state.you)soundCue(event.combo>1?'combo':'found',{id,combo:event.combo});
+    soundCue('launch',{id,combo:event.combo,delay:.10});
+    soundCue(event.who===state.you?'impact':'damage',{id,combo:event.combo,delay:.60});
+    if(event.advanced&&event.who===state.you){soundCue('boardClear',{id,combo:event.combo,delay:.75});soundCue('newBoard',{id,delay:.98});}
+  }else if(event.type==='miss'&&event.who===state.you){
+    soundCue('miss',{id});soundCue('lock',{id,delay:.12});
+    state.pendingUnlockCue={id,boardId:event.boardId,until:game.boards[state.you].cooldownUntil};
+  }
+}
+function trackBattleClass(node,className,duration=900){
+  if(!node)return;node.classList.add(className);state.battleClassEffects??=new Set();state.battleFXTimers??=new Set();
+  const effect={node,className,timer:null};state.battleClassEffects.add(effect);
+  effect.timer=setTimeout(()=>{node.classList.remove(className);state.battleClassEffects.delete(effect);state.battleFXTimers.delete(effect.timer);},duration);state.battleFXTimers.add(effect.timer);
+}
+function updateBattleUnlockFeedback(){
+  const cue=state.pendingUnlockCue,game=state.game;if(!cue||!game||game.status!=='playing'||battleNow()<cue.until)return;
+  state.pendingUnlockCue=null;
+  if(cue.boardId!==game.boards[state.you].puzzle.id||document.hidden)return;
+  soundCue('unlock',{id:cue.id});trackBattleClass($('.battle-side.local .board-card'),'unlock-pulse');
 }
 function battleAttackFX(event,sourceRect){
   const game=state.game;if(!game||game.status!=='playing'||document.hidden)return;
@@ -118,6 +145,10 @@ function battleAttackFX(event,sourceRect){
   const timer=setTimeout(()=>{removeBatch(batch);state.battleFXBatches=state.battleFXBatches.filter(value=>value!==batch);target.classList.remove('hp-hit');},1100);
   batch.timers.push(timer);state.battleFXTimers.add(timer);
   target.classList.add('hp-hit');
+  const sourceSide=$(`.battle-side[data-player="${event.who}"]`),sourceGrid=sourceSide?.querySelector('.battle-board'),comboBadge=sourceSide?.querySelector('.combo-badge');
+  if(comboBadge){comboBadge.dataset.comboTier=String(Math.min(3,1+Math.floor((event.combo-1)/3)));trackBattleClass(comboBadge,'combo-glow');}
+  if(sourceGrid?.dataset.boardId===event.boardId)trackBattleClass(sourceGrid.querySelector(`.cell[data-index="${event.index}"]`),'found-glow');
+  if(event.advanced&&sourceGrid){trackBattleClass(sourceGrid,'board-clear-glow');const celebration=document.createElement('div');celebration.className='board-clear-celebration';celebration.innerHTML=[0,1,2].map(i=>battleCat(stableHash(`${event.boardId}:${event.index+i}`))).join('');const card=sourceSide.querySelector('.board-card');if(card)add(celebration,card);}
   const number=document.createElement('span');number.className='battle-damage';number.textContent=`−${event.damage}`;add(number,target);
   if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const from=sourceRect||battleEventCellRect(event);if(!from)return;
@@ -125,12 +156,12 @@ function battleAttackFX(event,sourceRect){
   const intensity=Math.min(3,1+Math.floor((Math.max(1,event.combo)-1)/3));
   const position=node=>{node.style.left=`${x}px`;node.style.top=`${y}px`;node.style.setProperty('--dx',`${tx-x}px`);node.style.setProperty('--dy',`${ty-y}px`);node.style.setProperty('--lift',`${Math.min(65,Math.max(28,from.height))}px`);node.style.setProperty('--scale',String(intensity));return node;};
   const cat=document.createElement('div');cat.className='battle-cat-launch';cat.innerHTML=battleCat(stableHash(`${event.boardId}:${event.index}`));add(position(cat));
-  const paw=document.createElement('div');paw.className='battle-paw-shot';paw.textContent='🐾';add(position(paw));
+  const paw=document.createElement('div');paw.className='battle-paw-shot';paw.textContent='🐾';paw.style.setProperty('--trail-angle',`${Math.atan2(ty-y,tx-x)*180/Math.PI}deg`);add(position(paw));
   for(let i=0;i<intensity;i++){
     const spark=document.createElement('div');spark.className='battle-spark';spark.style.left=`${tx}px`;spark.style.top=`${ty}px`;spark.style.setProperty('--scale',String(1+i));spark.style.setProperty('--delay',`${570+i*45}ms`);add(spark);
   }
 }
-function refreshBattleOverlays(){
+function refreshBattleOverlays({silent=false}={}){
   const game=state.game;if(!isBattle())return;
   const now=battleNow(),opening=$('#battleOpening');
   const countdown=game.status==='countdown';
@@ -143,7 +174,7 @@ function refreshBattleOverlays(){
   if(count)count.textContent=countdown?(seconds>0?String(seconds):'就緒'):' ';
   if(text)text.textContent=countdown?(seconds>0?'讀秒結束，一起找貓':'等待房主開賽確認…'):'請找出貓咪！';
   const beat=countdown&&seconds>0?`${game.id}:${game.startAt}:${seconds}`:null;
-  if(beat&&state.battleOpeningBeat!==beat){state.battleOpeningBeat=beat;if(!document.hidden)tone('turn');}
+  if(beat&&state.battleOpeningBeat!==beat){state.battleOpeningBeat=beat;if(!silent&&!document.hidden)soundCue('countdown',{id:beat,combo:4-seconds});}
   for(const [side,who] of [['local',state.you],['opponent',1-state.you]]){
     const board=game.boards[who],root=$(`.battle-side.${side}`),lock=root?.querySelector('.battle-lock');if(!lock)continue;
     const remaining=game.status==='playing'&&board.cooldownKind==='miss'?Math.max(0,board.cooldownUntil-now):0;
@@ -160,22 +191,24 @@ function updateBattleTimers(){
   if(!isBattle())return;
   const game=state.game;
   if(state.role==='host'&&CatBattle.advance(game,Date.now())){broadcast();return;}
+  prepareGameAudio(game.id,game.status);
   if(['finished','aborted','paused'].includes(game.status))clearBattleFX();
-  refreshBattleOverlays();$('#battleNotice').textContent=battleMessage();
+  refreshBattleOverlays({silent:Boolean(state.suppressBattleFX||document.hidden)});$('#battleNotice').textContent=battleMessage();
   if(game.status==='playing'&&state.battleCooldownActive&&game.boards[state.you].cooldownUntil<=battleNow())render();
+  updateBattleUnlockFeedback();
   if(['playing','countdown'].includes(game.status)&&!state.practice&&state.transport?.open()&&Date.now()-(state.lastPong||Date.now())>8000){onClose();state.transport.close();}
   if(game.status==='paused'&&state.disconnectAt&&Date.now()-state.disconnectAt>=60000){CatBattle.abort(game);if(state.role==='host')broadcast();else{saveLocal();render();}}
 }
 
 function startPractice(){
-  clearBattleFX();state.suppressBattleFX=false;state.battleOpeningBeat=null;
+  clearBattleFX();stopGameAudio();state.suppressBattleFX=false;state.battleOpeningBeat=null;
   state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.peer=null;state.transport=null;state.practice=true;state.role='host';state.you=0;state.room='本機練習';state.clockOffset=0;state.notes.clear();state.pendingAction=null;state.battleBoardId=null;state.battleObservedEvent=null;state.mode='guess';
   state.game=CatBattle.create({mode:'battle',maxHP:150},[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,connected:true},{nickname:'暖暖橘子',avatar:1,connected:true}]);CatBattle.start(state.game);render();
 }
 $('#previewBattle').onclick=startPractice;
-$('#leavePractice').onclick=()=>{clearBattleFX();state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.transport=null;state.peer=null;state.practice=false;state.game=null;state.notes.clear();state.battleBoardId=null;document.body.classList.remove('is-battle');$('#game').classList.add('hidden');$('#setup').classList.remove('hidden');showEntryChoice();};
+$('#leavePractice').onclick=()=>{clearBattleFX();stopGameAudio();state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.transport=null;state.peer=null;state.practice=false;state.game=null;state.notes.clear();state.battleBoardId=null;document.body.classList.remove('is-battle');$('#game').classList.add('hidden');$('#setup').classList.remove('hidden');showEntryChoice();};
 $('#battleReturn').onclick=()=>$('#leavePractice').onclick();
-$('#battleGuess').onclick=()=>{state.mode='guess';render()};$('#battleNote').onclick=()=>{state.mode='note';render()};$('#battleHelp').onclick=()=>$('#helpDialog').showModal();$('#battleMute').onclick=()=>{$('#mute').click();render()};$('#battleCopyRoom').onclick=event=>copyRoomCode(event.currentTarget);
+$('#battleNote').onclick=()=>setNoteMode(state.mode!=='note');$('#battleHelp').onclick=()=>$('#helpDialog').showModal();$('#battleMute').onclick=()=>{$('#mute').click();render()};$('#battleCopyRoom').onclick=event=>copyRoomCode(event.currentTarget);
 $('#battleAbort').onclick=()=>{if(state.role==='host'){CatBattle.abort(state.game);broadcast()}else send({type:'battleAbort'});};
 $('#battleReconnect').onclick=()=>{state.peer?.destroy();state.transport=null;$('#roomInput').value=state.room;startPeerGuest();toast('正在重新尋找房主…')};
 const priorRematch=$('#rematch').onclick;$('#rematch').onclick=()=>{if(state.practice){$('#result').close();startPractice()}else priorRematch()};
@@ -183,6 +216,6 @@ setInterval(updateBattleTimers,100);
 setInterval(()=>{if(isBattle()&&!state.practice&&state.transport?.open())send({type:'ping',sentAt:Date.now()});},2000);
 document.addEventListener('visibilitychange',()=>{
   if(!isBattle())return;
-  if(document.hidden){clearBattleFX();state.suppressBattleFX=true;}
+  if(document.hidden){clearBattleFX();stopGameAudio();state.suppressBattleFX=true;}
   else{state.suppressBattleFX=true;updateBattleTimers();render();}
 });

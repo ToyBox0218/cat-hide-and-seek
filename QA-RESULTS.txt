@@ -1,9 +1,9 @@
 CAT HIDE & SEEK — LOCAL REVIEW BUILD
 Date: 2026-10-05
-Base repository commit: d65ad24e40cdea8e9b1c54de7f78dff916ce60b7
-Status: User explicitly approved publishing the countdown / lock / attack feedback release. Previous release d65ad24 is preserved for a normal revert. Browser and real P2P acceptance remain pending.
+Base repository commit: 4a66ee1ce81bda24c3d4d539fa355356df28ed30
+Status: User approved publishing this audio / unique-color / toolbar / stronger-effects release. Previous release 4a66ee1 is preserved for a normal revert. Browser, device-audio and real P2P acceptance remain pending.
 
-PASS — 86 Node tests (node --test)
+PASS — 155 Node tests (node --test)
 29 battle engine tests:
 - 1,080 generated puzzles checked with an independent exact solver.
 - 270 additional constant-RNG stress puzzles.
@@ -21,7 +21,7 @@ PASS — 86 Node tests (node --test)
 - Explicit public snapshot whitelist excludes solutions and private histories.
 - Rematch avoids recent puzzle repeats.
 
-57 app/legacy integration and fake-DOM tests:
+83 app/legacy integration and fake-DOM tests:
 - All four original modes, default streak cap off, no ordinary clue numbers.
 - Fish limit, magnifier/private intel, yarn, shield and hourglass.
 - Treasure scoring, cooperative shared progress and completion.
@@ -86,3 +86,26 @@ LOCAL COUNTDOWN / FEEDBACK ADDITIONS
 - At most three live FX batches; static damage under reduced motion.
 - Finish, abort and disconnect clean up all flight nodes/timers.
 - These new visuals have NOT been verified in a browser or captured in screenshots.
+
+AUDIO / COLOR / TOOLBAR / EFFECTS ROUND
+23 dedicated audio tests:
+- No AudioContext or playback before a user gesture.
+- Stable event IDs, mute/volume, bounded dedupe and 12-voice limit.
+- Delayed voice cancellation on pause/disconnect/end/background.
+- Original scores shared by WebAudio and deterministic offline WAV.
+- 45% preview peak -19.16 dBFS; smooth limiting, no full-scale samples.
+20 dedicated palette tests:
+- 6/12/20/24 unique colors, no recycling, same-public-board stability.
+- Global 24-color minimum OKLab distance 0.0762814.
+- Minimum base-color contrast 4.60777:1 against #4d423b.
+- Public regions only; private-answer getters are never read.
+26 added integration tests:
+- Direct tile clicks, clear note-toggle round trips and aria state.
+- Unavailable quick-match hidden, enabled service hooks preserved.
+- Fresh events make audio once; old snapshots/reconnect do not replay.
+- Persistent mute/volume and gesture-only context creation.
+- Local glow/celebration timers, bounded effect batches, unlock pulse.
+- Reduced motion preserves static feedback and combat timing.
+
+The 12-second WAV is an offline score preview, NOT a recording of browser audio.
+Latest audio, visual effects and mobile/P2P behavior remain unverified in-browser.
