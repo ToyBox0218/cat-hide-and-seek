@@ -1,0 +1,4 @@
+'use strict';
+const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(__dirname,'..');
+http.createServer((req,res)=>{const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname),file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return}fs.readFile(file,(err,body)=>{if(err){res.writeHead(404);res.end('Not found');return}res.setHeader('Content-Type',({'.html':'text/html;charset=utf-8','.js':'text/javascript;charset=utf-8','.css':'text/css;charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'})[path.extname(file)]||'application/octet-stream');res.setHeader('Cache-Control','no-store');res.end(body)})}).listen(3010,'127.0.0.1',()=>console.log('Local preview http://127.0.0.1:3010'));

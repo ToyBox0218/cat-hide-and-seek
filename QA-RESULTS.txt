@@ -1,0 +1,69 @@
+CAT HIDE & SEEK — LOCAL REVIEW BUILD
+Date: 2026-10-05
+Base repository commit: 85e2b9d5ae1ad7be7344a195435b5044f9d6330d
+Status: Pre-publication test snapshot. User approved updating the original GitHub Pages before visual acceptance. Previous release remains in Git history for rollback.
+
+PASS — 59 Node tests (node --test)
+22 battle engine tests:
+- 1,080 generated puzzles checked with an independent exact solver.
+- 270 additional constant-RNG stress puzzles.
+- All 90 valid 6x6 answer patterns; diverse region layouts.
+- Every puzzle: one cat per row/column/region, no 8-neighbor touching,
+  connected regions, minimum three cells per region, exactly one solution.
+- Independent boards; hit cooldown 300 ms, miss cooldown 2 seconds.
+- Hits deal 5, 10, 15 ... 35, 40. Six cats advance only that player's board.
+- HP and combo carry over; miss resets only that player's combo.
+- Duplicate IDs, repeated cells, stale boards and bounded-history replays.
+- Invalid/excluded cells, disconnected state and client damage claims rejected.
+- First lethal arrival wins and HP never becomes negative.
+- Pause freezes cooldowns; resume and JSON persistence preserve authority.
+- Abort is terminal with no winner.
+- Explicit public snapshot whitelist excludes solutions and private histories.
+- Rematch avoids recent puzzle repeats.
+
+37 app/legacy integration and fake-DOM tests:
+- All four original modes, default streak cap off, no ordinary clue numbers.
+- Fish limit, magnifier/private intel, yarn, shield and hourglass.
+- Treasure scoring, cooperative shared progress and completion.
+- 24 legacy puzzles sampled across 6/12/20/24, legal and uniquely solvable.
+- Room normalization, role-isolated notes, two-party rematch.
+- Real battle engine via app adapter, guest ACK and public snapshot flow.
+- 36 actionable local cells; 36 read-only opponent cells.
+- Guest clicks do not locally damage HP; repeated pending clicks blocked.
+- Notes remain private and usable during cooldown.
+- Only local board change clears local notes.
+- Explicit offline-practice label and no simulated opponent moves.
+- Disconnect expiry aborts without a winner.
+
+PASS — Syntax/static checks
+node --check app.js
+node --check battle-engine.js
+node --check battle-ui.js
+node --check scripts/build-preview.js
+node --check scripts/serve.js
+git diff --check
+Self-contained HTML packaging validates no external local image/script/style references.
+
+NOT VERIFIED — Important release gates
+- Rendered appearance in desktop Chrome or 320/360/390/430px mobile viewports.
+- Actual visual screenshots of the implemented game.
+- Browser keyboard focus, physical touch behavior, sound playback and motion.
+- Real two-browser WebRTC battle, transport recovery, and host-refresh workflow.
+- External NAT/firewall connectivity, PeerJS service availability or long-run stability.
+
+The available cloud browser rejected the local preview URL under its URL policy.
+The restriction was not bypassed. The documented supported preview handoff needs
+an exposed forwarding/preview tool, which is unavailable in this task. Node VM
+and fake-DOM tests verify code behavior, not browser layout or real networking.
+
+BEFORE RELEASE
+Open the supplied single-file preview locally for visual/interaction review.
+Use the source build in two Chrome profiles for a real P2P acceptance pass:
+1. Create CAT room and join via short code; verify both original modes and battle.
+2. Confirm independent boards, visible opponent and private note isolation.
+3. Find six cats, verify immediate new board with unchanged HP and combo=6.
+4. Confirm seventh/eighth damage=35/40; test miss reset, cooldown and duplicate clicks.
+5. Disconnect/rejoin within 60s; compare snapshot/HP/board/combo/notes.
+6. Leave disconnected past 60s; confirm no winner and no late revival.
+7. Check 320/360/390/430px portrait and desktop without page overflow.
+8. Check sound toggle after gesture, keyboard focus, and reduced motion.

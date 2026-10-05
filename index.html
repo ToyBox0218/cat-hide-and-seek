@@ -9,26 +9,28 @@
 <body><main>
   <button id="helpButton" class="help-fab" aria-label="打開玩法說明">？ 怎麼玩</button>
   <section id="setup" class="panel setup-card">
-    <header class="brand"><div class="logo">🐾</div><div><small>GITHUB PAGES × WEBRTC</small><h1>貓咪捉迷藏</h1><p>兩個瀏覽器，一起找出躲起來的貓！</p></div></header>
-    <div id="entryChoice" class="entry-choice"><h2>今天要怎麼玩？</h2><div class="entry-buttons"><button id="chooseHost" type="button">🐾 建立房間<small>選盤面與回合設定</small></button><button id="chooseJoin" type="button">🚪 加入房間<small>輸入好友給你的房號</small></button></div><div class="quick-actions"><button id="quickMatch">⚡ 快速配對</button></div></div>
+    <header class="brand"><div class="logo">🐾</div><div><small>一間小屋 · 兩位貓友</small><h1>貓咪捉迷藏</h1><p>兩個瀏覽器，一起找出躲起來的貓！</p></div></header>
+    <div id="entryChoice" class="entry-choice"><h2>今天要怎麼玩？</h2><div class="entry-buttons"><button id="chooseHost" type="button">🐾 建立房間<small>選盤面與回合設定</small></button><button id="chooseJoin" type="button">🚪 加入房間<small>輸入好友給你的房號</small></button></div><div class="quick-actions"><button id="previewBattle" type="button">先試玩大對決 <small>單人練習，不會連線</small></button><button id="quickMatch">⚡ 快速配對</button></div></div>
     <div id="entryFlow" class="hidden"><div class="flow-heading"><button id="backToEntry" type="button" aria-label="返回入口選擇">← 返回</button><h2 id="flowTitle"></h2></div>
     <div class="setup-grid">
       <label>暱稱<span class="nick-row"><input id="nick" maxlength="16" value="奶油虎斑" autocomplete="off"><button id="randomNick" type="button" title="隨機產生暱稱" aria-label="隨機產生暱稱">🎲</button></span></label>
       <label class="host-only">棋盤<select id="size"><option value="6">6×6 小盤</option><option value="12">12×12 入門</option><option value="20" selected>20×20 標準</option><option value="24">24×24 大盤</option></select></label>
       <label class="wide host-only">遊戲模式<select id="gameMode">
-        <option value="basic" selected>🔎 基本對戰｜找到最多貓獲勝</option>
+        <option value="battle" selected>🐾 貓咪大對決｜即時連鎖攻防</option>
+        <option value="basic">🔎 基本對戰｜找到最多貓獲勝</option>
         <option value="items">🐟 魚乾道具戰｜翻空格集魚乾</option>
         <option value="treasure">🔔 寶藏派對｜鈴鐺貓值 2 分</option>
         <option value="coop">🤝 默契合作｜共享魚乾與道具</option>
       </select><small id="modeDescription">猜空會公開空格並換手；不顯示周圍貓數。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>
-    <div class="settings host-only">
+    <div class="settings turn-settings host-only">
       <label>玩家 1 秒數<input id="secondsA" type="number" min="10" max="180" value="45"></label>
       <label>玩家 2 秒數<input id="secondsB" type="number" min="10" max="180" value="45"></label>
       <label><input id="capEnabled" type="checkbox"> 連抓上限</label>
       <label id="capField">上限隻數<input id="cap" type="number" min="1" max="24" value="3" disabled></label>
     </div>
+    <div id="battleSettings" class="settings host-only"><label>每位玩家血量<input id="battleHP" type="number" min="50" max="500" step="10" value="150"></label><p class="battle-settings-note">固定 6×6 · 同時找貓<br>每次連鎖傷害 +5，換盤延續連鎖。</p></div>
     <label id="roomField">加入用房號<span class="room-copy-row"><input id="roomInput" maxlength="24" placeholder="例如 CAT-1234"><button id="copyRoom" type="button">複製房號</button><button id="copyInvite" type="button">邀請連結</button></span></label>
     <div class="actions"><button id="host" class="host-only">🐾 建立房間</button><button id="join" class="join-only">🚪 加入房間</button><button id="resume" class="host-only hidden">↻ 恢復房主局面</button></div>
     <p class="privacy">房號連線使用免費 PeerJS Cloud 協調握手；對局資料在瀏覽器間直接傳送。沒有免費 TURN，部分嚴格網路可能失敗。</p>
@@ -39,6 +41,13 @@
   </section>
 
   <section id="game" class="hidden">
+    <section id="battleArena" class="hidden" aria-label="貓咪大對決">
+      <header class="battle-header"><div class="battle-brand"><small>CAT HIDE & SEEK</small><h1>貓咪大對決</h1><span>🐾 即時攻防 🐾</span></div><div class="battle-status"><span id="battleConnection" role="status"></span><button id="battleCopyRoom" type="button">複製房號</button><button id="battleMute" type="button" aria-label="切換音效">🔊</button><button id="leavePractice" type="button" class="hidden">回入口</button></div></header>
+      <p id="battleNotice" role="status" aria-live="polite"></p>
+      <div class="battle-layout"><section class="battle-side local" data-player="0"></section><div class="battle-vs" aria-hidden="true">VS</div><section class="battle-side opponent" data-player="1"></section></div>
+      <div class="battle-toolbar"><button id="battleGuess" class="active" type="button">🐾 找貓</button><button id="battleNote" type="button">◇ 私人筆記</button><button id="battleHelp" type="button">玩法</button><button id="battleReconnect" class="hidden" type="button">重新連線</button><button id="battleAbort" class="hidden" type="button">結束本局</button><button id="battleReturn" class="hidden" type="button">回入口</button></div>
+      <p class="battle-instructions">每行、每列、每區各一隻，貓咪不能相鄰。連續找到貓，傷害逐次增加。</p><div id="battleFX" aria-hidden="true"></div>
+    </section>
     <div id="turnBanner" aria-live="polite"></div>
     <header class="top"><div class="room-tag"><small>P2P 私密對局</small><span class="room-code"><b id="room"></b><button id="copyGameRoom" type="button">複製</button></span><span id="modeBadge"></span></div><div class="turn"><span id="connection">連線中</span><strong id="turnText"></strong><em id="timer">45</em></div><button id="mute" aria-label="切換音效">🔊</button></header>
     <div class="arena"><aside id="p0" class="player-card"></aside><section class="center">
@@ -51,9 +60,9 @@
     <footer><button id="pass">↪ 手動交棒</button><button class="emote">ฅ^•ﻌ•^ฅ</button><button class="emote">好眼力！</button><button class="emote">一起加油</button></footer>
   </section>
 
-  <dialog id="helpDialog" class="help-dialog"><button id="closeHelp" class="dialog-close" aria-label="關閉">×</button><h2>怎麼玩？</h2><p class="timer-warning">⏱ 打開說明不會暫停對局計時。</p><div class="help-rules"><article><b>1｜每行一隻</b><p>每一橫行剛好有一隻貓。</p></article><article><b>2｜每列一隻</b><p>每一直列剛好有一隻貓。</p></article><article><b>3｜每區一隻</b><p>粗線圍住的每個區域剛好一隻。</p></article><article><b>4｜不能貼貼</b><p>兩隻貓不能在八方向相鄰。</p></article></div><h3>共同基礎</h3><p>找中貓後續手；猜空、交棒、超時或到達連抓上限就換人。猜空只會公開該空格，不顯示周圍貓數。系統只會依已找到的貓，直接排除同一行、同一列、同一區及八方向相鄰格。</p><h3>四種模式</h3><p><b>基本對戰：</b>找到最多貓獲勝。<br><b>魚乾道具戰：</b>首次正常翻空格得 1 魚乾（餘額最多 4），每個自己的回合最多用一個道具。<br><b>寶藏派對：</b>少數鈴鐺貓值 2 分，普通貓 1 分；帶有少量運氣，以總分決勝。<br><b>默契合作：</b>共享魚乾、道具與偵查結果，找完全部貓共同成功，沒有隱藏失敗條件。</p><h3>四個道具</h3><p>🔍 放大鏡（2）：私人查看中心八鄰貓數，中心不翻；這是道具專屬偵查，不會把數字印在普通空格。🧶 毛線（2）：選同區 2–3 個相連未解格，只得知其中有沒有貓。🐾 護墊（3）：本輪下一次正常翻空格仍可繼續，不得魚乾且不重設時間。⏳ 沙漏（2）：本輪加 10 秒，不增加連抓上限。合作模式的偵查會共享給雙方。</p><h3>操作與圖例</h3><p>先選「找貓」或「私人筆記」再點格子。正式猜測不能撤回，私人筆記可改且對手看不到。方向鍵移動，Enter／Space 操作。</p><div class="legend help-legend"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample"></i>真正翻過</span><span><i class="sample auto-sample">×</i>規則排除</span><span><i class="sample note-sample">◇</i>私人筆記</span></div></dialog>
+  <dialog id="helpDialog" class="help-dialog"><button id="closeHelp" class="dialog-close" aria-label="關閉">×</button><h2>怎麼玩？</h2><p class="timer-warning">⏱ 打開說明不會暫停對局計時。</p><div class="help-rules"><article><b>1｜每行一隻</b><p>每一橫行剛好有一隻貓。</p></article><article><b>2｜每列一隻</b><p>每一直列剛好有一隻貓。</p></article><article><b>3｜每區一隻</b><p>粗線圍住的每個區域剛好一隻。</p></article><article><b>4｜不能貼貼</b><p>兩隻貓不能在八方向相鄰。</p></article></div><h3>共同基礎</h3><p>找中貓後續手；猜空、交棒、超時或到達連抓上限就換人。猜空只會公開該空格，不顯示周圍貓數。系統只會依已找到的貓，直接排除同一行、同一列、同一區及八方向相鄰格。</p><h3>五種模式</h3><p><b>貓咪大對決：</b>兩人同時解自己的 6×6。每人預設 150 HP，可由房主調整。連續命中傷害為 5、10、15…；找錯只重設連鎖並冷卻 2 秒，命中冷卻 0.3 秒。找齊六隻立即換新盤，血量與連鎖接續。先把對方 HP 打至 0 獲勝。對手盤面只可觀看，沒有道具或共同倒數；私人筆記可自由修改。斷線會暫停，重新連線可恢復；60 秒未恢復則結束、不判勝負。</p><p><b>基本對戰：</b>找到最多貓獲勝。<br><b>魚乾道具戰：</b>首次正常翻空格得 1 魚乾（餘額最多 4），每個自己的回合最多用一個道具。<br><b>寶藏派對：</b>少數鈴鐺貓值 2 分，普通貓 1 分；帶有少量運氣，以總分決勝。<br><b>默契合作：</b>共享魚乾、道具與偵查結果，找完全部貓共同成功，沒有隱藏失敗條件。</p><h3>四個道具</h3><p>🔍 放大鏡（2）：私人查看中心八鄰貓數，中心不翻；這是道具專屬偵查，不會把數字印在普通空格。🧶 毛線（2）：選同區 2–3 個相連未解格，只得知其中有沒有貓。🐾 護墊（3）：本輪下一次正常翻空格仍可繼續，不得魚乾且不重設時間。⏳ 沙漏（2）：本輪加 10 秒，不增加連抓上限。合作模式的偵查會共享給雙方。</p><h3>操作與圖例</h3><p>先選「找貓」或「私人筆記」再點格子。正式猜測不能撤回，私人筆記可改且對手看不到。方向鍵移動，Enter／Space 操作。</p><div class="legend help-legend"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample"></i>真正翻過</span><span><i class="sample auto-sample">×</i>規則排除</span><span><i class="sample note-sample">◇</i>私人筆記</span></div></dialog>
   <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
   <div id="toast"></div>
 </main>
-<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./app.js"></script>
+<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./battle-engine.js"></script><script src="./app.js"></script><script src="./battle-ui.js"></script>
 </body></html>

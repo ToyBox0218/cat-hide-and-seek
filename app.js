@@ -35,6 +35,7 @@ function catCharacter(variant,extra=''){return `<span class="cat-character cat-c
 function stableHash(value){let hash=2166136261;for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
 const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
+  battle:{label:'🐾 貓咪大對決',description:'同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。'},
   basic:{label:'🔎 基本對戰',description:'猜空會公開空格並換手；找到最多貓獲勝。'},
   items:{label:'🐟 魚乾道具戰',description:'翻空格集魚乾；每輪最多用一個道具。'},
   treasure:{label:'🔔 寶藏派對',description:'鈴鐺貓值 2 分，普通貓 1 分，含少量運氣。'},
@@ -106,19 +107,21 @@ function makePuzzle(size) {
 }
 
 const cleanSettings = input => ({
-  size:[6,12,20,24].includes(+input.size)?+input.size:20,
-  mode:['basic','items','treasure','coop'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
+  size:input.mode==='battle'?6:([6,12,20,24].includes(+input.size)?+input.size:20),
+  maxHP:Math.max(50,Math.min(500,+input.maxHP||150)),
+  mode:['basic','items','treasure','coop','battle'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),
   turnSecondsB:Math.max(10,Math.min(180,+input.turnSecondsB||45)),
   streakLimitEnabled:input.streakLimitEnabled===true,
   streakLimit:Math.max(1,Math.min(24,+input.streakLimit||3))
 });
 const settingsFromUI = () => cleanSettings({
-  size:+$('#size').value, mode:$('#gameMode').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
+  size:+$('#size').value, mode:$('#gameMode').value, maxHP:+$('#battleHP').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
   streakLimitEnabled:$('#capEnabled').checked, streakLimit:+$('#cap').value
 });
 
 function newGame(size) {
+  if(settingsFromUI().mode==='battle')return CatBattle.create(settingsFromUI(),[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,connected:true},{nickname:'等待貓友',avatar:1,connected:false}]);
   const puzzle=makePuzzle(size),settings=settingsFromUI(),treasureCount=size<=12?2:3;
   return {
     puzzle,settings,
@@ -130,7 +133,7 @@ function newGame(size) {
   };
 }
 
-const publicGame = game => ({
+const publicGame = game => game.settings.mode==='battle'?CatBattle.publicGame(game):({
   ...game,
   puzzle:{id:game.puzzle.id,size:game.puzzle.size,regions:game.puzzle.regions},
   players:game.players.map(player=>({...player})),
@@ -138,7 +141,7 @@ const publicGame = game => ({
   treasures:undefined, actionIds:undefined
 });
 function saveLocal() {
-  if (!state.game) return;
+  if (!state.game||state.practice) return;
   const key=state.role==='host'?'p2pHost':'p2pGuest';
   sessionStorage.setItem(key,JSON.stringify({room:state.room,game:state.game}));
   sessionStorage.setItem(`p2pNotes-${state.role}`,JSON.stringify([...state.notes]));
@@ -245,6 +248,7 @@ function rememberAction(game,id) {
 }
 function act(who,action) {
   const game=state.game;
+  if(game?.settings.mode==='battle'){if(!action||typeof action!=='object')return;const result=CatBattle.act(game,who,action,Date.now());if(who===1)send({type:'battleAck',actionId:action.actionId,accepted:result.accepted,reason:result.reason});else state.pendingAction=null;broadcast();return result;}
   if (!game||game.status!=='playing'||rememberAction(game,action.actionId)) return;
   if (action.type==='emote') { game.lastEmote={from:who,value:String(action.value).slice(0,20)}; broadcast(); return; }
   if (action.type==='hint') {
@@ -278,26 +282,33 @@ function act(who,action) {
 }
 
 function onMessage(message) {
-  const data=typeof message==='string'?JSON.parse(message):message;
+  let data;try{data=typeof message==='string'?JSON.parse(message):message}catch{return}if(!data||typeof data!=='object')return;
+  if(data.type==='ping'){send({type:'pong'});return}if(data.type==='pong'){state.lastPong=Date.now();return}
+  if(data.type==='battleAck'&&state.role==='guest'){if(state.pendingAction?.actionId===data.actionId)state.pendingAction=null;render();return}
   if (state.role==='host') {
     if (data.type==='hello') {
       state.game.players[1].nickname=String(data.nickname||'貓友').slice(0,16);
       state.game.players[1].avatar=Math.max(0,Math.min(AVATARS.length-1,+data.avatar||0));
       state.game.players[1].connected=true;
-      if (state.game.status==='lobby') {
+      if(state.game.settings.mode==='battle'){if(state.game.status==='lobby')CatBattle.start(state.game);else if(state.game.status==='paused'){if(Date.now()-(state.game.pausedAt||Date.now())>=60000)CatBattle.abort(state.game);else CatBattle.reconnect(state.game)}state.disconnectAt=null;state.pendingAction=null;}
+      else if (state.game.status==='lobby') {
         state.game.status='playing'; state.game.turn=state.game.starter; state.game.turnId++; setDeadline();
       }
       broadcast();
     } else if (data.type==='action') act(1,data.action);
     else if (data.type==='rematch') rematchVote(1);
+    else if(data.type==='battleAbort'&&state.game?.settings.mode==='battle'){CatBattle.abort(state.game);broadcast();}
   } else if (data.type==='state') {
-    const previousPuzzle=state.game?.puzzle?.id;
-    state.game=data.state;
-    if(previousPuzzle&&previousPuzzle!==state.game.puzzle.id){state.intel=[];state.notes.clear();state.tool=null;state.yarnTargets=[]}
+    const previousPuzzle=state.game?.settings?.mode==='battle'?state.game.boards[state.you].puzzle.id:state.game?.puzzle?.id;
+    if(!data.state?.settings||!Array.isArray(data.state.players))return;
+    state.game=data.state;if(state.game.settings.mode==='battle'){if(Number.isFinite(state.game.serverTime))state.clockOffset=state.game.serverTime-Date.now();if(state.game.status!=='paused')state.disconnectAt=null;}
+    const currentPuzzle=state.game.settings.mode==='battle'?state.game.boards[state.you].puzzle.id:state.game.puzzle.id;
+    if(previousPuzzle&&previousPuzzle!==currentPuzzle){state.intel=[];state.notes.clear();state.tool=null;state.yarnTargets=[]}
     saveLocal(); render();
   } else if(data.type==='intel'){state.intel.push(data.intel);if(state.intel.length>12)state.intel.shift();saveLocal();render()}
 }
 function onOpen() {
+  state.lastPong=Date.now();if(state.game?.settings.mode!=='battle')state.disconnectAt=null;
   if (state.role==='guest') state.suppressNextTurnSound=true;
   $('#connection').textContent='P2P 已連線';
   if (state.role==='host') { state.game.players[1].connected=true; broadcast(); }
@@ -305,17 +316,19 @@ function onOpen() {
 }
 function onClose() {
   $('#connection').textContent='連線中斷－盤面已保留';
+  if(state.game?.settings.mode==='battle'){if(['playing','paused'].includes(state.game.status)){CatBattle.pause(state.game,Date.now());state.disconnectAt??=Date.now();state.pendingAction=null;}}
   if (state.game) { state.game.players[1-state.you].connected=false; saveLocal(); render(); }
 }
 function attachPeerConnection(connection) {
   state.transport={open:()=>connection.open,send:value=>connection.send(value),close:()=>connection.close()};
-  connection.on('open',onOpen); connection.on('data',onMessage); connection.on('close',onClose);
+  const generation=state.transportGeneration=(state.transportGeneration||0)+1;const current=callback=>(...args)=>{if(generation===state.transportGeneration)callback(...args)};
+  connection.on('open',current(onOpen)); connection.on('data',current(onMessage)); connection.on('close',current(onClose));
   connection.on('error',error=>toast(`連線錯誤：${error.type||error.message}`));
 }
 function attachDataChannel(channel) {
   state.transport={open:()=>channel.readyState==='open',send:value=>channel.send(JSON.stringify(value)),close:()=>channel.close()};
-  channel.onopen=onOpen; channel.onclose=onClose;
-  channel.onmessage=event=>onMessage(JSON.parse(event.data));
+  const generation=state.transportGeneration=(state.transportGeneration||0)+1;channel.onopen=()=>{if(generation===state.transportGeneration)onOpen()};channel.onclose=()=>{if(generation===state.transportGeneration)onClose()};
+  channel.onmessage=event=>{if(generation===state.transportGeneration)onMessage(event.data)};
 }
 
 function peerOptions() { return {debug:1,config:ICE}; }
@@ -326,13 +339,13 @@ const randomRoom=()=>`CAT-${String(randomInt(10000)).padStart(4,'0')}`;
 const peerIdForRoom=room=>SHORT_ROOM_RE.test(room)?`cat-hide-seek-v1-${room.toLowerCase()}`:room;
 function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`房號 ${room}`}
 function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
-  state.role='host'; state.you=0; state.manual=false;
+  state.practice=false;state.role='host'; state.you=0; state.manual=false;
   if (!restored) { state.room=forcedRoom||randomRoom(); state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
   $('#roomInput').value='';
   $('#setupStatus').textContent='正在向免費 PeerJS Cloud 登記房號…';
   const peer=new Peer(peerIdForRoom(state.room),peerOptions()); state.peer=peer;
   peer.on('open',()=>{$('#setupStatus').textContent=`房號 ${state.room}，請傳給另一位玩家`;showRoom(state.room);$('#roomField').classList.add('room-ready');$('#host').disabled=true;$('#host').textContent='房間已建立'});
-  peer.on('connection',connection=>attachPeerConnection(connection));
+  peer.on('connection',connection=>{if(state.transport?.open()){connection.close();return}attachPeerConnection(connection)});
   peer.on('error',error=>{
     if(error.type==='unavailable-id'&&!forcedRoom&&SHORT_ROOM_RE.test(state.room)&&collisionAttempt<24){peer.destroy();$('#setupStatus').textContent='房號剛好重複，正在自動換一組…';state.room=randomRoom();startPeerHost(true,null,collisionAttempt+1);return}
     const message=error.type==='unavailable-id'?'房號已被占用，請重新建立房間':error.type||error.message;
@@ -344,7 +357,7 @@ function startPeerGuest() {
   const saved=JSON.parse(sessionStorage.p2pGuest||'null');
   if(saved?.room!==room){state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]}
   if (!ROOM_RE.test(room)) throw Error('請輸入房主顯示的 CAT- 房號');
-  state.role='guest'; state.you=1; state.room=room; state.manual=false;
+  state.practice=false;state.role='guest'; state.you=1; state.room=room; state.manual=false;
   $('#setupStatus').textContent='正在透過 PeerJS Cloud 尋找房主…';
   const peer=new Peer(undefined,peerOptions()); state.peer=peer;
   peer.on('open',()=>attachPeerConnection(peer.connect(peerIdForRoom(room),{reliable:true,serialization:'json'})));
@@ -371,17 +384,18 @@ async function useOffer(code) { const pc=rtcPeer('guest'); await pc.setRemoteDes
 async function useAnswer(code) { await state.rtc.setRemoteDescription(decode(code)); }
 function showManual(title) { $('#manual').classList.remove('hidden'); $('#manualTitle').textContent=title; }
 async function manualHost(restored=false) {
-  state.role='host'; state.you=0; state.manual=true;
+  state.practice=false;state.role='host'; state.you=0; state.manual=true;
   if (!restored) { state.room='手動連線'; state.game=newGame(+$('#size').value); }
   $('#outCode').value=await makeOffer(); showManual('步驟 1：把邀請碼傳給對方，再貼回覆碼');
   $('#setupStatus').textContent='等待對方回覆碼';
 }
 function manualJoin() {
-  state.role='guest'; state.you=1; state.manual=true; state.room='手動連線';
+  state.practice=false;state.role='guest'; state.you=1; state.manual=true; state.room='手動連線';
   showManual('貼上房主邀請碼，產生回覆碼後傳回房主'); $('#setupStatus').textContent='請貼上邀請碼';
 }
 async function resumeHost() {
   const saved=JSON.parse(sessionStorage.p2pHost||'null');
+  if(saved?.game?.settings?.mode==='battle'){if(!saved.game.boards?.every(board=>board.puzzle.solution))throw Error('沒有可恢復的房主局面');state.game=saved.game;CatBattle.pause(state.game,Date.now());state.game.players[0].connected=true;state.game.players[1].connected=false;state.disconnectAt=state.game.pausedAt||Date.now();syncSettingsUI(state.game.settings);state.room=randomRoom();state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));startPeerHost(true);return}
   if (!saved?.game?.puzzle?.solution) throw Error('沒有可恢復的房主局面');
   state.game=saved.game; state.game.settings=cleanSettings(state.game.settings||{}); state.game.clues=state.game.clues||{};
   state.game.players.forEach((player,index)=>{if(player.avatar===undefined)player.avatar=index;if(player.cats===undefined)player.cats=player.score||0;if(player.fish===undefined)player.fish=0});
@@ -473,6 +487,7 @@ function showTurnBanner(isMine){
 }
 function renderV2() {
   const game=state.game;if(!game)return;
+  if(game.settings.mode==='battle'){renderBattle();return}document.body.classList.remove('is-battle');$('#battleArena').classList.add('hidden');
   game.clues=game.clues||{};game.foundBy=game.foundBy||{};game.settings=cleanSettings(game.settings||{});game.sharedIntel=game.sharedIntel||[];game.sharedFish=game.sharedFish||0;
   game.players.forEach((player,index)=>{player.cats??=player.score||0;player.fish??=0;player.avatar??=index});
   if(state.pendingAction&&(state.pendingAction.turnId!==game.turnId||game.turn!==state.you||game.found.includes(state.pendingAction.index)||game.misses.includes(state.pendingAction.index)||excluded(game,state.pendingAction.index)))state.pendingAction=null;
@@ -540,7 +555,7 @@ function renderV2() {
 render=renderV2;
 
 setInterval(()=>{
-  const game=state.game; if (!game) return;
+  const game=state.game; if (!game||game.settings.mode==='battle') return;
   if (game.deadline) $('#timer').textContent=Math.max(0,Math.ceil((game.deadline-Date.now())/1000));
   if (state.role==='host'&&game.status==='playing'&&Date.now()>=game.deadline) { switchTurn(); broadcast(); }
 },250);
@@ -559,9 +574,9 @@ function setEntryFlow(kind){
 function showEntryChoice(){
   $('#entryChoice').classList.remove('hidden');$('#entryFlow').classList.add('hidden');delete $('#setup').dataset.flow;
 }
-function updateModeDescription(){const info=MODE_INFO[$('#gameMode').value];$('#modeDescription').textContent=info.description}
+function updateModeDescription(){const info=MODE_INFO[$('#gameMode').value],battle=$('#gameMode').value==='battle';$('#modeDescription').textContent=info.description;$('#battleSettings').classList.toggle('hidden',!battle);$('.turn-settings').classList.toggle('hidden',battle);$('#size').disabled=battle;if(battle)$('#size').value='6';}
 function updateCapUI(){const enabled=$('#capEnabled').checked;$('#cap').disabled=!enabled;$('#capField').classList.toggle('locked',!enabled);$('#capField').setAttribute('aria-disabled',String(!enabled))}
-function syncSettingsUI(settings){const clean=cleanSettings(settings);$('#size').value=String(clean.size);$('#gameMode').value=clean.mode;$('#secondsA').value=String(clean.turnSecondsA);$('#secondsB').value=String(clean.turnSecondsB);$('#capEnabled').checked=clean.streakLimitEnabled;$('#cap').value=String(clean.streakLimit);updateCapUI();updateModeDescription()}
+function syncSettingsUI(settings){const clean=cleanSettings(settings);$('#battleHP').value=String(clean.maxHP);$('#size').value=String(clean.size);$('#gameMode').value=clean.mode;$('#secondsA').value=String(clean.turnSecondsA);$('#secondsB').value=String(clean.turnSecondsB);$('#capEnabled').checked=clean.streakLimitEnabled;$('#cap').value=String(clean.streakLimit);updateCapUI();updateModeDescription()}
 function randomNickname(){
   const all=NICK_ADJECTIVES.flatMap(adjective=>NICK_NOUNS.map(noun=>`${adjective}${noun}`)),current=$('#nick').value.trim();let history=[];try{history=JSON.parse(localStorage.catNickHistory||'[]')}catch{}
   const blocked=new Set([current,...history.slice(-10)]),choices=all.filter(name=>!blocked.has(name)),name=choices[randomInt(choices.length)]||all[randomInt(all.length)];
@@ -674,8 +689,10 @@ function boardCell(index) { return index>=0&&index<state.game.puzzle.size**2?$(`
 
 let rematchVotes=new Set();
 function rematchVote(who) {
+  if(state.game?.settings.mode==='battle'&&state.game.status!=='finished')return;
   rematchVotes.add(who);
   if (state.role==='host'&&rematchVotes.size===2) {
+    if(state.game.settings.mode==='battle'){const old=state.game;state.game=CatBattle.create(old.settings,old.players,old);CatBattle.start(state.game);state.notes.clear();state.pendingAction=null;state.battleObservedEvent=null;rematchVotes.clear();broadcast();$('#result').close();return}
     const game=state.game; game.round++; game.starter=1-game.starter; game.puzzle=makePuzzle(game.settings.size);
     game.status='playing'; game.turn=game.starter; game.turnId++; game.found=[]; game.foundBy={}; game.misses=[]; game.clues={}; game.streak=0; game.winner=null;
     game.treasures=shuffle(game.puzzle.solution.slice()).slice(0,game.puzzle.size<=12?2:3);game.sharedFish=0;game.sharedIntel=[];game.itemUsedThisTurn=false;game.shield=null;
