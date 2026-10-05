@@ -252,7 +252,7 @@ body.is-battle #turnBanner { display: none; }
 .player-identity b, .player-identity strong { font-size: 18px; color: #624831; letter-spacing: .02em; max-width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
 .player-identity small, .player-identity span { color: var(--team); font-size: 11px; font-weight: 800; }
 .hp-meter { position: relative; grid-column: 2; height: 28px; align-self: start; margin-bottom: 3px; overflow: hidden; border: 2px solid #fffbec; border-radius: 30px; background: #176559; box-shadow: 0 0 0 1px var(--team), inset 0 2px 5px #1d483743, 0 2px 0 #d1b99044; }
-.hp-meter > i { position: absolute; left: 0; top: 0; height: 100%; min-width: 0; border-radius: 25px; background: linear-gradient(#64d8bd 0%, #23bb9f 48%, #159b87 52%, #31b99e 100%); box-shadow: inset 0 2px 0 #a5f8d8, inset 0 -2px 1px #08786544; transition: width .45s cubic-bezier(.2,.7,.2,1); }
+.hp-meter > i { position: absolute; left: 0; top: 0; height: 100%; min-width: 0; border-radius: 25px; background: linear-gradient(#64d8bd 0%, #23bb9f 48%, #159b87 52%, #31b99e 100%); box-shadow: inset 0 2px 0 #a5f8d8, inset 0 -2px 1px #08786544; transition: none; }
 .hp-meter > span { position: absolute; inset: 0; display: grid; place-items: center; color: #fffdf2; font-size: 15px; font-weight: 950; line-height: 24px; text-shadow: 0 1px 2px #124f46, 1px 0 #124f46, -1px 0 #124f46; letter-spacing: .02em; }
 .hp-meter::after { content: '♥'; position: absolute; top: -1px; left: 10px; color: #fffbed; font-size: 22px; line-height: 24px; text-shadow: 0 1px 1px #226e58; }
 .opponent .hp-meter { background: #983c39; }
@@ -900,7 +900,8 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   50% { transform: translateY(-3px) rotate(.8deg); }
 }
 
-/* The found cat gets the movement; its region stays the same color. */
+/* Capture cadence is original to this game: 70 ms squash, 120 ms jump,
+   130 ms landing, 200 ms settle. The region beneath it keeps its color. */
 #board .cell.cat.found-glow, .battle-board .cell.cat.found-glow { z-index: 9; }
 #board .cell.cat.found-glow::before,
 .battle-board .cell.cat.found-glow::before {
@@ -908,84 +909,128 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   position: absolute;
   z-index: 1;
   inset: 5%;
-  border: 2px solid #fff4ac;
+  border: 2px solid #fff1b0;
   border-radius: 30%;
-  box-shadow: inset 0 0 10px #ffdd6870, 0 0 9px #fff8bc, 0 0 18px #ffc951b3;
+  box-shadow: inset 0 0 0 1px #c8a45255;
   pointer-events: none;
-  animation: cozyFoundHalo 780ms ease-out both;
+  animation: cozyFoundHalo 520ms ease-out both;
 }
 #board .cell.found-glow > :is(.cat-art, .board-character),
 .battle-board .cell.found-glow > :is(.cat-art, .board-character) {
   position: relative;
   z-index: 2;
   transform-origin: 50% 83%;
-  animation: cozyFoundCatPop 690ms cubic-bezier(.2, .7, .25, 1) both;
-  filter: drop-shadow(0 2px 1px #75533238) drop-shadow(0 0 5px #fff1ad);
+  animation: cozyFoundCatPop 520ms cubic-bezier(.2, .7, .25, 1) both;
+  filter: drop-shadow(0 2px 1px #75533238);
 }
-@keyframes cozyFoundHalo {
-  0% { opacity: 0; transform: scale(.65); }
-  23% { opacity: 1; transform: scale(1.04); }
-  72% { opacity: .8; }
-  100% { opacity: 0; transform: scale(1.13); }
-}
-@keyframes cozyFoundCatPop {
-  0% { transform: translateY(8%) scale(.5, .38); }
-  29% { transform: translateY(-15%) scale(1.13, 1.17) rotate(-7deg); }
-  53% { transform: translateY(1%) scale(1.08, .92) rotate(4deg); }
-  75% { transform: translateY(-6%) scale(.98, 1.05) rotate(-2deg); }
-  100% { transform: translateY(0) scale(1) rotate(0); }
-}
-
-/* One bounded sparkle pair per combo. Higher combos glow warmer and stronger. */
-.combo-badge.combo-glow {
-  --combo-aura: #48cda788;
-  --combo-ring: #8bdec1;
-  --combo-spark: #fff3a3;
-  --combo-halo: 15px;
-  color: #276d59;
-  background: linear-gradient(#fffdf0, #e1f5d9);
-  border-color: #419d80;
-  box-shadow: inset 0 0 0 2px #fffbee, 0 0 0 2px var(--combo-ring), 0 0 var(--combo-halo) var(--combo-aura);
-  animation: cozyComboPop 820ms cubic-bezier(.2, .7, .3, 1) both;
-}
-.combo-badge.combo-glow[data-combo-tier="2"] {
-  --combo-aura: #f3be438c;
-  --combo-ring: #ebc976;
-  --combo-spark: #ffe591;
-  --combo-halo: 22px;
-  color: #84581c;
-  border-color: #c3933b;
-  background: linear-gradient(#fffbe8, #ffe7ab);
-}
-.combo-badge.combo-glow[data-combo-tier="3"] {
-  --combo-aura: #ef9a8ca6;
-  --combo-ring: #edb26d;
-  --combo-spark: #ffe292;
-  --combo-halo: 29px;
-  color: #8b493c;
-  border-color: #cc8072;
-  background: linear-gradient(#fff5e6, #ffd9bd);
-}
-.combo-badge.combo-glow strong { color: inherit; }
-.combo-badge.combo-glow::before, .combo-badge.combo-glow::after {
-  content: '✦';
+/* Just two tiny heart/paw bits, anchored to the captured cat. */
+:is(#board, .battle-board) .cell.found-glow > :is(.cat-art, .board-character)::before,
+:is(#board, .battle-board) .cell.found-glow > :is(.cat-art, .board-character)::after {
+  content: '♥';
   position: absolute;
   z-index: 3;
-  top: -12px;
-  left: 8px;
-  color: var(--combo-spark);
-  font-size: 22px;
+  top: 13%;
+  left: 3%;
+  color: #da7a83;
+  font-size: clamp(8px, 1.1vw, 13px);
   line-height: 1;
-  text-shadow: 0 0 3px #fff, 0 0 8px var(--combo-aura), 0 1px 1px #8b652d;
+  text-shadow: 0 1px 0 #fff8ee;
   pointer-events: none;
-  animation: cozyComboSpark 820ms ease-out both;
+  animation: cozyCaptureBit 520ms ease-out both;
 }
-.combo-badge.combo-glow::after { top: auto; bottom: -8px; right: 9px; left: auto; font-size: 17px; animation-delay: 70ms; }
+:is(#board, .battle-board) .cell.found-glow > :is(.cat-art, .board-character)::after {
+  content: '🐾';
+  --bit-x: 5px;
+  --bit-tilt: 15deg;
+  top: 23%;
+  right: -1%;
+  left: auto;
+  font-size: clamp(8px, 1vw, 12px);
+}
+@keyframes cozyFoundHalo {
+  0% { opacity: 0; transform: scale(.92); }
+  13.46%, 61.54% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+@keyframes cozyFoundCatPop {
+  0% { transform: translateY(0) scale(1); }
+  13.46% { transform: translateY(2px) scale(1.08, .86); }
+  36.54% { transform: translateY(-8px) scale(.92, 1.13); }
+  61.54% { transform: translateY(1px) scale(1.06, .91); }
+  79% { transform: translateY(-2px) scale(.99, 1.02); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes cozyCaptureBit {
+  0%, 13.46% { opacity: 0; transform: translate(0, 3px) scale(.65); }
+  36.54% { opacity: 1; transform: translate(0, -2px) scale(1); }
+  76% { opacity: .85; }
+  100% { opacity: 0; transform: translate(var(--bit-x, -5px), -11px) scale(.8) rotate(var(--bit-tilt, -12deg)); }
+}
+
+/* Chain tiers change the accent; they never flash or flood the board. */
+.combo-badge.combo-glow,
+.board-card > .capture-callout {
+  --combo-ink: #276d59;
+  --combo-edge: #6fb498;
+  --combo-paper: #e9f6e5;
+}
+.combo-badge.combo-glow[data-combo-tier="2"],
+.board-card > .capture-callout[data-combo-tier="2"] {
+  --combo-ink: #80551d;
+  --combo-edge: #d8b76e;
+  --combo-paper: #fff0ce;
+}
+.combo-badge.combo-glow[data-combo-tier="3"],
+.board-card > .capture-callout[data-combo-tier="3"] {
+  --combo-ink: #884c45;
+  --combo-edge: #d79a8d;
+  --combo-paper: #ffe5d9;
+}
+.combo-badge.combo-glow {
+  color: var(--combo-ink);
+  background: linear-gradient(#fffdf3, var(--combo-paper));
+  border-color: var(--combo-edge);
+  box-shadow: inset 0 0 0 2px #fffbee, 0 2px 0 #94714c32;
+  animation: cozyComboPop 340ms cubic-bezier(.2, .7, .3, 1) both;
+}
+.combo-badge.combo-glow strong { color: inherit; }
+.board-card > .capture-callout {
+  position: absolute;
+  z-index: 15;
+  top: 12px;
+  left: 50%;
+  max-width: calc(100% - 20px);
+  padding: 5px 15px;
+  border: 2px solid var(--combo-edge);
+  border-radius: 999px;
+  color: var(--combo-ink);
+  background: linear-gradient(#fffdf4, var(--combo-paper));
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 #88603d26;
+  font-size: clamp(13px, 1.5vw, 18px);
+  line-height: 1.35;
+  font-weight: 950;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+  transform-origin: center bottom;
+  pointer-events: none;
+  user-select: none;
+}
+.board-card > .capture-callout.show {
+  visibility: visible;
+  animation: cozyCaptureCallout 750ms ease-out both;
+}
+/* 120 ms pop, 450 ms readable hold, 180 ms fade. */
+@keyframes cozyCaptureCallout {
+  0% { opacity: 0; transform: translate(-50%, 4px) scale(.88); }
+  16%, 76% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -3px) scale(1); }
+}
 @keyframes cozyComboPop {
-  0% { transform: scale(.94); }
-  25% { transform: translateY(-3px) scale(1.08); }
-  48% { transform: translateY(1px) scale(.99); }
-  69%, 100% { transform: translateY(0) scale(1); }
+  0% { transform: scale(.98); }
+  35% { transform: translateY(-1px) scale(1.04); }
+  70%, 100% { transform: translateY(0) scale(1); }
 }
 @keyframes cozyComboSpark {
   0% { opacity: 0; transform: scale(.3) rotate(-20deg); }
@@ -993,47 +1038,73 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   100% { opacity: 0; transform: translateY(-7px) scale(.5) rotate(28deg); }
 }
 
-.battle-cat-launch > .cat-art { filter: drop-shadow(0 3px 1px #67482c38) drop-shadow(0 0 6px #fff1a5) drop-shadow(0 0 12px #efc970b3); }
+/* Both travel echoes leave at 120 ms and arrive at the HP bar at 420 ms.
+   --dx, --dy, --lift and --trail-angle remain source-to-target contracts. */
+.battle-cat-launch {
+  animation: cozyCatArc 300ms linear 120ms both;
+}
+.battle-cat-launch > .cat-art { filter: drop-shadow(0 3px 1px #67482c38); }
 .battle-paw-shot {
   overflow: visible;
   isolation: isolate;
-  border-color: #a9ffe0;
-  background: radial-gradient(circle at 38% 32%, #fff, #dbffe9 63%, #8ce6c5);
-  box-shadow: 0 0 0 2px #edfffbb3, 0 0 12px #7af7d1, 0 0 24px #46d7ad99;
-  filter: drop-shadow(0 0 4px #c9ffec);
-  animation-name: cozyPawChase;
+  border-color: #a2d9c2;
+  background: radial-gradient(circle at 38% 32%, #fff, #e4ffe9 63%, #9ce6c9);
+  box-shadow: 0 0 0 1px #edfffb99, 0 0 9px #7fe0bb99;
+  filter: none;
+  animation: cozyPawChase 300ms linear 120ms both;
 }
 .battle-paw-shot::after {
   content: '';
   position: absolute;
   z-index: -1;
-  top: calc(50% - 7px);
+  top: calc(50% - 4px);
   right: 45%;
-  width: clamp(42px, 7vw, 84px);
-  height: 14px;
+  width: clamp(27px, 4vw, 49px);
+  height: 8px;
   border-radius: 100% 40% 40% 100%;
-  background: linear-gradient(90deg, #62d6b000, #a6f3d477 38%, #eeffcd 92%);
-  box-shadow: 0 0 8px #90ebc666;
+  background: linear-gradient(90deg, #62d6b000, #b9eccd88 38%, #efffd3 92%);
   transform: rotate(var(--trail-angle, -25deg));
   transform-origin: right center;
   pointer-events: none;
 }
-.battle-spark { border-color: #b1ffd7; box-shadow: 0 0 10px #77ecc1, inset 0 0 7px #acffe077; }
-.battle-spark::before { border-color: #ffe5a1; filter: drop-shadow(0 0 4px #ffc65d); }
-@keyframes cozyPawChase {
-  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(.4); }
-  22% { opacity: 1; transform: translate3d(calc(-50% + var(--dx, 0px) * .16), calc(-50% + var(--dy, 0px) * .16 - var(--lift, 22px)), 0) scale(var(--fx-scale)); }
-  78% { opacity: 1; }
-  100% { opacity: 0; transform: translate3d(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)), 0) scale(var(--fx-scale)); }
+.battle-spark { border-color: #a6dbbc; box-shadow: none; animation-duration: 240ms; }
+.battle-spark::before { border-color: #edcc90; filter: none; }
+@keyframes cozyCatArc {
+  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(.9); }
+  12% { opacity: .82; transform: translate3d(calc(-50% + var(--dx, 0px) * .12), calc(-50% + var(--dy, 0px) * .12 - var(--lift, 32px) * .42), 0) scale(.86) rotate(-3deg); }
+  50% { opacity: .82; transform: translate3d(calc(-50% + var(--dx, 0px) * .5), calc(-50% + var(--dy, 0px) * .5 - var(--lift, 32px)), 0) scale(.75) rotate(4deg); }
+  90% { opacity: .68; transform: translate3d(calc(-50% + var(--dx, 0px) * .9), calc(-50% + var(--dy, 0px) * .9 - var(--lift, 32px) * .36), 0) scale(.58) rotate(8deg); }
+  100% { opacity: 0; transform: translate3d(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)), 0) scale(.48) rotate(10deg); }
 }
-.hp-meter.hp-hit { animation: cozyHpImpact 490ms ease-out both; }
+@keyframes cozyPawChase {
+  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(.45); }
+  12% { opacity: .95; transform: translate3d(calc(-50% + var(--dx, 0px) * .1), calc(-50% + var(--dy, 0px) * .1 - var(--lift, 22px) * .36), 0) scale(var(--fx-scale)); }
+  50% { opacity: .95; transform: translate3d(calc(-50% + var(--dx, 0px) * .48), calc(-50% + var(--dy, 0px) * .48 - var(--lift, 22px)), 0) scale(var(--fx-scale)); }
+  92% { opacity: 1; transform: translate3d(calc(-50% + var(--dx, 0px) * .92), calc(-50% + var(--dy, 0px) * .92 - var(--lift, 22px) * .29), 0) scale(var(--fx-scale)); }
+  100% { opacity: 0; transform: translate3d(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)), 0) scale(.75); }
+}
+/* Actual HP is immediate. Only the pale damage residue eases away. */
+.hp-meter > i.hp-fill { z-index: 2; transition: none; }
+.hp-meter > i.hp-lag {
+  z-index: 1;
+  background: #ffe1a0;
+  box-shadow: inset 0 2px 0 #fff0c7;
+  transition: width 350ms ease-out;
+}
+.hp-meter > span:not(.battle-damage), .hp-meter::after { z-index: 3; }
+.hp-meter.hp-hit { animation: cozyHpImpact 160ms ease-out both; }
+.hp-meter > .battle-damage { animation: cozyDamageNumber 620ms ease-out 420ms both; }
 @keyframes cozyHpImpact {
-  0%, 100% { transform: translateX(0); box-shadow: 0 0 0 1px var(--team), inset 0 2px 5px #1d483743, 0 2px 0 #d1b99044; }
-  15% { transform: translateX(-4px); box-shadow: 0 0 0 3px #fff4d8, 0 0 12px #ffd780, 0 0 23px #f5a278c7; }
-  31% { transform: translateX(4px); }
-  48% { transform: translateX(-3px); box-shadow: 0 0 0 2px #ffe6bd, 0 0 15px #f5b482b0; }
-  65% { transform: translateX(2px); }
-  82% { transform: translateX(-1px); }
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(2px); }
+  80% { transform: translateX(-1px); }
+}
+@keyframes cozyDamageNumber {
+  0% { opacity: 0; transform: translateY(3px) scale(.88); }
+  16% { opacity: 1; transform: translateY(-3px) scale(1.04); }
+  70% { opacity: 1; transform: translateY(-8px) scale(1); }
+  100% { opacity: 0; transform: translateY(-17px) scale(.96); }
 }
 
 /* Just three celebratory cats; no new overlay catches taps or washes the grid. */
@@ -1120,8 +1191,8 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   .board-card > .board-clear-celebration { width: min(164px, 62%); height: 58px; top: 26px; }
   .opponent .board-card > .board-clear-celebration { width: 70%; height: 34px; top: 8px; }
   .opponent .board-clear-celebration::before, .opponent .board-clear-celebration::after { font-size: 13px; }
-  .opponent .combo-badge.combo-glow::before { font-size: 16px; top: -8px; left: 3px; }
-  .opponent .combo-badge.combo-glow::after { font-size: 13px; bottom: -5px; right: 4px; }
+  .board-card > .capture-callout { top: 10px; padding: 4px 12px; font-size: 14px; }
+  .opponent .board-card > .capture-callout { top: -9px; padding: 2px 6px; border-width: 1px; font-size: 10px; }
   .help-dialog .sound-settings { gap: 5px 9px; padding: 12px; }
 }
 @media (max-width: 360px) {
@@ -1139,9 +1210,14 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   #board .cell.cat.found-glow::before,
   .battle-board .cell.cat.found-glow::before,
   .board-card.unlock-pulse::before { animation: none !important; opacity: 1; transform: none; }
-  .combo-badge.combo-glow::before, .combo-badge.combo-glow::after,
-  .board-clear-celebration::before, .board-clear-celebration::after { animation: none !important; opacity: 1; transform: none; }
-  .hp-meter.hp-hit { box-shadow: 0 0 0 2px #ffe6bd, 0 0 12px #eeab8199; }
+  :is(#board, .battle-board) .cell.found-glow > :is(.cat-art, .board-character)::before,
+  :is(#board, .battle-board) .cell.found-glow > :is(.cat-art, .board-character)::after,
+  .board-clear-celebration::before, .board-clear-celebration::after { display: none !important; animation: none !important; }
+  .board-card > .capture-callout { animation: none !important; transform: translateX(-50%); }
+  .board-card > .capture-callout.show { opacity: 1; }
+  .hp-meter > i.hp-fill, .hp-meter > i.hp-lag { transition: none !important; }
+  .hp-meter > .battle-damage { animation: none !important; opacity: 1; transform: none; }
+  .hp-meter.hp-hit { box-shadow: 0 0 0 2px #e4bc8a; }
   .battle-board.board-clear-glow { animation: none !important; box-shadow: 0 0 0 3px #ffe39f, 0 0 14px #f5cc7377; }
   .board-clear-celebration > .cat-art { opacity: 1; }
   .battle-paw-shot::after { display: none; }

@@ -37,33 +37,81 @@ function renderBattle(){
   for(const [side,who] of [['local',state.you],['opponent',1-state.you]]){
     const board=game.boards[who],player=game.players[who],root=$(`.battle-side.${side}`),local=side==='local',maxHP=player.maxHP||game.settings.maxHP||150;
     root.dataset.player=who;
-    root.innerHTML=`<div class="battle-player"><div class="portrait">${playerAvatar(player.avatar,'avatar-character')}</div><div class="player-identity"><b>${local?'你':state.practice?'練習貓友':'對手'}</b><span>${escapeHTML(player.nickname)}</span></div><div class="hp-meter" role="meter" aria-label="${local?'你的':'對手'}血量" aria-valuemin="0" aria-valuemax="${maxHP}" aria-valuenow="${player.hp}"><i style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><span>${player.hp} / ${maxHP}</span></div></div><div class="combo-badge"><span>🐾 連鎖 <b>${board.combo}</b></span><span>下次傷害 <strong>${5*(board.combo+1)}</strong></span></div><div class="board-card"><div class="board-heading"><b>${local?'你的尋貓小屋':'貓友的小屋'}</b><span>第 ${board.number} 盤 · ${local?'6×6': '僅觀看'}</span></div><div class="battle-lock hidden" role="status" aria-live="polite"><span class="lock-icon" aria-hidden="true">🔒</span><div class="lock-copy"><strong>找貓暫時鎖定</strong><span class="lock-seconds"></span></div><span class="lock-progress" aria-hidden="true"><i></i></span><span class="lock-note">私人筆記仍可使用</span></div><div class="battle-board" role="grid" aria-label="${local?'你的尋貓棋盤':'對手唯讀棋盤'}" style="--n:6"></div></div><div class="cat-basket" aria-label="本盤已找到 ${board.found.length} 隻貓">${Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')}<b>${board.found.length} / 6</b></div>`;
+    const viewKey=`${game.id}:${who}`;
+    if(root.dataset.viewKey!==viewKey){root.dataset.viewKey=viewKey;root.innerHTML=`<div class="battle-player"><div class="portrait">${playerAvatar(player.avatar,'avatar-character')}</div><div class="player-identity"><b>${local?'你':state.practice?'練習貓友':'對手'}</b><span>${escapeHTML(player.nickname)}</span></div><div class="hp-meter" role="meter" aria-label="${local?'你的':'對手'}血量" aria-valuemin="0" aria-valuemax="${maxHP}" aria-valuenow="${player.hp}"><i class="hp-lag" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><i class="hp-fill" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><span>${player.hp} / ${maxHP}</span></div></div><div class="combo-badge"><span>🐾 連鎖 <b>${board.combo}</b></span><span>下次傷害 <strong>${5*(board.combo+1)}</strong></span></div><div class="board-card"><div class="capture-callout" role="status" aria-live="polite"></div><div class="board-heading"><b>${local?'你的尋貓小屋':'貓友的小屋'}</b><span>第 ${board.number} 盤 · ${local?'6×6': '僅觀看'}</span></div><div class="battle-lock hidden" role="status" aria-live="polite"><span class="lock-icon" aria-hidden="true">🔒</span><div class="lock-copy"><strong>找貓暫時鎖定</strong><span class="lock-seconds"></span></div><span class="lock-progress" aria-hidden="true"><i></i></span><span class="lock-note">私人筆記仍可使用</span></div><div class="battle-board" role="grid" aria-label="${local?'你的尋貓棋盤':'對手唯讀棋盤'}" style="--n:6"></div></div><div class="cat-basket" aria-label="本盤已找到 ${board.found.length} 隻貓">${Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')}<b>${board.found.length} / 6</b></div>`;}
+    syncBattleSideHeader(root,game,board,player,local,maxHP);
     const grid=root.querySelector('.battle-board'),palette=regionPalette(board.puzzle);
-    grid.dataset.boardId=board.puzzle.id;
-    for(let index=0;index<36;index++){
-      const cell=document.createElement(local?'button':'span'),region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
-      cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.setAttribute('role','gridcell');cell.style.setProperty('--bg',palette[region]);cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${col+1} 列，區域 ${region+1}`);
-      if(col===5||board.puzzle.regions[index+1]!==region)cell.classList.add('er');if(row===5||board.puzzle.regions[index+6]!==region)cell.classList.add('eb');
+    if(grid.dataset.boardId!==board.puzzle.id){
+      grid.dataset.boardId=board.puzzle.id;grid.innerHTML='';
+      for(let index=0;index<36;index++){
+        const cell=document.createElement(local?'button':'span'),region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
+        cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.setAttribute('role','gridcell');cell.style.setProperty('--bg',palette[region]);
+        if(col===5||board.puzzle.regions[index+1]!==region)cell.classList.add('er');if(row===5||board.puzzle.regions[index+6]!==region)cell.classList.add('eb');
+        if(local){cell.type='button';cell.onclick=()=>battleChoose(index);cell.onkeydown=battleKeydown;}
+        else{cell.setAttribute('aria-readonly','true');cell.setAttribute('aria-disabled','true');}
+        grid.appendChild(cell);
+      }
+    }
+    for(const cell of Array.from(grid.children)){
+      const index=+cell.dataset.index,region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
       const found=board.found.includes(index),miss=board.misses.includes(index),out=excluded(board,index);
-      if(found){cell.classList.add('cat');cell.innerHTML=battleCat(stableHash(`${board.puzzle.id}:${index}`));cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到貓`)}
-      else if(miss){cell.classList.add('opened');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，翻開空格`)}
-      else if(out){cell.classList.add('auto-x');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，規則排除`)}
-      else if(local&&state.notes.has(index)){cell.classList.add('note');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記`)}
-      if(game.lastEvent?.who===who&&game.lastEvent?.boardId===board.puzzle.id&&game.lastEvent?.index===index)cell.classList.add('latest-result');
-      if(local){cell.type='button';cell.disabled=found||miss||out||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));if(state.pendingAction?.index===index)cell.classList.add('pending-cell');cell.onclick=()=>battleChoose(index);cell.onkeydown=battleKeydown;}
-      else{cell.setAttribute('aria-readonly','true');cell.setAttribute('aria-disabled','true');}
-      grid.appendChild(cell);
+      const cellState=found?'cat':miss?'opened':out?'auto-x':local&&state.notes.has(index)?'note':'hidden';
+      if(cell.dataset.renderState!==cellState){
+        cell.dataset.renderState=cellState;
+        for(const name of ['cat','opened','auto-x','note'])cell.classList.toggle(name,name===cellState);
+        cell.innerHTML=found?battleCat(stableHash(`${board.puzzle.id}:${index}`)):'';
+        const suffix={cat:'，已找到貓',opened:'，翻開空格','auto-x':'，規則排除',note:'，私人筆記',hidden:''}[cellState];
+        cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${col+1} 列，區域 ${region+1}${suffix}`);
+      }
+      cell.classList.toggle('latest-result',game.lastEvent?.who===who&&game.lastEvent?.boardId===board.puzzle.id&&game.lastEvent?.index===index);
+      if(local){cell.disabled=found||miss||out||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));cell.classList.toggle('pending-cell',state.pendingAction?.index===index);}
+    }
+    const basket=root.querySelector('.cat-basket'),basketKey=`${board.puzzle.id}:${board.found.join(',')}`;
+    if(basket.dataset.foundKey!==basketKey){
+      basket.dataset.foundKey=basketKey;basket.setAttribute('aria-label',`本盤已找到 ${board.found.length} 隻貓`);
+      basket.innerHTML=Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')+`<b>${board.found.length} / 6</b>`;
     }
   }
+
   if(focused!==undefined)$(`.battle-side.local .cell[data-index="${focused}"]`)?.focus({preventScroll:true});
   $('#battleNotice').textContent=battleMessage();
   observeBattleEvent(event,sourceRect);
   refreshBattleOverlays({silent:silentAudio});
   if(game.status==='finished'&&!$('#result').open){$('#resultTitle').textContent=game.winner===state.you?'你贏了！喵～':'下一局再加油！';$('#resultScore').textContent=`剩餘血量 ${game.players[state.you].hp}：${game.players[1-state.you].hp}｜最後一擊 ${game.lastEvent?.damage||0} 傷害`;$('#rematch').textContent=state.practice?'再練習一局':'雙方同意，再來一局';$('#result').showModal()}
-  if(game.status==='finished'&&state.battleTerminalCue!==game.id){state.battleTerminalCue=game.id;if(!silentAudio)soundCue(game.winner===state.you?'win':'lose',{id:`${game.id}:finished`});}
+  if(game.status==='finished'&&state.battleTerminalCue!==game.id){state.battleTerminalCue=game.id;if(!silentAudio){const winningCapture=game.lastEvent?.type==='hit'&&game.lastEvent.who===state.you;const voiced=winningCapture&&playCaptureSound(game.lastEvent.id||`${game.id}:final-capture`,game.lastEvent.combo);soundCue(game.winner===state.you?'win':'lose',{id:`${game.id}:finished`,delay:voiced?.68:0});}}
   if(game.status!=='finished'&&$('#result').open)$('#result').close();
-  state.battleCooldownActive=own.cooldownUntil>battleNow();
+  state.battleCooldownActive=own.cooldownUntil>battleNow();state.battleLagNeedsSync=false;
 }
+function syncBattleSideHeader(root,game,board,player,local,maxHP){
+  const portrait=root.querySelector('.portrait');
+  if(portrait.dataset.avatar!==String(player.avatar)){portrait.dataset.avatar=String(player.avatar);portrait.innerHTML=playerAvatar(player.avatar,'avatar-character');}
+  const text=(selector,value)=>{const node=root.querySelector(selector);if(node&&node.textContent!==String(value))node.textContent=String(value);};
+  text('.player-identity b',local?'你':state.practice?'練習貓友':'對手');text('.player-identity span',player.nickname);
+  text('.combo-badge b',board.combo);text('.combo-badge strong',5*(board.combo+1));
+  text('.board-heading b',local?'你的尋貓小屋':'貓友的小屋');text('.board-heading span',`第 ${board.number} 盤 · ${local?'6×6':'僅觀看'}`);
+  const hp=root.querySelector('.hp-meter'),fill=hp.querySelector('.hp-fill'),lag=hp.querySelector('.hp-lag'),amount=hp.querySelector('span');
+  const old=Number(hp.dataset.hp),ratio=Math.max(0,Math.min(100,player.hp/maxHP*100));
+  hp.setAttribute('aria-valuemax',String(maxHP));hp.setAttribute('aria-valuenow',String(player.hp));
+  if(amount)amount.textContent=`${player.hp} / ${maxHP}`;if(fill)fill.style.width=`${ratio}%`;
+  if(lag){
+    if(Number.isFinite(old)&&old>player.hp&&game.status==='playing'&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+      lag.style.transition='none';lag.style.width=`${Math.min(100,old/maxHP*100)}%`;lag.dataset.target=String(player.hp);
+      state.battleFXFrames??=new Set();
+      const frame=requestAnimationFrame(()=>{state.battleFXFrames.delete(frame);if(lag.dataset.target===String(player.hp)){lag.style.transition='';lag.style.width=`${ratio}%`;}});state.battleFXFrames.add(frame);
+    }else if(!Number.isFinite(old)||old!==player.hp||game.status!=='playing'||document.hidden||state.suppressBattleFX||state.battleLagNeedsSync){lag.style.width=`${ratio}%`;lag.style.transition='';}
+  }
+  hp.dataset.hp=String(player.hp);
+}
+function refreshBattleInputState(){
+  const game=state.game;if(!isBattle())return;
+  const board=game.boards[state.you],grid=$('.battle-side.local .battle-board');if(!grid)return;
+  for(const cell of Array.from(grid.children)){
+    const index=+cell.dataset.index;
+    cell.disabled=board.found.includes(index)||board.misses.includes(index)||excluded(board,index)||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));
+  }
+  state.battleCooldownActive=board.cooldownUntil>battleNow();
+}
+
 function battleChoose(index){
   const game=state.game,board=game.boards[state.you];
   if(!battleNotesAllowed(game))return;
@@ -87,6 +135,9 @@ function battleEventCellRect(event){
   return cell?.getBoundingClientRect()||null;
 }
 function clearBattleFX(){
+  state.battleLagNeedsSync=true;
+  for(const frame of state.battleFXFrames||[])cancelAnimationFrame(frame);state.battleFXFrames=new Set();
+  for(const side of ['local','opponent']){const meter=$(`.battle-side.${side} .hp-meter`);if(!meter)continue;const value=Number(meter.getAttribute('aria-valuenow')),max=Number(meter.getAttribute('aria-valuemax')),lag=meter.querySelector('.hp-lag');if(lag&&Number.isFinite(value)&&max>0){lag.style.transition='none';lag.style.width=`${Math.max(0,Math.min(100,value/max*100))}%`;lag.dataset.target=String(value);}}
   for(const effect of state.battleClassEffects||[])effect.node.classList.remove(effect.className);state.battleClassEffects=new Set();
   for(const timer of state.battleFXTimers||[])clearTimeout(timer);
   for(const node of state.battleFXNodes||[])node.remove();
@@ -113,9 +164,9 @@ function observeBattleEvent(event,sourceRect){
 function playBattleEventSound(event){
   const game=state.game,id=event.id||`${game.id}:${event.sequence}:${event.at}`;
   if(event.type==='hit'){
-    if(event.who===state.you)soundCue(event.combo>1?'combo':'found',{id,combo:event.combo});
-    soundCue('launch',{id,combo:event.combo,delay:.10});
-    soundCue(event.who===state.you?'impact':'damage',{id,combo:event.combo,delay:.60});
+    if(event.who===state.you)playCaptureSound(id,event.combo);
+    soundCue('launch',{id,combo:event.combo,delay:.12});
+    soundCue(event.who===state.you?'impact':'damage',{id,combo:event.combo,delay:.42});
     if(event.advanced&&event.who===state.you){soundCue('boardClear',{id,combo:event.combo,delay:.75});soundCue('newBoard',{id,delay:.98});}
   }else if(event.type==='miss'&&event.who===state.you){
     soundCue('miss',{id});soundCue('lock',{id,delay:.12});
@@ -123,7 +174,9 @@ function playBattleEventSound(event){
   }
 }
 function trackBattleClass(node,className,duration=900){
-  if(!node)return;node.classList.add(className);state.battleClassEffects??=new Set();state.battleFXTimers??=new Set();
+  if(!node)return;state.battleClassEffects??=new Set();state.battleFXTimers??=new Set();
+  for(const previous of [...state.battleClassEffects])if(previous.node===node&&previous.className===className){clearTimeout(previous.timer);state.battleFXTimers.delete(previous.timer);state.battleClassEffects.delete(previous);}
+  node.classList.remove(className);void node.offsetWidth;node.classList.add(className);
   const effect={node,className,timer:null};state.battleClassEffects.add(effect);
   effect.timer=setTimeout(()=>{node.classList.remove(className);state.battleClassEffects.delete(effect);state.battleFXTimers.delete(effect.timer);},duration);state.battleFXTimers.add(effect.timer);
 }
@@ -142,10 +195,12 @@ function battleAttackFX(event,sourceRect){
   while(state.battleFXBatches.length>=3)removeBatch(state.battleFXBatches.shift());
   state.battleFXBatches.push(batch);
   const add=(node,parent=document.body)=>{node.dataset.eventId=event.id||String(event.sequence);parent.appendChild(node);state.battleFXNodes.add(node);batch.nodes.push(node);return node;};
-  const timer=setTimeout(()=>{removeBatch(batch);state.battleFXBatches=state.battleFXBatches.filter(value=>value!==batch);target.classList.remove('hp-hit');},1100);
+  const timer=setTimeout(()=>{removeBatch(batch);state.battleFXBatches=state.battleFXBatches.filter(value=>value!==batch);},1100);
   batch.timers.push(timer);state.battleFXTimers.add(timer);
-  target.classList.add('hp-hit');
+  const impact=()=>{if(state.game?.id===game.id&&state.game.status==='playing')trackBattleClass(target,'hp-hit',220);};
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)impact();else{const impactTimer=setTimeout(()=>{state.battleFXTimers.delete(impactTimer);impact();},420);batch.timers.push(impactTimer);state.battleFXTimers.add(impactTimer);}
   const sourceSide=$(`.battle-side[data-player="${event.who}"]`),sourceGrid=sourceSide?.querySelector('.battle-board'),comboBadge=sourceSide?.querySelector('.combo-badge');
+  const callout=sourceSide?.querySelector('.capture-callout');if(callout){callout.textContent=event.combo<=1?'抓到了！':event.combo<=3?`${event.combo} 連喵！`:`喵喵連擊 ×${event.combo}`;callout.dataset.comboTier=String(Math.min(3,Math.ceil(event.combo/3)));trackBattleClass(callout,'show',750);}
   if(comboBadge){comboBadge.dataset.comboTier=String(Math.min(3,1+Math.floor((event.combo-1)/3)));trackBattleClass(comboBadge,'combo-glow');}
   if(sourceGrid?.dataset.boardId===event.boardId)trackBattleClass(sourceGrid.querySelector(`.cell[data-index="${event.index}"]`),'found-glow');
   if(event.advanced&&sourceGrid){trackBattleClass(sourceGrid,'board-clear-glow');const celebration=document.createElement('div');celebration.className='board-clear-celebration';celebration.innerHTML=[0,1,2].map(i=>battleCat(stableHash(`${event.boardId}:${event.index+i}`))).join('');const card=sourceSide.querySelector('.board-card');if(card)add(celebration,card);}
@@ -158,7 +213,7 @@ function battleAttackFX(event,sourceRect){
   const cat=document.createElement('div');cat.className='battle-cat-launch';cat.innerHTML=battleCat(stableHash(`${event.boardId}:${event.index}`));add(position(cat));
   const paw=document.createElement('div');paw.className='battle-paw-shot';paw.textContent='🐾';paw.style.setProperty('--trail-angle',`${Math.atan2(ty-y,tx-x)*180/Math.PI}deg`);add(position(paw));
   for(let i=0;i<intensity;i++){
-    const spark=document.createElement('div');spark.className='battle-spark';spark.style.left=`${tx}px`;spark.style.top=`${ty}px`;spark.style.setProperty('--scale',String(1+i));spark.style.setProperty('--delay',`${570+i*45}ms`);add(spark);
+    const spark=document.createElement('div');spark.className='battle-spark';spark.style.left=`${tx}px`;spark.style.top=`${ty}px`;spark.style.setProperty('--scale',String(1+i));spark.style.setProperty('--delay',`${420+i*35}ms`);add(spark);
   }
 }
 function refreshBattleOverlays({silent=false}={}){
@@ -194,7 +249,7 @@ function updateBattleTimers(){
   prepareGameAudio(game.id,game.status);
   if(['finished','aborted','paused'].includes(game.status))clearBattleFX();
   refreshBattleOverlays({silent:Boolean(state.suppressBattleFX||document.hidden)});$('#battleNotice').textContent=battleMessage();
-  if(game.status==='playing'&&state.battleCooldownActive&&game.boards[state.you].cooldownUntil<=battleNow())render();
+  if(game.status==='playing'&&state.battleCooldownActive&&game.boards[state.you].cooldownUntil<=battleNow())refreshBattleInputState();
   updateBattleUnlockFeedback();
   if(['playing','countdown'].includes(game.status)&&!state.practice&&state.transport?.open()&&Date.now()-(state.lastPong||Date.now())>8000){onClose();state.transport.close();}
   if(game.status==='paused'&&state.disconnectAt&&Date.now()-state.disconnectAt>=60000){CatBattle.abort(game);if(state.role==='host')broadcast();else{saveLocal();render();}}

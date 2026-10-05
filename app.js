@@ -455,25 +455,27 @@ async function resumeHost() {
 }
 
 function getGameAudio(){
-  if(!state.sound)state.sound=CatAudio.create({muted:state.muted,volume:state.volume,isHidden:()=>Boolean(document.hidden)});
+  if(!state.sound)state.sound=CatAudio.create({muted:state.muted,volume:state.volume,isHidden:()=>Boolean(document.hidden),samples:window.CAT_MEOW_SAMPLES});
   return state.sound;
 }
 function unlockAudio(){
-  try{return getGameAudio().unlockFromGesture().then(unlocked=>{state.audioUnlocked=Boolean(unlocked);return unlocked;}).catch(()=>false);}catch{return Promise.resolve(false);}
+  try{return getGameAudio().unlockFromGesture().then(unlocked=>{state.audioUnlocked=Boolean(unlocked);if(unlocked)getGameAudio().loadSamples().then(()=>syncAudioControls());return unlocked;}).catch(()=>false);}catch{return Promise.resolve(false);}
 }
 function soundCue(kind,options={}){return getGameAudio().play(kind,options);}
 function tone(kind,options={}){return soundCue(({cat:'found',finish:'win',turn:'start'})[kind]||kind,options);}
 function stopGameAudio(){state.sound?.stopAll();state.pendingUnlockCue=null;}
 function prepareGameAudio(matchId,status){
-  if(state.audioMatchId!==matchId){getGameAudio().resetMatch();state.audioMatchId=matchId;state.audioGameStatus=null;state.battleTerminalCue=null;state.pendingUnlockCue=null;}
+  if(state.audioMatchId!==matchId){getGameAudio().resetMatch();state.audioMatchId=matchId;state.captureSoundEvents=new Set();state.audioGameStatus=null;state.battleTerminalCue=null;state.pendingUnlockCue=null;}
   if(state.audioGameStatus!==status){if(['paused','finished','aborted'].includes(status))stopGameAudio();state.audioGameStatus=status;}
 }
+function playCaptureSound(id,combo=1){state.captureSoundEvents??=new Set();if(state.captureSoundEvents.has(id))return false;state.captureSoundEvents.add(id);if(state.captureSoundEvents.size>128)state.captureSoundEvents.delete(state.captureSoundEvents.values().next().value);soundCue('meow',{id,combo});if(combo>1)soundCue('combo',{id,combo,delay:.14});return true;}
 function playUICue(){return soundCue('ui',{id:`ui:${++state.uiSoundSequence}`});}
 function syncAudioControls(){
   for(const id of ['#mute','#battleMute']){const button=$(id);if(button){button.textContent=state.muted?'🔇':'🔊';button.setAttribute('aria-pressed',String(state.muted));button.setAttribute('aria-label',state.muted?'開啟音效':'關閉音效');}}
   const volume=$('#soundVolume'),output=$('#soundVolumeValue');
   if(volume){volume.value=String(Math.round(state.volume*100));volume.setAttribute('aria-valuetext',`音量 ${Math.round(state.volume*100)}%`);}
   if(output)output.textContent=`${Math.round(state.volume*100)}%`;
+  const sampleStatus=$('#meowLoadStatus'),audioState=state.sound?.getState();if(sampleStatus){sampleStatus.textContent=audioState?.loadedSamples?`已載入 ${audioState.loadedSamples} 組貓叫，隨機播放且不連續重複。`:audioState?.samplesStatus==='failed'?'貓叫錄音載入失敗，目前使用合成備用音效；請重新整理再試。':audioState?.samplesStatus==='loading'?'貓叫錄音載入中…':'首次操作後載入貓叫錄音；載入前會使用合成備用音效。';}
 }
 function setNoteMode(enabled){
   state.mode=enabled?'note':'guess';state.tool=null;state.yarnTargets=[];syncNoteModeUI();playUICue();render();
@@ -497,8 +499,8 @@ function observeLegacyAudio(game){
     const seen=state.legacyAudioEvents;
     if(!seen.has(id)){
       seen.add(id);if(seen.size>100)seen.delete(seen.values().next().value);
-      if(!silent&&game.status==='playing'){
-        if(event.type==='cat')soundCue(event.streak>1?'combo':'found',{id,combo:event.streak||1});
+      if(!silent&&(game.status==='playing'||(game.status==='finished'&&event.type==='cat'))){
+        if(event.type==='cat')playCaptureSound(id,event.streak||1);
         else if(event.type==='miss')soundCue('miss',{id});
         else if(event.type==='switch'&&event.who===state.you)soundCue('start',{id});
         else if(['item','shield'].includes(event.type))soundCue('ui',{id});
@@ -507,7 +509,7 @@ function observeLegacyAudio(game){
   }
   if(game.status==='finished'&&state.legacyTerminalCue!==matchId){
     state.legacyTerminalCue=matchId;
-    if(!silent)soundCue(game.winner==='coop'||game.winner==='tie'||game.winner===state.you?'win':'lose',{id:`${matchId}:finished`});
+    if(!silent)soundCue(game.winner==='coop'||game.winner==='tie'||game.winner===state.you?'win':'lose',{id:`${matchId}:finished`,delay:game.lastEvent?.type==='cat'?.68:0});
   }
 }
 const unlockAudioFromGesture=()=>{if(!state.muted&&state.volume>0)unlockAudio();};

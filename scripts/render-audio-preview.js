@@ -14,17 +14,19 @@ const CUES = Object.freeze([
   {at:1.00,kind:'countdown',label:'Countdown 2'},
   {at:1.45,kind:'countdown',label:'Countdown 1'},
   {at:1.90,kind:'start',label:'Start: find the cats'},
-  {at:2.50,kind:'found',label:'Found cat: musical meow / chirp'},
-  {at:3.05,kind:'combo',combo:2,label:'Second consecutive cat'},
-  {at:3.55,kind:'combo',combo:5,label:'Fifth consecutive cat'},
-  {at:4.05,kind:'launch',label:'Paw attack launch'},
-  {at:4.50,kind:'impact',label:'Paw impact'},
-  {at:4.95,kind:'damage',label:'Receiving damage'},
-  {at:5.45,kind:'miss',label:'Wrong guess'},
-  {at:6.00,kind:'lock',label:'Short guess lock'},
-  {at:6.40,kind:'unlock',label:'Ready to guess again'},
-  {at:6.90,kind:'boardClear',label:'Six cats found'},
-  {at:7.70,kind:'newBoard',label:'Fresh board'},
+  {at:2.50,kind:'found',sample:0,label:'Found cat: real soft meow'},
+  {at:3.15,kind:'meow',sample:1,label:'Second real recording'},
+  {at:3.90,kind:'meow',sample:2,label:'Third real recording'},
+  {at:3.28,kind:'combo',combo:2,label:'Second consecutive cat'},
+  {at:4.04,kind:'combo',combo:5,label:'Fifth consecutive cat'},
+  {at:4.95,kind:'launch',label:'Paw attack launch'},
+  {at:5.30,kind:'impact',label:'Paw impact'},
+  {at:5.65,kind:'damage',label:'Receiving damage'},
+  {at:6.05,kind:'miss',label:'Wrong guess'},
+  {at:6.45,kind:'lock',label:'Short guess lock'},
+  {at:6.75,kind:'unlock',label:'Ready to guess again'},
+  {at:7.15,kind:'boardClear',label:'Six cats found'},
+  {at:7.90,kind:'newBoard',label:'Fresh board'},
   {at:8.30,kind:'win',label:'Friendly victory flourish'},
   {at:9.80,kind:'lose',label:'Gentle try-again phrase'},
   {at:10.70,kind:'ui',label:'Soft UI tap'}
@@ -51,9 +53,21 @@ function phaseAt(points,time) {
   }
   return cycles + Math.max(0,time-points.at(-1).time)*points.at(-1).value;
 }
+const MEOW_FILES=['cat-meow-soft.wav','cat-meow-food.wav','cat-meow-purr.wav'];
+function readRecording(index){
+  const data=fs.readFileSync(path.join(__dirname,'../assets/audio',MEOW_FILES[index%MEOW_FILES.length]));
+  if(data.toString('ascii',0,4)!=='RIFF'||data.toString('ascii',8,12)!=='WAVE')throw Error('Invalid WAV');
+  let rate=0,channels=0,bits=0,pcm;
+  for(let offset=12;offset+8<=data.length;){const name=data.toString('ascii',offset,offset+4),size=data.readUInt32LE(offset+4),start=offset+8;if(name==='fmt '){if(data.readUInt16LE(start)!==1)throw Error('Expected PCM');channels=data.readUInt16LE(start+2);rate=data.readUInt32LE(start+4);bits=data.readUInt16LE(start+14);}if(name==='data')pcm=data.subarray(start,start+size);offset=start+size+(size%2);}
+  if(rate!==SAMPLE_RATE||channels!==1||bits!==16||!pcm)throw Error('Expected mono 44.1kHz PCM16');
+  return Float64Array.from({length:pcm.length/2},(_,i)=>pcm.readInt16LE(i*2)/32768);
+}
 function render(cues=CUES,duration=DURATION,volume=Audio.constants.DEFAULT_VOLUME) {
   const samples = new Float64Array(Math.ceil(duration*SAMPLE_RATE));
+  const recordings=MEOW_FILES.map((_,i)=>readRecording(i));
+  const meows=cues.filter(cue=>Number.isInteger(cue.sample)).map(cue=>({start:cue.at,end:cue.at+recordings[cue.sample].length/SAMPLE_RATE}));
   for (const cue of cues) {
+    if(Number.isInteger(cue.sample)){const pcm=recordings[cue.sample],offset=Math.round(cue.at*SAMPLE_RATE),gain=Audio.constants.SAMPLE_GAIN;for(let i=0;i<pcm.length&&offset+i<samples.length;i++){const fade=Math.min(1,i/(.012*SAMPLE_RATE),(pcm.length-i)/(.045*SAMPLE_RATE));samples[offset+i]+=pcm[i]*gain*Math.max(0,fade);}continue;}
     for (const note of Audio.score(cue.kind,{combo:cue.combo})) {
       const start = cue.at + note.when;
       const first = Math.ceil(start*SAMPLE_RATE);
@@ -62,7 +76,9 @@ function render(cues=CUES,duration=DURATION,volume=Audio.constants.DEFAULT_VOLUM
         const t = i/SAMPLE_RATE-start;
         const sine = Math.sin(2*Math.PI*phaseAt(note.frequency,t));
         const wave = note.wave === 'triangle' ? 2/Math.PI*Math.asin(sine) : sine;
-        samples[i] += wave * envelopeAt(note.envelope,t);
+        const musical=['found','combo','launch'].includes(cue.kind),duringMeow=meows.some(m=>i/SAMPLE_RATE>=m.start&&i/SAMPLE_RATE<m.end+.05);
+        const bed=musical&&meows.some(m=>i/SAMPLE_RATE>=m.start)?Audio.constants.MUSIC_BED_GAIN*(duringMeow?Audio.constants.MUSIC_DUCK_GAIN:1):1;
+        samples[i] += wave * envelopeAt(note.envelope,t)*bed;
       }
     }
   }
@@ -90,15 +106,20 @@ function save(destination) {
   fs.mkdirSync(path.dirname(output),{recursive:true}); fs.writeFileSync(output,wav(result.samples));
   const readme=output.replace(/\.wav$/i,'')+'-README.txt';
   fs.writeFileSync(readme,[
-    'CAT BATTLE: ORIGINAL SOUND PALETTE',
+    'CAT BATTLE: REAL MEOWS + ORIGINAL MUSICAL FEEDBACK',
     '12 seconds / mono / 44.1 kHz / 16-bit PCM',
     '',
-    'Original sine/triangle synthesis composed for this game. No outside audio assets.',
+    'Three real cat recordings by Kerzoven, Cat Purr & Meow, CC0 1.0.',
+    'Source: https://opengameart.org/content/cat-purr-meow',
+    'License: https://creativecommons.org/publicdomain/zero/1.0/',
+    'Original musical cues are composed for this game. No game audio was extracted.',
     'This offline preview uses the exact exported CatAudio.score() note, pitch-glide,',
     'envelope, default volume (45%), master gain and soft-limiter parameters.',
-    'Cues are spaced apart for review; gameplay timing is intentionally different.',
+    'Cues are spaced apart for review; gameplay timing and shuffle order are different.',
+    'Recorded meows use their natural rate here; the game uses a small pitch variation.',
     'No loudness normalization has been applied. Start listening at a comfortable level.',
     '',
+    'Audio audition is unsupported in this environment; subjective cuteness is unverified.',
     'This verifies generated PCM and note parameters, not autoplay unlock, browser',
     'mixing, Bluetooth latency, speaker balance or actual-device playback. The simple',
     'offline triangle oscillator is not a browser-specific band-limited implementation.',

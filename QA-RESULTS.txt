@@ -1,9 +1,9 @@
-CAT HIDE & SEEK — LOCAL REVIEW BUILD
+CAT HIDE & SEEK — APPROVED REAL-MEOW RELEASE
 Date: 2026-10-05
-Base repository commit: 4a66ee1ce81bda24c3d4d539fa355356df28ed30
-Status: User approved publishing this audio / unique-color / toolbar / stronger-effects release. Previous release 4a66ee1 is preserved for a normal revert. Browser, device-audio and real P2P acceptance remain pending.
+Base repository commit: ae63526ba7df45aaf44de104368e11c666e3f722
+Status: User approved publication of the real-recording meow / persistent-DOM / capture-sequence build. ae63526 is the preserved rollback parent. Deployment verification is recorded separately after publication.
 
-PASS — 155 Node tests (node --test)
+PASS — 199 Node tests (node --test)
 29 battle engine tests:
 - 1,080 generated puzzles checked with an independent exact solver.
 - 270 additional constant-RNG stress puzzles.
@@ -21,7 +21,7 @@ PASS — 155 Node tests (node --test)
 - Explicit public snapshot whitelist excludes solutions and private histories.
 - Rematch avoids recent puzzle repeats.
 
-83 app/legacy integration and fake-DOM tests:
+98 app/legacy integration and fake-DOM tests:
 - All four original modes, default streak cap off, no ordinary clue numbers.
 - Fish limit, magnifier/private intel, yarn, shield and hourglass.
 - Treasure scoring, cooperative shared progress and completion.
@@ -56,7 +56,7 @@ The restriction was not bypassed. The documented supported preview handoff needs
 an exposed forwarding/preview tool, which is unavailable in this task. Node VM
 and fake-DOM tests verify code behavior, not browser layout or real networking.
 
-BEFORE RELEASE
+REMAINING BROWSER ACCEPTANCE (user approved release before these checks)
 Open the supplied single-file preview locally for visual/interaction review.
 Use the source build in two Chrome profiles for a real P2P acceptance pass:
 1. Create CAT room and join via short code; verify both original modes and battle.
@@ -109,3 +109,19 @@ AUDIO / COLOR / TOOLBAR / EFFECTS ROUND
 
 The 12-second WAV is an offline score preview, NOT a recording of browser audio.
 Latest audio, visual effects and mobile/P2P behavior remain unverified in-browser.
+
+REAL MEOW / CAPTURE SEQUENCE ROUND
+- Three distinct CC0 source WAVs, provenance hashes, and data-URL embedding checks.
+- Post-gesture loading, deterministic test RNG for actual shuffle bags, no repeats.
+- Two audible meows with 20ms replacement fades; retiring tails cancel on mute/reset.
+- Voice on every local capture, including terminal captures; old events do not revoice.
+- Stable card, avatar, HP and cell nodes across timers/snapshots/notes/HP updates.
+- New boards replace only their cells; the sixth cat retains its old source position.
+- Single overwritten callout; authored CSS timing/reduced-motion checks.
+- Pause/background settles cancelled HP residue frames to authoritative HP.
+- 199 aggregate Node tests pass; audio module contributes 52 tests, integration 98,
+  battle engine 29 and region palette 20.
+
+No real gameplay observation or measured reference animation timing is claimed.
+The audio preview contains actual CC0 recordings plus original musical cues,
+not a browser recording; subjective audio quality has not been auditioned here.

@@ -8,6 +8,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const os = require('node:os');
+const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const APP_PATH = path.join(__dirname, '..', 'app.js');
 const ROOT = path.dirname(APP_PATH);
 const json = value => JSON.parse(JSON.stringify(value));
@@ -121,7 +124,7 @@ function element(tagName = 'div') {
   return node;
 }
 
-function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = false, local = {}, session = {}, fakeAudio = false, AudioContext, matchEnabled } = {}) {
+function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = false, local = {}, session = {}, fakeAudio = false, AudioContext, matchEnabled, meowSamples = ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav'] } = {}) {
   const nodes = new Map(), messages = [], intervals = [], timers = new Map(), frames = new Map();
   const get = selector => {
     const match = /^#board \.cell\[data-index="(\d+)"\]$/.exec(selector);
@@ -142,7 +145,7 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
   class Clock extends Date { static now() { return now; } }
   const context = vm.createContext({
     ...eventTarget(), console, URL, URLSearchParams, Date: Clock, Uint32Array, Float32Array, AudioContext,
-    CAT_MATCH_ENABLED: matchEnabled,
+    CAT_MATCH_ENABLED: matchEnabled, CAT_MEOW_SAMPLES: meowSamples,
     crypto: {
       getRandomValues(array) {
         for (let i = 0; i < array.length; i++) { rng ^= rng << 13; rng ^= rng >>> 17; rng ^= rng << 5; array[i] = rng >>> 0; }
@@ -171,10 +174,11 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
   for (const filename of ['region-palette.js', 'game-audio.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   }
-  const audio = { calls: [], controllers: [], getState: () => audio.controllers.at(-1)?.getState() };
+  const audio = { calls: [], options: [], controllers: [], getState: () => audio.controllers.at(-1)?.getState() };
   if (fakeAudio) {
     const create = context.CatAudio.create;
     context.CatAudio = { ...context.CatAudio, create(...args) {
+      audio.options.push(args[0]);
       const controller = create(...args); audio.controllers.push(controller);
       return Object.fromEntries(Object.entries(controller).map(([name, value]) => [name, typeof value === 'function' ? (...values) => {
         if (name !== 'getState') audio.calls.push({ method: name, args: json(values) });
@@ -718,6 +722,23 @@ test('avatar idle animation includes a reduced-motion opt out', () => {
   assert.match(css, /prefers-reduced-motion: reduce[^}]*lively-avatar[^}]*animation: none !important/s);
 });
 
+test('capture CSS keeps the authored 520 ms pop and 420 ms attack arrival with reduced-motion alternatives', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
+  assert.match(css, /animation:\s*cozyFoundCatPop 520ms/);
+  assert.match(css, /animation:\s*cozyCaptureCallout 750ms/);
+  assert.match(css, /animation:\s*cozyCatArc 300ms linear 120ms/);
+  assert.match(css, /animation:\s*cozyPawChase 300ms linear 120ms/);
+  assert.match(css, /\.hp-meter > i\.hp-fill\s*\{[^}]*transition:\s*none;/);
+  assert.match(css, /\.hp-meter > i\.hp-lag\s*\{[^}]*transition:\s*width 350ms/);
+  assert.match(css, /animation:\s*cozyHpImpact 160ms/);
+  assert.match(css, /animation:\s*cozyDamageNumber 620ms ease-out 420ms/);
+  assert.match(css, /\.board-card > \.capture-callout\s*\{[^}]*pointer-events:\s*none;/);
+  const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+  assert.match(reduced, /\.board-card > \.capture-callout\.show\s*\{[^}]*opacity:\s*1;/);
+  assert.match(reduced, /\.hp-meter > \.battle-damage\s*\{[^}]*animation:\s*none !important;[^}]*opacity:\s*1;/);
+  assert.match(reduced, /\.hp-meter > i\.hp-fill, \.hp-meter > i\.hp-lag\s*\{[^}]*transition:\s*none !important;/);
+});
+
 test('battle guest readiness starts one shared countdown and rejects all guesses and notes before its deadline', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true });
   const game = h.state.game = h.newGame(6);
@@ -973,6 +994,7 @@ test('battle disconnect immediately cancels in-flight attacks and their cleanup 
 test('battle sixth-cat rollover launches from the old cell with its original art and bounds concurrent attack batches', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.renderBattle();
+  const before = battleNodeReferences(h);
   const oldBoard = game.boards[0], oldID = oldBoard.puzzle.id, solution = [...oldBoard.puzzle.solution];
   for (const index of solution) {
     assert.equal(h.act(0, battleAction(h, 0, { index })).accepted, true);
@@ -981,6 +1003,12 @@ test('battle sixth-cat rollover launches from the old cell with its original art
     assert.ok(h.context.document.body.children.filter(node => node.classList.contains('battle-cat-launch')).length <= 3);
   }
   assert.notEqual(game.boards[0].puzzle.id, oldID); assert.equal(game.lastEvent.advanced, true);
+  const after = battleNodeReferences(h);
+  for (const side of ['local', 'opponent']) {
+    for (const key of ['root', 'portrait', 'avatar', 'card', 'hp', 'combo']) assert.strictEqual(after[side][key], before[side][key], `${side} ${key} survives rollover`);
+  }
+  assert.notStrictEqual(after.local.cells[0], before.local.cells[0], 'a new board ID rebuilds the local puzzle cells');
+  after.opponent.cells.forEach((cell, index) => assert.strictEqual(cell, before.opponent.cells[index], 'local rollover cannot rebuild the opponent board'));
   const launch = h.context.document.body.children.find(node => node.classList.contains('battle-cat-launch') && node.dataset.eventId === game.lastEvent.id);
   assert.ok(launch, 'the sixth hit must still launch after its old board is replaced');
   const index = solution.at(-1);
@@ -989,6 +1017,101 @@ test('battle sixth-cat rollover launches from the old cell with its original art
   assert.equal(Number.parseFloat(launch.style.left), 120 + (index % 6) * 40);
   assert.equal(Number.parseFloat(launch.style.top), 220 + Math.floor(index / 6) * 40);
   assert.equal(game.players[1].hp, 45); assert.equal(game.boards[0].combo, 6);
+});
+
+function battleNodeReferences(h) {
+  return Object.fromEntries(['local', 'opponent'].map(side => {
+    const root = h.get(`.battle-side.${side}`), portrait = root.querySelector('.portrait'), grid = root.querySelector('.battle-board');
+    return [side, { root, portrait, avatar: portrait.querySelector('.lively-avatar'), card: root.querySelector('.board-card'),
+      hp: root.querySelector('.hp-meter'), combo: root.querySelector('.combo-badge'), grid, cells: [...grid.children] }];
+  }));
+}
+
+function assertBattleNodesUnchanged(h, previous, message) {
+  const current = battleNodeReferences(h);
+  for (const side of ['local', 'opponent']) {
+    for (const key of ['root', 'portrait', 'avatar', 'card', 'hp', 'combo', 'grid']) {
+      assert.strictEqual(current[side][key], previous[side][key], `${message}: ${side} ${key} must survive`);
+    }
+    assert.equal(current[side].cells.length, previous[side].cells.length);
+    current[side].cells.forEach((cell, index) => assert.strictEqual(cell, previous[side].cells[index], `${message}: ${side} cell ${index} must survive`));
+  }
+}
+
+test('a 300 ms hit cooldown unlocks cells in place without restarting avatars or capture highlights', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
+  h.enableRendering(); h.renderBattle(); const before = battleNodeReferences(h);
+  const [first, next] = game.boards[0].puzzle.solution;
+  h.act(0, battleAction(h, 0, { index: first })); h.renderBattle();
+  assertBattleNodesUnchanged(h, before, 'own hit');
+  const cell = before.local.cells[first], cat = cell.querySelector('.cat-art');
+  const timers = [...h.state.battleFXTimers], meows = json(playedAudio(h).filter(sound => sound.kind === 'meow'));
+  assert.equal(cell.classList.contains('found-glow'), true); assert.equal(before.local.combo.classList.contains('combo-glow'), true);
+  assert.equal(before.local.cells[next].disabled, true);
+  h.context.cooldownRerenders = 0;
+  vm.runInContext('render = () => { cooldownRerenders++; appTest.renderLegacy(); };', h.context);
+  h.tick(299); h.updateBattleTimers();
+  assert.equal(before.local.cells[next].disabled, true, 'the hit cooldown must not unlock early');
+  assertBattleNodesUnchanged(h, before, '299 ms timer update');
+  h.tick(1); h.updateBattleTimers();
+  assert.equal(before.local.cells[next].disabled, false, 'input becomes ready at the 300 ms deadline');
+  assert.equal(h.context.cooldownRerenders, 0, 'the cooldown interval updates disabled state without a full render');
+  assert.equal(cell.disabled, true, 'the captured cell remains unavailable');
+  assertBattleNodesUnchanged(h, before, '300 ms cooldown unlock');
+  assert.strictEqual(cell.querySelector('.cat-art'), cat, 'the captured artwork is not recreated on cooldown unlock');
+  assert.equal(cell.classList.contains('found-glow'), true); assert.equal(before.local.combo.classList.contains('combo-glow'), true);
+  assert.deepEqual([...h.state.battleFXTimers], timers, 'cooldown unlock cannot replace active capture timers');
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'meow'), meows, 'cooldown unlock cannot replay the cat voice');
+  h.tick(600);
+  assert.equal(cell.classList.contains('found-glow'), false); assert.equal(before.local.combo.classList.contains('combo-glow'), false);
+});
+
+test('opponent HP updates and private-note toggles preserve both cards, avatars and live capture effects', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
+  h.enableRendering(); h.renderBattle();
+  const first = game.boards[0].puzzle.solution[0]; h.act(0, battleAction(h, 0, { index: first }));
+  const before = battleNodeReferences(h), cat = before.local.cells[first].querySelector('.cat-art');
+  const voice = json(playedAudio(h).filter(sound => sound.kind === 'meow'));
+  h.act(1, battleAction(h, 1)); h.renderBattle();
+  assert.equal(game.players[0].hp, 145); assert.equal(game.players[1].hp, 145);
+  assert.equal(before.local.hp.getAttribute('aria-valuenow'), '145'); assert.equal(before.opponent.hp.getAttribute('aria-valuenow'), '145');
+  assertBattleNodesUnchanged(h, before, 'incoming opponent hit');
+  assert.strictEqual(before.local.cells[first].querySelector('.cat-art'), cat);
+  assert.equal(before.local.cells[first].classList.contains('found-glow'), true);
+  assert.equal(before.local.combo.classList.contains('combo-glow'), true);
+  const noteIndex = game.boards[0].puzzle.solution[1];
+  h.get('#battleNote').click(); before.local.cells[noteIndex].click();
+  assert.equal(h.state.notes.has(noteIndex), true); assert.equal(before.local.cells[noteIndex].classList.contains('note'), true);
+  assertBattleNodesUnchanged(h, before, 'private-note edit');
+  h.get('#battleNote').click();
+  assert.equal(before.local.cells[noteIndex].disabled, true, 'switching back to guesses preserves the active cooldown');
+  assertBattleNodesUnchanged(h, before, 'private-note mode toggle');
+  assert.equal(before.local.cells[first].classList.contains('found-glow'), true);
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'meow'), voice, 'incoming HP and note edits never repeat a local cat voice');
+});
+
+test('duplicate or fresh identical snapshots preserve DOM identity and never replay capture highlights or voices', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), authority = h.begin();
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = null; h.enableRendering();
+  const receive = snapshot => { h.onMessage({ type: 'state', state: json(snapshot) }); h.renderBattle(); };
+  receive(h.publicGame(authority)); const initial = battleNodeReferences(h);
+  h.advance(300);
+  const index = authority.boards[1].puzzle.solution[0];
+  h.context.CatBattle.act(authority, 1, { type: 'guess', actionId: 'guest-node-capture', boardId: authority.boards[1].puzzle.id, index }, h.now());
+  const snapshot = json(h.publicGame(authority)); receive(snapshot);
+  assertBattleNodesUnchanged(h, initial, 'fresh own-capture snapshot');
+  const after = battleNodeReferences(h), timers = [...h.state.battleFXTimers], voices = json(playedAudio(h).filter(sound => sound.kind === 'meow'));
+  assert.equal(voices.length, 1); assert.equal(after.local.cells[index].classList.contains('found-glow'), true);
+  receive(snapshot); receive({ ...snapshot, revision: snapshot.revision + 1 });
+  assertBattleNodesUnchanged(h, after, 'duplicate event snapshot');
+  assert.deepEqual([...h.state.battleFXTimers], timers); assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'meow'), voices);
+  h.tick(950); h.renderBattle();
+  assert.equal(after.local.cells[index].classList.contains('found-glow'), false);
+  assert.equal(after.local.combo.classList.contains('combo-glow'), false);
+  assertBattleNodesUnchanged(h, after, 'expired effect rerender');
+  receive({ ...snapshot, revision: snapshot.revision + 2 });
+  assert.equal(after.local.cells[index].classList.contains('found-glow'), false, 'an expired highlight is not reapplied for the stored event');
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'meow'), voices);
 });
 
 test('battle reduced-motion mode keeps damage feedback without launching moving cats or changing combat timing', () => {
@@ -1019,6 +1142,57 @@ test('HTML loads palette and audio modules before their adapters and omits redun
   }
   for (const id of ['noteMode', 'battleNote', 'mute', 'battleMute', 'helpDialog', 'battleHelp', 'copyGameRoom', 'battleCopyRoom', 'rematch']) {
     assert.match(html, new RegExp(`id="${id}"`), `${id} remains available`);
+  }
+});
+
+function declaredMeowSamples(html) {
+  const declaration = /window\.CAT_MEOW_SAMPLES\s*=\s*(\[[\s\S]*?\])\s*;/.exec(html);
+  assert.ok(declaration, 'the page must declare its real cat sample sources');
+  return json(vm.runInNewContext(declaration[1]));
+}
+
+test('public page declares all three licensed WAV clips before initializing the game', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.deepEqual(declaredMeowSamples(html), ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav']);
+  assert.ok(html.indexOf('window.CAT_MEOW_SAMPLES') < html.indexOf('app.js'));
+  const provenance = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/audio/provenance.json'), 'utf8'));
+  const attribution = fs.readFileSync(path.join(ROOT, 'assets/audio/ATTRIBUTION.md'), 'utf8');
+  assert.equal(provenance.source.license, 'CC0 1.0 Universal');
+  assert.equal(provenance.source.page, 'https://opengameart.org/content/cat-purr-meow');
+  assert.match(attribution, /Kerzoven/); assert.match(attribution, /CC0 1\.0/);
+  assert.equal(provenance.files.length, 3);
+  for (const record of provenance.files) {
+    const wav = fs.readFileSync(path.join(ROOT, record.distributed_path));
+    assert.equal(wav.toString('ascii', 0, 4), 'RIFF'); assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+    assert.equal(createHash('sha256').update(wav).digest('hex'), record.candidate_sha256, 'distributed clip matches its provenance');
+    assert.ok(Number.isFinite(record.candidate_duration_seconds) && record.candidate_duration_seconds > 0);
+    assert.ok(declaredMeowSamples(html).includes(`./${record.distributed_path}`));
+  }
+});
+
+test('standalone preview embeds the exact real WAV clips without fetching local files', t => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'cat-battle-preview-test-'));
+  t.after(() => fs.rmSync(temporary, { recursive: true, force: true }));
+  const destination = path.join(temporary, 'preview.html');
+  const report = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts/build-preview.js'), destination], { encoding: 'utf8' }));
+  assert.equal(report.selfContained, true); assert.equal(report.published, false);
+  const html = fs.readFileSync(destination, 'utf8'), samples = declaredMeowSamples(html);
+  assert.equal(samples.length, 3);
+  for (const [index, filename] of ['cat-meow-soft.wav', 'cat-meow-food.wav', 'cat-meow-purr.wav'].entries()) {
+    assert.match(samples[index], /^data:audio\/(?:wav|wave|x-wav);base64,/);
+    assert.deepEqual(Buffer.from(samples[index].split(',')[1], 'base64'), fs.readFileSync(path.join(ROOT, 'assets/audio', filename)));
+  }
+  assert.doesNotMatch(html, /<script\s+src=|<link\s+rel="stylesheet"|url\(['"]?\.\/assets/);
+});
+
+test('game audio receives the page-provided sample sources including offline data URIs', () => {
+  for (const meowSamples of [
+    ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav'],
+    ['data:audio/wav;base64,UklGRg==', 'data:audio/wav;base64,V0FWRQ==', 'data:audio/wav;base64,UENNIQ==']
+  ]) {
+    const h = harness({ fakeAudio: true, meowSamples }); h.begin(); h.renderLegacy();
+    assert.equal(h.audio.options.length, 1, 'rendering reuses one audio controller');
+    assert.deepEqual(json(h.audio.options[0].samples), meowSamples);
   }
 });
 
@@ -1118,23 +1292,69 @@ test('page load and authoritative rendering do not create an AudioContext before
   assert.equal(constructions, 1, 'the first permitted context construction belongs to the pointer gesture');
 });
 
-test('one fresh battle hit routes found, launch and impact audio once under the authoritative event ID', () => {
+test('every fresh own battle capture routes a real-meow cue, with a separate combo accent after the first', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin(); h.renderBattle();
   h.audio.calls.length = 0;
   h.act(0, battleAction(h, 0)); h.renderBattle(); h.flushFrames();
   let sounds = playedAudio(h);
-  for (const kind of ['found', 'launch', 'impact']) {
+  for (const kind of ['meow', 'launch', 'impact']) {
     assert.equal(sounds.filter(sound => sound.kind === kind).length, 1, `one ${kind} request per event`);
     assert.ok(sounds.find(sound => sound.kind === kind).id.includes(game.lastEvent.id), `${kind} uses the authoritative event identity`);
   }
+  assert.equal(sounds.find(sound => sound.kind === 'meow').combo, 1);
+  assert.equal(sounds.some(sound => sound.kind === 'combo' || sound.kind === 'found'), false);
   const firstSounds = json(sounds);
   h.observeBattleEvent(game.lastEvent); h.renderBattle(); h.flushFrames();
   assert.deepEqual(playedAudio(h), firstSounds, 'rendering and observing one event again never queue it twice');
   h.advance(300); h.act(0, battleAction(h, 0, { index: game.boards[0].puzzle.solution[1] })); h.renderBattle();
   sounds = playedAudio(h).slice(firstSounds.length);
+  assert.equal(sounds.filter(sound => sound.kind === 'meow').length, 1, 'a combo must not replace the cat voice');
+  assert.equal(sounds.find(sound => sound.kind === 'meow').combo, 2);
+  assert.ok(sounds.find(sound => sound.kind === 'meow').id.includes(game.lastEvent.id));
   assert.equal(sounds.filter(sound => sound.kind === 'combo').length, 1);
   assert.equal(sounds.find(sound => sound.kind === 'combo').combo, 2);
+  assert.equal(sounds.some(sound => sound.kind === 'found'), false);
   assert.equal(game.players[1].hp, 135, 'audio never changes authoritative damage');
+});
+
+test('the winning battle capture meows once after cancellation and delays its win accent without an attack', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
+  h.renderBattle(); game.players[1].hp = 5; h.audio.calls.length = 0;
+  h.act(0, battleAction(h, 0)); h.renderBattle(); h.flushFrames();
+  assert.equal(game.status, 'finished'); assert.equal(game.winner, 0);
+  const sounds = json(playedAudio(h)), meows = sounds.filter(sound => sound.kind === 'meow');
+  assert.equal(meows.length, 1); assert.ok(meows[0].id.includes(game.lastEvent.id));
+  assert.equal(sounds.filter(sound => sound.kind === 'win').length, 1);
+  assert.ok(sounds.find(sound => sound.kind === 'win').delay >= 0.5, 'the recorded cat gets room before the win accent');
+  assert.equal(sounds.some(sound => ['launch', 'impact'].includes(sound.kind)), false);
+  const stop = h.audio.calls.findIndex(call => call.method === 'stopAll');
+  const voice = h.audio.calls.findIndex(call => call.method === 'play' && call.args[0] === 'meow');
+  assert.ok(stop >= 0 && voice > stop, 'terminal cleanup cannot immediately cancel the winning cat voice');
+  assert.equal(h.state.battleFXNodes.size, 0); assert.equal(h.state.battleFXTimers.size, 0);
+  h.renderBattle(); h.observeBattleEvent(game.lastEvent); h.updateBattleTimers();
+  assert.deepEqual(playedAudio(h), sounds, 'the final render and stored event cannot replay the voice');
+});
+
+test('a guest hears its fresh winning battle capture once but never replays a terminal snapshot', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), authority = h.begin();
+  authority.players[0].hp = 5;
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = null;
+  const receive = snapshot => { h.onMessage({ type: 'state', state: json(snapshot) }); h.renderBattle(); };
+  receive(h.publicGame(authority)); h.audio.calls.length = 0;
+  h.advance(300);
+  assert.equal(h.context.CatBattle.act(authority, 1, { type: 'guess', actionId: 'guest-winning-meow', boardId: authority.boards[1].puzzle.id, index: authority.boards[1].puzzle.solution[0] }, h.now()).accepted, true);
+  const final = json(h.publicGame(authority)); receive(final);
+  const sounds = json(playedAudio(h));
+  assert.equal(sounds.filter(sound => sound.kind === 'meow').length, 1);
+  assert.equal(sounds.filter(sound => sound.kind === 'win').length, 1);
+  receive(final); receive({ ...final, revision: final.revision + 1 });
+  assert.deepEqual(playedAudio(h), sounds);
+  h.onClose(); h.onOpen(); receive(final); h.renderBattle();
+  assert.deepEqual(playedAudio(h), sounds, 'reconnection cannot replay the stored terminal voice');
+  const joiner = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true });
+  joiner.state.role = 'guest'; joiner.state.you = 1;
+  joiner.onMessage({ type: 'state', state: final }); joiner.renderBattle();
+  assert.equal(playedAudio(joiner).some(sound => ['meow', 'combo', 'win', 'lose'].includes(sound.kind)), false);
 });
 
 test('guest snapshots never replay historical audio, including duplicates, old revisions and reconnects', () => {
@@ -1148,7 +1368,7 @@ test('guest snapshots never replay historical audio, including duplicates, old r
   const receive = snapshot => { h.onMessage({ type: 'state', state: json(snapshot) }); h.renderBattle(); h.flushFrames(); };
   const initial = hit(0); receive(initial); assert.deepEqual(playedAudio(h), [], 'joining suppresses the stored last event');
   const fresh = hit(1); receive(fresh); const live = json(playedAudio(h)); assert.ok(live.some(sound => sound.kind === 'damage'));
-  assert.equal(live.some(sound => ['found', 'combo'].includes(sound.kind)), false, 'opponent hits use incoming damage feedback without local success cues');
+  assert.equal(live.some(sound => ['meow', 'found', 'combo'].includes(sound.kind)), false, 'opponent hits use incoming damage feedback without local success cues');
   receive(fresh); receive(initial); assert.deepEqual(playedAudio(h), live);
   const repeated = json(fresh); repeated.revision++; receive(repeated); assert.deepEqual(playedAudio(h), live);
   h.onClose(); h.onOpen(); const reconnect = hit(2); receive(reconnect); assert.deepEqual(playedAudio(h), live);
@@ -1170,19 +1390,39 @@ for (const cleanup of ['pause', 'disconnect', 'finished', 'aborted', 'background
   assert.ok(h.audio.calls.some(call => call.method === 'stopAll'), `${cleanup} must stop queued or active voices`);
   const afterCleanup = json(playedAudio(h));
   h.renderBattle(); h.flushFrames(); h.tick(1600);
-  assert.equal(playedAudio(h).filter(sound => ['found', 'combo', 'launch', 'impact'].includes(sound.kind)).length, 0, 'cleanup never replays the existing attack');
+  assert.equal(playedAudio(h).filter(sound => ['meow', 'found', 'combo', 'launch', 'impact'].includes(sound.kind)).length, 0, 'cleanup never replays the existing attack');
   assert.deepEqual(playedAudio(h), afterCleanup);
 });
 
-test('classic hit audio is event-keyed and stays idempotent across repeated rendering', () => {
+test('classic captures keep an event-keyed real-meow cue on top of the separate combo accent', () => {
   const h = harness({ fakeAudio: true }), game = h.begin(); h.renderLegacy(); h.audio.calls.length = 0;
   h.act(0, h.action('guess', { index: game.puzzle.solution[0] })); h.renderLegacy();
   const sounds = json(playedAudio(h));
-  assert.equal(sounds.filter(sound => sound.kind === 'found').length, 1);
-  assert.ok(sounds.find(sound => sound.kind === 'found').id, 'classic hit audio carries a deduplication identity');
+  assert.equal(sounds.filter(sound => sound.kind === 'meow').length, 1);
+  assert.ok(sounds.find(sound => sound.kind === 'meow').id, 'classic hit audio carries a deduplication identity');
+  assert.equal(sounds.some(sound => ['found', 'combo'].includes(sound.kind)), false);
   h.renderLegacy(); h.renderLegacy(); assert.deepEqual(playedAudio(h), sounds);
   h.advance(300); h.act(0, h.action('guess', { index: game.puzzle.solution[1] })); h.renderLegacy();
-  assert.equal(playedAudio(h).filter(sound => ['found', 'combo'].includes(sound.kind)).length, 2);
+  const all = playedAudio(h), voices = all.filter(sound => sound.kind === 'meow'), combos = all.filter(sound => sound.kind === 'combo');
+  assert.equal(voices.length, 2); assert.equal(new Set(voices.map(sound => sound.id)).size, 2);
+  assert.deepEqual(voices.map(sound => sound.combo), [1, 2]);
+  assert.equal(combos.length, 1); assert.equal(combos[0].combo, 2);
+  assert.equal(all.some(sound => sound.kind === 'found'), false);
+});
+
+test('the last classic cat still meows once and a terminal history snapshot stays silent', () => {
+  const h = harness({ fakeAudio: true }), game = h.begin(); h.renderLegacy(); h.audio.calls.length = 0;
+  for (const index of game.puzzle.solution) {
+    h.act(0, h.action('guess', { index })); h.renderLegacy(); h.advance(300);
+  }
+  assert.equal(game.status, 'finished');
+  const sounds = json(playedAudio(h)), meows = sounds.filter(sound => sound.kind === 'meow');
+  assert.equal(meows.length, 6); assert.equal(new Set(meows.map(sound => sound.id)).size, 6);
+  assert.equal(sounds.filter(sound => sound.kind === 'win').length, 1);
+  h.renderLegacy(); h.renderLegacy(); assert.deepEqual(playedAudio(h), sounds);
+  const joiner = harness({ fakeAudio: true }); joiner.state.role = 'guest'; joiner.state.you = 1;
+  joiner.onMessage({ type: 'state', state: json(h.publicGame(game)) }); joiner.renderLegacy();
+  assert.equal(playedAudio(joiner).some(sound => ['meow', 'combo', 'win', 'lose'].includes(sound.kind)), false);
 });
 
 test('classic joining and reconnecting synchronize old hit sounds without replaying them', () => {
@@ -1193,7 +1433,7 @@ test('classic joining and reconnecting synchronize old hit sounds without replay
   const receive = value => { guest.onMessage({ type: 'state', state: json(value) }); guest.renderLegacy(); };
   receive(old); assert.deepEqual(playedAudio(guest), []);
   host.advance(300); host.act(0, host.action('guess', { index: authority.puzzle.solution[1] })); const live = snapshot();
-  receive(live); const sounds = json(playedAudio(guest)); assert.ok(sounds.some(sound => ['found', 'combo'].includes(sound.kind)));
+  receive(live); const sounds = json(playedAudio(guest)); assert.ok(sounds.some(sound => ['meow', 'found', 'combo'].includes(sound.kind)));
   receive(live); receive(old); receive(live); assert.deepEqual(playedAudio(guest), sounds);
   guest.onClose(); guest.onOpen();
   host.advance(300); host.act(0, host.action('guess', { index: authority.puzzle.solution[2] })); receive(snapshot());
@@ -1221,6 +1461,11 @@ test('sixth battle cat queues one board-clear accent and rematch resets the audi
   const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin(); h.renderBattle();
   const firstID = game.id, solutions = [...game.boards[0].puzzle.solution]; h.audio.calls.length = 0;
   for (const index of solutions) { h.act(0, battleAction(h, 0, { index })); h.renderBattle(); h.advance(300); }
+  const voices = playedAudio(h).filter(sound => sound.kind === 'meow');
+  assert.equal(voices.length, 6, 'every capture, including rollover, keeps its own cat voice');
+  assert.equal(new Set(voices.map(sound => sound.id)).size, 6);
+  assert.deepEqual(voices.map(sound => sound.combo), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'combo').map(sound => sound.combo), [2, 3, 4, 5, 6]);
   const clear = playedAudio(h).filter(sound => sound.kind === 'boardClear');
   assert.equal(clear.length, 1); assert.ok(clear[0].id.includes(game.lastEvent.id));
   h.renderBattle(); assert.equal(playedAudio(h).filter(sound => sound.kind === 'boardClear').length, 1);
@@ -1261,13 +1506,66 @@ test('battle glow hooks are event-bound and cleared with their tracked effect ti
   const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
   const badge = h.get('.battle-side.local').querySelector('.combo-badge');
   assert.equal(cell.classList.contains('found-glow'), true); assert.equal(badge.classList.contains('combo-glow'), true);
-  assert.equal(badge.dataset.comboTier, '1'); assert.equal(h.state.battleClassEffects.size, 2);
+  const callout = h.get('.battle-side.local').querySelector('.capture-callout');
+  assert.equal(badge.dataset.comboTier, '1'); assert.equal(callout.textContent, '抓到了！');
+  assert.equal(callout.classList.contains('show'), true);
+  for (const [node, className] of [[cell, 'found-glow'], [badge, 'combo-glow'], [callout, 'show']]) {
+    assert.ok([...h.state.battleClassEffects].some(effect => effect.node === node && effect.className === className));
+  }
   const timers = [...h.state.battleFXTimers]; h.observeBattleEvent(game.lastEvent);
   assert.deepEqual([...h.state.battleFXTimers], timers, 'reobserving an event cannot add glow timers');
   h.clearBattleFX();
   assert.equal(cell.classList.contains('found-glow'), false); assert.equal(badge.classList.contains('combo-glow'), false);
+  assert.equal(callout.classList.contains('show'), false);
   assert.equal(h.state.battleClassEffects.size, 0); assert.equal(h.state.battleFXTimers.size, 0);
   assert.equal(timers.some(id => h.timers.has(id)), false);
+});
+
+test('capture callouts reuse one node and replace their timeout at each fresh combo', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.renderBattle();
+  const callout = h.get('.battle-side.local').querySelector('.capture-callout');
+  const solutions = [...game.boards[0].puzzle.solution], labels = ['抓到了！', '2 連喵！', '3 連喵！', '喵喵連擊 ×4'];
+  for (let index = 0; index < 4; index++) {
+    h.act(0, battleAction(h, 0, { index: solutions[index] })); h.renderBattle();
+    assert.strictEqual(h.get('.battle-side.local').querySelector('.capture-callout'), callout);
+    assert.equal(callout.textContent, labels[index]); assert.equal(callout.classList.contains('show'), true);
+    assert.equal([...h.state.battleClassEffects].filter(effect => effect.node === callout && effect.className === 'show').length, 1);
+    if (index < 3) h.tick(300);
+  }
+  h.tick(749); assert.equal(callout.classList.contains('show'), true, 'an older capture cannot hide the newest callout');
+  h.tick(1); assert.equal(callout.classList.contains('show'), false);
+  h.renderBattle(); assert.equal(callout.classList.contains('show'), false, 'rendering the stored event does not restart its callout');
+});
+
+for (const reducedMotion of [false, true]) test(`HP value is immediate while its damage residue is presentation-only, reduced motion ${reducedMotion}`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.context.matchMedia = () => ({ matches: reducedMotion }); h.renderBattle();
+  const hp = h.get('.battle-side.opponent').querySelector('.hp-meter'), fill = hp.querySelector('.hp-fill'), lag = hp.querySelector('.hp-lag');
+  assert.equal(Number.parseFloat(fill.style.width), 100); assert.equal(Number.parseFloat(lag.style.width), 100);
+  h.act(0, battleAction(h, 0)); h.renderBattle();
+  const ratio = 145 / 150 * 100;
+  assert.equal(game.players[1].hp, 145); assert.equal(hp.getAttribute('aria-valuenow'), '145');
+  assert.equal(Number.parseFloat(fill.style.width), ratio);
+  assert.equal(Number.parseFloat(lag.style.width), reducedMotion ? ratio : 100);
+  assert.equal(h.frames.size > 0, !reducedMotion);
+  h.flushFrames(); assert.equal(Number.parseFloat(lag.style.width), ratio);
+  assert.equal(game.players[1].hp, 145, 'frame completion cannot apply damage again');
+});
+
+for (const interruption of ['pause', 'background']) test(`${interruption} before an HP residue frame cancels it and settles the bar at authoritative HP`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.renderBattle();
+  h.act(0, battleAction(h, 0)); h.renderBattle();
+  const hp = h.get('.battle-side.opponent').querySelector('.hp-meter'), lag = hp.querySelector('.hp-lag');
+  assert.ok(h.frames.size > 0); assert.equal(Number.parseFloat(lag.style.width), 100);
+  if (interruption === 'pause') { h.context.CatBattle.pause(game, h.now()); h.renderBattle(); }
+  else {
+    h.context.document.hidden = true; h.dispatchDocument('visibilitychange');
+    assert.equal(h.frames.size, 0);
+    h.context.document.hidden = false; h.dispatchDocument('visibilitychange');
+  }
+  assert.equal(h.frames.size, 0); assert.equal(h.state.battleFXFrames.size, 0);
+  assert.equal(Number.parseFloat(lag.style.width), 145 / 150 * 100, 'cancelling the frame cannot strand a full HP residue');
+  h.flushFrames(); assert.equal(game.players[1].hp, 145);
 });
 
 for (const reducedMotion of [false, true]) test(`board-clear celebration is bounded and cleaned up with reduced motion ${reducedMotion}`, () => {

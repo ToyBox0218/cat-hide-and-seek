@@ -1,0 +1,73 @@
+{
+  "source": {
+    "title": "Cat Purr & Meow",
+    "creator": "Kerzoven",
+    "published": "2022-04-16",
+    "page": "https://opengameart.org/content/cat-purr-meow",
+    "license": "CC0 1.0 Universal",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "retrieved": "2026-10-05",
+    "evidence": "Creator identifies these as their cat recordings and notes background noise caused by movement.",
+    "attribution_optional": "Cat recordings: Kerzoven, Cat Purr & Meow (CC0 1.0), https://opengameart.org/content/cat-purr-meow"
+  },
+  "audition_limit": "Audio input unsupported. Timing recommendations use waveforms and spectrograms only; emotional quality and absence of incidental voices have not been verified by ear.",
+  "files": [
+    {
+      "original": "cat_softmew.wav",
+      "direct_download": "https://opengameart.org/sites/default/files/cat_softmew.wav",
+      "bytes": 218620,
+      "sha256": "7de9fed4401b677ccbf072781182857d875093a8e9b5727fc21b38028cfd5a90",
+      "duration_seconds": 2.4781859410430838,
+      "sample_rate_hz": 44100,
+      "channels": 1,
+      "bits_per_sample": 16,
+      "candidate": "softmew-short.wav",
+      "trim_original_seconds": [
+        1.33,
+        1.92
+      ],
+      "candidate_duration_seconds": 0.59,
+      "changes": "Trimmed, DC removed, 6 ms fade-in, 35 ms fade-out, peak normalized to -6 dBFS; no pitch shift or filtering.",
+      "candidate_sha256": "bef7a7547e15960f16f40732331252238c6e36b6dac53c927fe1fa7a3c5a0b5e",
+      "distributed_path": "assets/audio/cat-meow-soft.wav"
+    },
+    {
+      "original": "cat_mewfood.wav",
+      "direct_download": "https://opengameart.org/sites/default/files/cat_mewfood.wav",
+      "bytes": 99450,
+      "sha256": "3550f080882b52e236c8810a353756b2e0395fb7dadf0aeface0a06893cd181f",
+      "duration_seconds": 1.1270521541950114,
+      "sample_rate_hz": 44100,
+      "channels": 1,
+      "bits_per_sample": 16,
+      "candidate": "mewfood-short.wav",
+      "trim_original_seconds": [
+        0.54,
+        1.0
+      ],
+      "candidate_duration_seconds": 0.46,
+      "changes": "Trimmed, DC removed, 6 ms fade-in, 35 ms fade-out, peak normalized to -6 dBFS; no pitch shift or filtering.",
+      "candidate_sha256": "a3bce7e76df8833f7f684612371ef89d711b804ac4c08dcdd7ac09c2c3e0c9b3",
+      "distributed_path": "assets/audio/cat-meow-food.wav"
+    },
+    {
+      "original": "cat_mewpurr.wav",
+      "direct_download": "https://opengameart.org/sites/default/files/cat_mewpurr.wav",
+      "bytes": 124464,
+      "sha256": "a58487959ee00c812f9f02ca822a668173bcf04a98c6dd98a902514a1d3994ea",
+      "duration_seconds": 1.4106575963718821,
+      "sample_rate_hz": 44100,
+      "channels": 1,
+      "bits_per_sample": 16,
+      "candidate": "mewpurr-short.wav",
+      "trim_original_seconds": [
+        0.0,
+        0.98
+      ],
+      "candidate_duration_seconds": 0.98,
+      "changes": "Trimmed, DC removed, 6 ms fade-in, 35 ms fade-out, peak normalized to -6 dBFS; no pitch shift or filtering.",
+      "candidate_sha256": "f518eb44c1df13932ba01fee91000e302edd1211c12e2b8e3bec3250f69f138b",
+      "distributed_path": "assets/audio/cat-meow-purr.wav"
+    }
+  ]
+}
