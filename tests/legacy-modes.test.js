@@ -247,7 +247,7 @@ function ruleRelatedEmptyCells(puzzle, cat) {
   return [...new Set(Object.values(groups).flat())];
 }
 function assertUnopenedCell(cell, { note = false, disabled = false } = {}) {
-  assert.equal(cell.textContent, note ? '◇' : '', `unopened cell ${cell.dataset.index} has no factual X`);
+  assert.equal(cell.textContent, note ? '×' : '', `unopened cell ${cell.dataset.index} retains its correct private-only or unopened glyph`);
   for (const name of ['opened', 'cat', 'auto-x', 'dimmed']) assert.equal(cell.classList.contains(name), false, `unopened cell ${cell.dataset.index} must not be ${name}`);
   assert.equal(cell.classList.contains('note'), note);
   assert.equal(cell.disabled, disabled);
@@ -584,7 +584,7 @@ test('cell styles cannot recreate automatic X marks or block direct private-note
   assert.ok(noteRules.length, 'private notes retain their own visible style');
   for (const [, selectors, declarations] of noteRules) {
     assert.doesNotMatch(declarations, /pointer-events\s*:\s*none\b/i, `${selectors.trim()} cannot prevent toggling a private note`);
-    assert.doesNotMatch(declarations, /\bcontent\s*:/i, `${selectors.trim()} must not duplicate the actual diamond text`);
+    assert.doesNotMatch(declarations, /\bcontent\s*:/i, `${selectors.trim()} must not duplicate the actual private-mark text`);
   }
   for (const [, selectors, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/\.cell\.opened\b[^{}]*::?(?:before|after)\b/.test(selectors)) assert.doesNotMatch(declarations, /\bcontent\s*:\s*['"][^'"]+['"]/i, 'confirmed-empty text is rendered by the DOM, not a second generated glyph');
@@ -592,6 +592,12 @@ test('cell styles cannot recreate automatic X marks or block direct private-note
 });
 
 test('purple private-note and dark-gray confirmed-empty glyphs retain readable contrast on every base region color', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const privateLegends = [...html.matchAll(/class="sample note-sample">([^<]+)<\/i>/g)];
+  assert.equal(privateLegends.length, 2);
+  assert.ok(privateLegends.every(match => match[1] === '×'), 'both legends use a purple X for private marks');
+  assert.match(html, /深灰 × 代表已確認的空格；紫色 ×/);
+  for (const file of ['app.js', 'battle-ui.js', 'index.html']) assert.doesNotMatch(fs.readFileSync(path.join(ROOT, file), 'utf8'), /◇/, `${file} must not show the old diamond marker`);
   const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
   const luminance = hex => hex.match(/[\da-f]{2}/gi).map(component => parseInt(component, 16) / 255)

@@ -1,7 +1,7 @@
-CAT HIDE & SEEK — APPROVED MANUAL-MARKS RELEASE
+CAT HIDE & SEEK — APPROVED PURPLE-X CORRECTION
 Date: 2026-10-05
-Base repository commit: a9dbfc6e27d989bb78a0eee333348448b1aaf47d
-Status: User approved publication of the manual-marks update. a9dbfc6 is the preserved rollback parent. Exact deployment and HTTP verification are recorded separately after publication.
+Base repository commit: 7c201ca8f8b125664143b7a0f7c357e744e613b1
+Status: User approved publication of the private-marker purple-X correction. 7c201ca is the preserved rollback parent. Exact deployment and HTTP verification are recorded separately after publication.
 
 PASS — 226 Node tests (node --test)
 33 battle engine tests:
@@ -129,7 +129,7 @@ not a browser recording; subjective audio quality has not been auditioned here.
 MANUAL MARKS / EXPLICIT NOTE-MODE ROUND
 - Removed automatic deduction marks, styling, hover reasons and action rejection.
 - Row, column, region and diagonal-related unopened cells stay playable.
-- Actual misses display dark-gray ×; private manually toggled notes display purple ◇.
+- Actual misses display dark-gray ×; private manually toggled notes display purple ×.
 - Note-mode ON/OFF label, aria-pressed, board outline and plain-language status agree.
 - Notes do not reveal cells, alter HP/combo/fish/turns, or trigger combat sounds.
 - Off-turn/miss-lock notes remain usable; confirmed cells cannot be marked again.
@@ -137,6 +137,6 @@ MANUAL MARKS / EXPLICIT NOTE-MODE ROUND
 - Explicit scan selection exits note mode; enabling notes clears armed scan tools.
 - Repeated misses do not repeat effects, extend cooldown or farm fish.
 - Minimum calculated base-palette contrast: private #58306f = 4.81001194:1;
-  confirmed #493d35 = 4.96631606:1. Shape is distinct as well as color.
+  confirmed #493d35 = 4.96631606:1. Both use ×; note/opened classes, accessible labels and legend retain their distinct meanings.
 - 226 total tests pass: 33 battle engine, 121 app/legacy integration,
   52 audio and 20 palette. No browser or physical-device pass is implied.

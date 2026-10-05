@@ -475,8 +475,8 @@ function syncNoteModeUI(){
   const active=state.mode==='note';document.body.classList.toggle('note-mode-active',active);
   for(const [buttonId,statusId] of [['#noteMode','#noteModeStatus'],['#battleNote','#battleNoteStatus']]){
     const button=$(buttonId),status=$(statusId);
-    if(button){button.textContent=`◇ 記號模式：${active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=active?'關閉記號模式，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
-    if(status)status.textContent=active?'記號模式已開：點格子加／取消紫色 ◇，不會猜測；關閉即可找貓':'直接點格子找貓；深灰 × 表示已確認的空格';
+    if(button){button.textContent=`× 記號模式：${active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=active?'關閉記號模式，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
+    if(status)status.textContent=active?'記號模式已開：點格子加／取消紫色 ×，不會猜測；關閉即可找貓':'直接點格子找貓；深灰 × 表示已確認的空格';
   }
 }
 function observeLegacyAudio(game){
@@ -532,7 +532,7 @@ function render() {
     if (row===size-1||game.puzzle.regions[index+size]!==region) cell.classList.add('eb');
     if (game.found.includes(index)) { cell.classList.add('cat'); cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到貓`); }
     else if (game.misses.includes(index)) { cell.classList.add('opened'); cell.textContent='×'; cell.disabled=true; }
-    else if (state.notes.has(index)) { cell.classList.add('note'); cell.textContent='◇'; }
+    else if (state.notes.has(index)) { cell.classList.add('note'); cell.textContent='×'; }
     if (state.mode==='guess'&&game.turn!==state.you) cell.disabled=true;
     cell.onclick=()=>{
       if (state.mode==='note') { state.notes.has(index)?state.notes.delete(index):state.notes.add(index); saveLocal(); render(); return; }
@@ -608,7 +608,7 @@ function renderV2() {
     if(row===size-1||game.puzzle.regions[index+size]!==region)cell.classList.add('eb');
     if(game.found.includes(index)){cell.classList.add('cat');cell.innerHTML=catCharacter(catVariant(game,index),'board-character');const treasure=game.settings.mode==='treasure'&&(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));if(treasure)cell.classList.add('treasure-cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到${treasure?'鈴鐺':''}貓`)}
     else if(game.misses.includes(index)){cell.classList.add('opened');cell.textContent='×';cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻開的空格，確認沒有貓`)}
-    else if(state.notes.has(index)){cell.classList.add('note');cell.textContent='◇';cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記，尚未確認`)}
+    else if(state.notes.has(index)){cell.classList.add('note');cell.textContent='×';cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記，尚未確認`)}
     if(probed.has(index)&&!game.found.includes(index)&&!game.misses.includes(index))cell.classList.add('probed');
     if(state.yarnTargets.includes(index))cell.classList.add('yarn-picked');
     if(game.lastEvent?.index===index)cell.classList.add('latest-result');
