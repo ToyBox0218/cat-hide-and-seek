@@ -659,3 +659,24 @@ body.is-battle #turnBanner { display: none; }
   #previewBattle { width: 100%; }
   .entry-choice #quickMatch { min-height: 39px; }
 }
+/* The selected cat is the same character in setup, classic play and battle. */
+.lively-avatar { animation: avatarIdle 4.8s ease-in-out infinite; transform-origin: 50% 88%; }
+.lively-avatar .cat-eyes { animation: avatarBlink 5.6s linear infinite; transform-origin: center; }
+.lively-avatar .cat-ears { animation: avatarEarWiggle 7.2s ease-in-out infinite; transform-origin: 50% 90%; }
+.avatar-choice:nth-child(even) .lively-avatar, .opponent .lively-avatar { animation-delay: -2.3s; }
+.avatar-choice:nth-child(3n) .cat-eyes { animation-delay: -1.9s; }
+@keyframes avatarIdle { 0%,100% { transform: translateY(0) rotate(-1deg); } 48% { transform: translateY(-3px) rotate(1.5deg); } }
+@keyframes avatarBlink { 0%,42%,46%,79%,83%,100% { transform: scaleY(1); } 44%,81% { transform: scaleY(.12); } }
+@keyframes avatarEarWiggle { 0%,65%,75%,100% { transform: rotate(0); } 68% { transform: rotate(-5deg); } 71% { transform: rotate(4deg); } }
+@media (prefers-reduced-motion: reduce) { .lively-avatar, .lively-avatar .cat-eyes, .lively-avatar .cat-ears { animation: none !important; } }
+/* One atlas, one mapping: orange / tuxedo / calico / fold / Siamese / brown. */
+.avatar-art { display: block; width: 100%; height: 100%; background-image: url('./assets/player-avatars.png'); background-repeat: no-repeat; background-size: 300% 200%; background-position: 0 0; }
+.avatar-art-0 { background-position: 0 0; }
+.avatar-art-1 { background-position: 50% 0; }
+.avatar-art-2 { background-position: 100% 0; }
+.avatar-art-3 { background-position: 0 100%; }
+.avatar-art-4 { background-position: 50% 100%; }
+.avatar-art-5 { background-position: 100% 100%; }
+.avatar > .avatar-art, .portrait > .avatar-art { width: 96%; height: 96%; }
+.avatar-choice .avatar-art { transform-origin: 50% 90%; }
+@media (prefers-reduced-motion: reduce) { .avatar-art { animation: none !important; transform: none !important; } }

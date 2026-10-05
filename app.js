@@ -32,6 +32,7 @@ const AVATARS=[
 const NICK_ADJECTIVES=['奶油','星星','棉花','蜂蜜','布丁','小雨','泡泡','月光','焦糖','草莓','栗子','雲朵'];
 const NICK_NOUNS=['虎斑','肉球','鈴鐺','鬍鬚','毛球','貓掌','小尾巴','探險家','瞇瞇眼','甜甜圈','小偵探','呼嚕'];
 function catCharacter(variant,extra=''){return `<span class="cat-character cat-character-${variant%8} ${extra}" aria-hidden="true"><i class="cat-ears"></i><i class="cat-face"></i><i class="cat-mark"></i><i class="cat-eyes"></i><i class="cat-accessory"></i></span>`}
+function playerAvatar(variant,extra=''){const selected=Number.isInteger(+variant)&&+variant>=0&&+variant<AVATARS.length?+variant:0;return `<span class="avatar-art avatar-art-${selected} lively-avatar ${extra}" data-avatar="${selected}" aria-hidden="true"></span>`}
 function stableHash(value){let hash=2166136261;for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
 const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
@@ -515,7 +516,7 @@ function renderV2() {
     const intelText=visibleIntel.slice(-2).map(intel=>intel.type==='magnifier'?`◎ 周圍有 ${intel.count} 隻貓`:`🧶 選取格${intel.hasCat?'有':'沒有'}貓`).join('<br>');
     const captures=game.found.filter(index=>+game.foundBy[index]===playerIndex),fallback=Math.max(0,player.cats-captures.length);
     const basketCats=[...captures.map((index,i)=>`<span class="basket-cat" title="已找到的貓" style="animation-delay:${Math.min(i*.02,.3)}s">${catCharacter(catVariant(game,index),'basket-character')}</span>`),...Array.from({length:fallback},(_,i)=>`<span class="basket-cat">${catCharacter((playerIndex*3+i)%8,'basket-character')}</span>`)];
-    element.innerHTML=`<div class="turn-label" aria-hidden="true">目前回合</div><div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${catCharacter(player.avatar||0,'avatar-character')}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'共同進度':'個人成績'}${fishText} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${basketCats.join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
+    element.innerHTML=`<div class="turn-label" aria-hidden="true">目前回合</div><div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${playerAvatar(player.avatar||0,'avatar-character')}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'共同進度':'個人成績'}${fishText} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${basketCats.join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
   }
   const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'本輪已使用道具':state.tool==='magnifier'?'請選未翻中心格':state.tool==='yarn'?`已選 ${state.yarnTargets.length}/3 個相連同區格`:game.shield?'護墊待命中':'';
   document.querySelectorAll('#toolbox [data-item]').forEach(button=>{const cost={magnifier:2,yarn:2,shield:3,hourglass:2}[button.dataset.item];button.disabled=!tools||game.turn!==state.you||game.itemUsedThisTurn||balance<cost;button.classList.toggle('selected',state.tool===button.dataset.item)});$('#confirmYarn').classList.toggle('hidden',state.tool!=='yarn');$('#cancelItem').classList.toggle('hidden',!state.tool);
@@ -562,7 +563,7 @@ setInterval(()=>{
 
 function renderAvatarChoices(){
   const root=$('#avatarChoices');root.innerHTML='';
-  AVATARS.forEach((avatar,index)=>{const button=document.createElement('button');button.type='button';button.className=`avatar-choice ${state.avatar===index?'selected':''}`;button.dataset.avatar=index;button.setAttribute('aria-label',avatar.name);button.setAttribute('aria-pressed',String(state.avatar===index));button.innerHTML=`<span class="avatar avatar-${index}" aria-hidden="true">${catCharacter(index,'avatar-character')}</span>`;button.onclick=()=>{state.avatar=index;localStorage.catAvatar=String(index);renderAvatarChoices()};root.appendChild(button)});
+  AVATARS.forEach((avatar,index)=>{const button=document.createElement('button');button.type='button';button.className=`avatar-choice ${state.avatar===index?'selected':''}`;button.dataset.avatar=index;button.setAttribute('aria-label',avatar.name);button.setAttribute('aria-pressed',String(state.avatar===index));button.innerHTML=`<span class="avatar avatar-${index}" aria-hidden="true">${playerAvatar(index,'avatar-character')}</span>`;button.onclick=()=>{state.avatar=index;localStorage.catAvatar=String(index);renderAvatarChoices()};root.appendChild(button)});
 }
 function setEntryFlow(kind){
   const activeFlow=state.role==='guest'?'join':state.role,active=state.peer?.open&&activeFlow;

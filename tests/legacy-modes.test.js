@@ -562,3 +562,46 @@ test('battle rematch replaces both boards only after both votes and resets HP, c
   }
   assert.equal(h.state.notes.size, 0);
 });
+
+test('public entry keeps basic mode as default and offers battle only in the mode picker', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const picker = html.match(/<select id="gameMode">([\s\S]*?)<\/select>/)[1];
+  assert.match(picker, /<option value="basic" selected>/);
+  assert.match(picker, /<option value="battle">/);
+  assert.equal((picker.match(/ selected/g) || []).length, 1);
+  assert.match(html, /<button id="previewBattle" class="hidden"/);
+  assert.doesNotMatch(html, /<script>\s*startPractice\(\)/);
+  assert.match(html, /<h1>貓咪捉迷藏<\/h1>/);
+});
+
+test('all six selected avatars are identical in setup, classic cards and battle portraits', () => {
+  for (let avatar = 0; avatar < 6; avatar++) {
+    const classic = harness({ local: { catAvatar: String(avatar) } });
+    assert.equal(classic.state.avatar, avatar);
+    const expected = vm.runInContext(`playerAvatar(${avatar}, 'avatar-character')`, classic.context);
+    assert.ok(classic.get('#avatarChoices').children[avatar].innerHTML.includes(expected));
+    classic.begin(); classic.renderLegacy();
+    assert.ok(classic.get('#p0').innerHTML.includes(expected));
+    const battle = harness({ mode: 'battle', battle: true, battleUI: true, local: { catAvatar: String(avatar) } });
+    battle.begin(); battle.renderBattle();
+    assert.ok(battle.get('.battle-side.local').innerHTML.includes(expected));
+    assert.equal(battle.publicGame(battle.state.game).players[0].avatar, avatar);
+  }
+});
+
+test('avatar selection persists and reconnect snapshots keep the selected guest character', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  h.get('#avatarChoices').children[5].onclick();
+  assert.equal(h.state.avatar, 5); assert.equal(h.context.localStorage.catAvatar, '5');
+  h.begin(); h.onMessage({ type: 'hello', nickname: 'Guest', avatar: 4 });
+  assert.equal(h.state.game.players[0].avatar, 5); assert.equal(h.state.game.players[1].avatar, 4);
+  h.onClose(); h.onMessage({ type: 'hello', nickname: 'Guest', avatar: 4 });
+  assert.equal(h.publicGame(h.state.game).players[1].avatar, 4);
+});
+
+test('avatar idle animation includes a reduced-motion opt out', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
+  assert.match(css, /@keyframes avatarIdle/);
+  assert.match(css, /@keyframes avatarBlink/);
+  assert.match(css, /prefers-reduced-motion: reduce[^}]*lively-avatar[^}]*animation: none !important/s);
+});

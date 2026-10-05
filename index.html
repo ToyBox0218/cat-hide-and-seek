@@ -10,17 +10,17 @@
   <button id="helpButton" class="help-fab" aria-label="打開玩法說明">？ 怎麼玩</button>
   <section id="setup" class="panel setup-card">
     <header class="brand"><div class="logo">🐾</div><div><small>一間小屋 · 兩位貓友</small><h1>貓咪捉迷藏</h1><p>兩個瀏覽器，一起找出躲起來的貓！</p></div></header>
-    <div id="entryChoice" class="entry-choice"><h2>今天要怎麼玩？</h2><div class="entry-buttons"><button id="chooseHost" type="button">🐾 建立房間<small>選盤面與回合設定</small></button><button id="chooseJoin" type="button">🚪 加入房間<small>輸入好友給你的房號</small></button></div><div class="quick-actions"><button id="previewBattle" type="button">先試玩大對決 <small>單人練習，不會連線</small></button><button id="quickMatch">⚡ 快速配對</button></div></div>
+    <div id="entryChoice" class="entry-choice"><h2>今天要怎麼玩？</h2><div class="entry-buttons"><button id="chooseHost" type="button">🐾 建立房間<small>選盤面與回合設定</small></button><button id="chooseJoin" type="button">🚪 加入房間<small>輸入好友給你的房號</small></button></div><div class="quick-actions"><button id="previewBattle" class="hidden" type="button">先試玩大對決 <small>單人練習，不會連線</small></button><button id="quickMatch">⚡ 快速配對</button></div></div>
     <div id="entryFlow" class="hidden"><div class="flow-heading"><button id="backToEntry" type="button" aria-label="返回入口選擇">← 返回</button><h2 id="flowTitle"></h2></div>
     <div class="setup-grid">
       <label>暱稱<span class="nick-row"><input id="nick" maxlength="16" value="奶油虎斑" autocomplete="off"><button id="randomNick" type="button" title="隨機產生暱稱" aria-label="隨機產生暱稱">🎲</button></span></label>
       <label class="host-only">棋盤<select id="size"><option value="6">6×6 小盤</option><option value="12">12×12 入門</option><option value="20" selected>20×20 標準</option><option value="24">24×24 大盤</option></select></label>
       <label class="wide host-only">遊戲模式<select id="gameMode">
-        <option value="battle" selected>🐾 貓咪大對決｜即時連鎖攻防</option>
-        <option value="basic">🔎 基本對戰｜找到最多貓獲勝</option>
+        <option value="basic" selected>🔎 基本對戰｜找到最多貓獲勝</option>
         <option value="items">🐟 魚乾道具戰｜翻空格集魚乾</option>
         <option value="treasure">🔔 寶藏派對｜鈴鐺貓值 2 分</option>
         <option value="coop">🤝 默契合作｜共享魚乾與道具</option>
+        <option value="battle">🐾 貓咪大對決｜即時連鎖攻防</option>
       </select><small id="modeDescription">猜空會公開空格並換手；不顯示周圍貓數。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>

@@ -3,7 +3,7 @@ Date: 2026-10-05
 Base repository commit: 85e2b9d5ae1ad7be7344a195435b5044f9d6330d
 Status: Pre-publication test snapshot. User approved updating the original GitHub Pages before visual acceptance. Previous release remains in Git history for rollback.
 
-PASS — 59 Node tests (node --test)
+PASS — 63 Node tests (node --test)
 22 battle engine tests:
 - 1,080 generated puzzles checked with an independent exact solver.
 - 270 additional constant-RNG stress puzzles.
@@ -21,7 +21,7 @@ PASS — 59 Node tests (node --test)
 - Explicit public snapshot whitelist excludes solutions and private histories.
 - Rematch avoids recent puzzle repeats.
 
-37 app/legacy integration and fake-DOM tests:
+41 app/legacy integration and fake-DOM tests:
 - All four original modes, default streak cap off, no ordinary clue numbers.
 - Fish limit, magnifier/private intel, yarn, shield and hourglass.
 - Treasure scoring, cooperative shared progress and completion.
@@ -67,3 +67,11 @@ Use the source build in two Chrome profiles for a real P2P acceptance pass:
 6. Leave disconnected past 60s; confirm no winner and no late revival.
 7. Check 320/360/390/430px portrait and desktop without page overflow.
 8. Check sound toggle after gesture, keyboard focus, and reduced motion.
+
+USER-REPORTED UI FIX (2026-10-05)
+- Public entry remains generic create/join; basic mode is selected by default.
+- Battle is one of the five options in the host mode picker.
+- One six-character portrait atlas maps consistently across lobby, classic and battle.
+- Gentle portrait bob/sway; reduced-motion disables it.
+- Four additional tests cover default navigation, all six mappings, persisted/reconnected
+  avatar identity, and reduced-motion opt-out.
