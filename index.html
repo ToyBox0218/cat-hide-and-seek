@@ -9,12 +9,13 @@
 <body><main>
   <button id="helpButton" class="help-fab" aria-label="打開玩法說明">？ 怎麼玩</button>
   <section id="setup" class="panel setup-card">
-    <div class="quick-actions"><button id="quickMatch">⚡ 快速配對</button></div>
     <header class="brand"><div class="logo">🐾</div><div><small>GITHUB PAGES × WEBRTC</small><h1>貓咪捉迷藏</h1><p>兩個瀏覽器，一起找出躲起來的貓！</p></div></header>
+    <div id="entryChoice" class="entry-choice"><h2>今天要怎麼玩？</h2><div class="entry-buttons"><button id="chooseHost" type="button">🐾 建立房間<small>選盤面與回合設定</small></button><button id="chooseJoin" type="button">🚪 加入房間<small>輸入好友給你的房號</small></button></div><div class="quick-actions"><button id="quickMatch">⚡ 快速配對</button></div></div>
+    <div id="entryFlow" class="hidden"><div class="flow-heading"><button id="backToEntry" type="button" aria-label="返回入口選擇">← 返回</button><h2 id="flowTitle"></h2></div>
     <div class="setup-grid">
       <label>暱稱<span class="nick-row"><input id="nick" maxlength="16" value="奶油虎斑" autocomplete="off"><button id="randomNick" type="button" title="隨機產生暱稱" aria-label="隨機產生暱稱">🎲</button></span></label>
-      <label>棋盤<select id="size"><option value="12">12×12 入門</option><option value="20" selected>20×20 標準</option><option value="24">24×24 大盤</option></select></label>
-      <label class="wide">遊戲模式<select id="gameMode">
+      <label class="host-only">棋盤<select id="size"><option value="6">6×6 小盤</option><option value="12">12×12 入門</option><option value="20" selected>20×20 標準</option><option value="24">24×24 大盤</option></select></label>
+      <label class="wide host-only">遊戲模式<select id="gameMode">
         <option value="basic" selected>🔎 基本對戰｜找到最多貓獲勝</option>
         <option value="items">🐟 魚乾道具戰｜翻空格集魚乾</option>
         <option value="treasure">🔔 寶藏派對｜鈴鐺貓值 2 分</option>
@@ -22,19 +23,19 @@
       </select><small id="modeDescription">猜空會公開空格並換手；不顯示周圍貓數。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>
-    <div class="settings">
+    <div class="settings host-only">
       <label>玩家 1 秒數<input id="secondsA" type="number" min="10" max="180" value="45"></label>
       <label>玩家 2 秒數<input id="secondsB" type="number" min="10" max="180" value="45"></label>
       <label><input id="capEnabled" type="checkbox"> 連抓上限</label>
       <label id="capField">上限隻數<input id="cap" type="number" min="1" max="24" value="3" disabled></label>
     </div>
-    <label>加入用房號<span class="room-copy-row"><input id="roomInput" maxlength="24" placeholder="例如 CAT-1234"><button id="copyRoom" type="button">複製房號</button><button id="copyInvite" type="button">邀請連結</button></span></label>
-    <div class="actions"><button id="host">🐾 建立房間</button><button id="join">🚪 加入房間</button><button id="resume" class="hidden">↻ 恢復房主局面</button></div>
+    <label id="roomField">加入用房號<span class="room-copy-row"><input id="roomInput" maxlength="24" placeholder="例如 CAT-1234"><button id="copyRoom" type="button">複製房號</button><button id="copyInvite" type="button">邀請連結</button></span></label>
+    <div class="actions"><button id="host" class="host-only">🐾 建立房間</button><button id="join" class="join-only">🚪 加入房間</button><button id="resume" class="host-only hidden">↻ 恢復房主局面</button></div>
     <p class="privacy">房號連線使用免費 PeerJS Cloud 協調握手；對局資料在瀏覽器間直接傳送。沒有免費 TURN，部分嚴格網路可能失敗。</p>
     <details><summary>進階：手動備援</summary><p>若第三方服務不可用，可用下方兩段代碼手動連線。</p></details>
-    <div class="actions"><button id="manualHost">手動建立</button><button id="manualJoin">手動加入</button></div>
+    <div class="actions"><button id="manualHost" class="host-only">手動建立</button><button id="manualJoin" class="join-only">手動加入</button></div>
     <div id="manual" class="hidden"><h2 id="manualTitle"></h2><textarea id="outCode" readonly placeholder="這裡會產生要傳給對方的碼"></textarea><button id="copyCode">複製上方代碼</button><textarea id="inCode" placeholder="貼上對方傳回的碼"></textarea><button id="applyCode">套用代碼</button></div>
-    <p id="setupStatus" class="status" aria-live="polite"></p>
+    <p id="setupStatus" class="status" aria-live="polite"></p></div>
   </section>
 
   <section id="game" class="hidden">
