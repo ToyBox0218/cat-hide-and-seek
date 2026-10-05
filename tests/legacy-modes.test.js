@@ -28,7 +28,10 @@ function element(tagName = 'div') {
   const attributes = new Map(), classes = new Set(), descendants = new Map();
   let html = '';
   const node = {
-    tagName: tagName.toUpperCase(), children: [], dataset: {}, style: { setProperty() {} }, value: '',
+    tagName: tagName.toUpperCase(), children: [], parentNode: null, dataset: {}, style: {
+      setProperty(key, value) { this[key] = String(value); },
+      getPropertyValue(key) { return this[key] || ''; }, removeProperty(key) { delete this[key]; }
+    }, value: '',
     textContent: '', checked: false, disabled: false, open: false,
     classList: {
       add: (...names) => names.forEach(name => classes.add(name)),
@@ -41,28 +44,70 @@ function element(tagName = 'div') {
     },
     setAttribute: (key, value) => attributes.set(key, String(value)),
     getAttribute: key => attributes.get(key) ?? null,
-    addEventListener() {}, removeEventListener() {}, focus() {}, remove() {},
-    appendChild(child) { this.children.push(child); return child; },
-    append(...children) { this.children.push(...children); },
+    removeAttribute: key => attributes.delete(key),
+    addEventListener() {}, removeEventListener() {}, focus() {},
+    remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+    append(...children) { children.forEach(child => this.appendChild(child)); },
+    cloneNode() { const clone = element(tagName); clone.className = this.className; clone.innerHTML = html; clone.textContent = this.textContent; return clone; },
+    matches(selector) {
+      return selector.split(',').some(value => {
+        const simple = value.trim(), names = [...simple.matchAll(/\.([\w-]+)/g)].map(match => match[1]);
+        const tag = /^[a-z][\w-]*/i.exec(simple)?.[0];
+        return (!tag || this.tagName === tag.toUpperCase()) && names.length > 0 && names.every(name => classes.has(name));
+      });
+    },
+    closest(selector) { return this.matches(selector) ? this : this.parentNode?.closest(selector) || null; },
     showModal() { this.open = true; }, close() { this.open = false; },
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 600 }),
-    querySelector(selector) { if (!descendants.has(selector)) descendants.set(selector, element()); return descendants.get(selector); }, querySelectorAll: () => []
+    getBoundingClientRect() {
+      if (classes.has('cell')) { const index = +this.dataset.index; return { left: 100 + (index % 6) * 40, top: 200 + Math.floor(index / 6) * 40, width: 40, height: 40 }; }
+      return { left: 0, top: 0, width: 600, height: 600 };
+    },
+    querySelector(selector) {
+      selector = selector.replace(/\s*>\s*/g, ' ');
+      if (selector.startsWith('.battle-board ')) return this.querySelector('.battle-board').querySelector(selector.slice(14));
+      const cell = /^\.cell\[data-index="(\d+)"\]$/.exec(selector);
+      if (cell) return (classes.has('battle-board') ? this : this.querySelector('.battle-board')).children.find(child => +child.dataset.index === +cell[1]) || null;
+      if (!descendants.has(selector)) {
+        const child = element(); child.parentNode = this;
+        if (/^\.[\w-]+$/.test(selector)) {
+          const className = selector.slice(1);
+          const classAttribute = [...html.matchAll(/class="([^"]*)"/g)].find(match => match[1].split(/\s+/).includes(className));
+          child.className = classAttribute ? classAttribute[1] : className;
+        }
+        descendants.set(selector, child);
+      }
+      return descendants.get(selector);
+    },
+    querySelectorAll(selector) {
+      const all = [...this.children, ...descendants.values()];
+      return all.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
+    }
   };
   Object.defineProperties(node, {
     className: { get: () => [...classes].join(' '), set: value => {
       classes.clear(); String(value).split(/\s+/).filter(Boolean).forEach(name => classes.add(name));
     } },
-    innerHTML: { get: () => html, set: value => { html = value; node.children = []; descendants.clear(); } }
+    innerHTML: { get: () => html, set: value => { html = String(value); node.children.forEach(child => { child.parentNode = null; }); node.children = []; descendants.clear(); } },
+    isConnected: { get: () => !!node.parentNode },
+    offsetWidth: { get: () => 600 }
   });
   return node;
 }
 
 function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = false, local = {}, session = {} } = {}) {
-  const nodes = new Map(), messages = [], intervals = [];
+  const nodes = new Map(), messages = [], intervals = [], timers = new Map(), frames = new Map();
   const get = selector => {
     const match = /^#board \.cell\[data-index="(\d+)"\]$/.exec(selector);
     if (match) return get('#board').children.find(node => +node.dataset.index === +match[1]) || null;
-    if (!nodes.has(selector)) nodes.set(selector, element());
+    const side = /^(\.battle-side\.(?:local|opponent))(?: (.+))?$/.exec(selector);
+    if (side?.[2]) return get(side[1]).querySelector(side[2]);
+    const player = /^\.battle-side\[data-player="([01])"\](?: (.+))?$/.exec(selector);
+    if (player) {
+      const root = ['local', 'opponent'].map(side => get(`.battle-side.${side}`)).find(node => +node.dataset.player === +player[1]);
+      return root ? player[2] ? root.querySelector(player[2]) : root : null;
+    }
+    if (!nodes.has(selector)) { const node = element(); if (/^\.[\w.-]+$/.test(selector)) node.className = selector.slice(1).replaceAll('.', ' '); nodes.set(selector, node); }
     return nodes.get(selector);
   };
   Object.entries({ '#size': size, '#gameMode': mode, '#secondsA': 45, '#secondsB': 60,
@@ -77,15 +122,19 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
         return array;
       }, randomUUID: () => `test-action-${++serial}`
     },
-    document: { querySelector: get, querySelectorAll: () => [], createElement: element,
+    document: { querySelector: get, querySelectorAll: selector => [...nodes.values(), context.document.body].flatMap(node => node.querySelectorAll(selector)), createElement: element,
       addEventListener() {}, hidden: false, body: element() },
     localStorage: storage(local), sessionStorage: storage(session),
     navigator: { clipboard: { writeText: async () => {} } },
     location: { href: 'https://example.test/game', search: '' },
     innerWidth: 1280, innerHeight: 900,
-    setTimeout: () => ++serial, clearTimeout() {},
-    setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval() {},
-    requestAnimationFrame: () => ++serial, addEventListener() {},
+    setTimeout: (fn, delay = 0) => { const id = ++serial; timers.set(id, { fn, at: now + delay }); return id; },
+    clearTimeout: id => timers.delete(id),
+    setInterval: (fn, delay) => { const id = ++serial; timers.set(id, { fn, at: now + delay, interval: delay }); intervals.push(() => { if (timers.has(id)) fn(); }); return id; },
+    clearInterval: id => timers.delete(id),
+    requestAnimationFrame: fn => { const id = ++serial; frames.set(id, fn); return id; },
+    cancelAnimationFrame: id => frames.delete(id),
+    matchMedia: () => ({ matches: false }), addEventListener() {},
     btoa: value => Buffer.from(value).toString('base64'),
     atob: value => Buffer.from(value, 'base64').toString(),
     Peer: class { on() {} destroy() {} },
@@ -103,15 +152,28 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
       settingsFromUI };
     render = () => {};
   `, context);
-  if (battleUI) vm.runInContext('Object.assign(appTest, { battleChoose, renderBattle, battleMessage, startPractice });', context);
+  if (battleUI) vm.runInContext('Object.assign(appTest, { battleChoose, renderBattle, battleMessage, startPractice, updateBattleTimers, clearBattleFX, observeBattleEvent });', context);
   const api = context.appTest;
   api.state.transport = { open: () => true, send: message => messages.push(json(message)), close() {} };
   api.state.role = 'host'; api.state.you = 0; api.state.room = 'CAT-1234';
-  return { ...api, context, get, messages, intervals,
+  return { ...api, context, get, messages, intervals, timers, frames,
     now: () => now, advance: ms => { now += ms; },
+    enableRendering() { vm.runInContext('render = appTest.renderLegacy;', context); },
+    flushFrames() { const pending = [...frames]; frames.clear(); for (const [, fn] of pending) fn(now); },
+    tick(ms) {
+      const deadline = now + ms;
+      while (true) {
+        const entry = [...timers].filter(([, timer]) => timer.at <= deadline).sort((a, b) => a[1].at - b[1].at)[0];
+        if (!entry) break;
+        const [id, timer] = entry; now = Math.max(now, timer.at);
+        if (timer.interval) timer.at = now + timer.interval; else timers.delete(id);
+        timer.fn();
+      }
+      now = deadline;
+    },
     action: (type = 'guess', extra = {}) => ({ type, turnId: api.state.game.turnId, actionId: `direct-${++serial}`, ...extra }),
     begin() { const game = api.newGame(size); api.state.game = game;
-      if (game.settings.mode === 'battle') { game.players.forEach(player => player.connected = true); context.CatBattle.start(game, now); }
+      if (game.settings.mode === 'battle') { game.players.forEach(player => player.connected = true); context.CatBattle.start(game, now); now += 3000; context.CatBattle.advance(game, now); }
       else { game.status = 'playing'; game.turn = 0; game.turnId = 1; api.setDeadline(); }
       return game; }
   };
@@ -394,7 +456,9 @@ test('battle newGame routes to the engine with independent six-cell-answer board
   assert.notEqual(game.boards[0].puzzle.id, game.boards[1].puzzle.id);
   assert.notDeepEqual(json(game.boards[0].puzzle.solution), json(game.boards[1].puzzle.solution));
   h.onMessage({ type: 'hello', nickname: 'Guest Cat', avatar: 4 });
-  assert.equal(game.status, 'playing'); assert.equal(game.players[1].nickname, 'Guest Cat');
+  assert.equal(game.status, 'lobby');
+  h.onMessage({ type: 'battleReady', gameId: game.id });
+  assert.equal(game.status, 'countdown'); assert.equal(game.startAt, h.now() + 3000); assert.equal(game.players[1].nickname, 'Guest Cat');
   assert.equal(game.players[1].connected, true); assert.equal(h.messages.at(-1).type, 'state');
 });
 
@@ -447,6 +511,7 @@ test('battle disconnect pauses both players and hello resumes the same boards wi
   assert.equal(game.status, 'paused'); assert.equal(game.players[1].connected, false); assert.equal(h.state.disconnectAt, h.now());
   assert.equal(h.act(1, battleAction(h, 1)).reason, 'not-playing');
   h.advance(10_000); h.onMessage({ type: 'hello', nickname: 'Guest Cat', avatar: 1 });
+  h.onMessage({ type: 'battleReady', gameId: game.id });
   assert.equal(game.status, 'playing'); assert.equal(game.players[1].connected, true); assert.equal(h.state.disconnectAt, null);
   assert.deepEqual(json(game.boards.map(board => board.puzzle.id)), json(boardIDs));
   assert.equal(game.boards[0].cooldownUntil - h.now(), 1500);
@@ -462,7 +527,7 @@ test('battle guest acknowledgements clear only the matching pending action and s
   const snapshot = json(h.publicGame(game)); snapshot.serverTime = h.now() + 1250;
   snapshot.boards[0].puzzle.id += '-opponent-rollover'; h.onMessage({ type: 'state', state: snapshot });
   assert.equal(h.state.clockOffset, 1250); assert.equal(h.state.notes.has(7), true);
-  const next = json(snapshot); next.boards[1].puzzle.id += '-own-rollover'; h.onMessage({ type: 'state', state: next });
+  const next = json(snapshot); next.revision++; next.boards[1].puzzle.id += '-own-rollover'; h.onMessage({ type: 'state', state: next });
   assert.equal(h.state.notes.size, 0);
   assert.equal(h.context.CatBattle.act(h.state.game, 1, { type: 'guess', actionId: 'not-authority', boardId: next.boards[1].puzzle.id, index: 0 }, h.now()).reason, 'not-authority');
 });
@@ -537,6 +602,9 @@ test('battle UI clears local notes only when the local player advances to a new 
 test('local practice explicitly labels its inactive opponent and never pretends to be P2P', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true });
   h.startPractice(); h.renderBattle();
+  assert.equal(h.state.game.status, 'countdown');
+  h.advance(3000); for (const interval of h.intervals) interval();
+  assert.equal(h.state.game.status, 'playing');
   assert.equal(h.state.practice, true); assert.equal(h.state.transport, null); assert.equal(h.state.peer, null);
   assert.equal(h.state.room, '本機練習'); assert.match(h.get('#battleConnection').textContent, /本機練習.*對手不會行動/);
   assert.equal(h.get('#battleCopyRoom').classList.contains('hidden'), true);
@@ -555,7 +623,7 @@ test('battle rematch replaces both boards only after both votes and resets HP, c
   h.rematchVote(0); assert.equal(h.state.game, previous);
   h.rematchVote(1);
   const game = h.state.game;
-  assert.notEqual(game, previous); assert.equal(game.status, 'playing'); assert.equal(game.winner, null);
+  assert.notEqual(game, previous); assert.equal(game.status, 'countdown'); assert.equal(game.startAt, h.now() + 3000); assert.equal(game.winner, null);
   for (let who = 0; who < 2; who++) {
     assert.notEqual(game.boards[who].puzzle.id, previous.boards[who].puzzle.id);
     assert.equal(game.players[who].hp, 150); assert.equal(game.boards[who].combo, 0); assert.equal(game.boards[who].number, 1);
@@ -596,6 +664,7 @@ test('avatar selection persists and reconnect snapshots keep the selected guest 
   h.begin(); h.onMessage({ type: 'hello', nickname: 'Guest', avatar: 4 });
   assert.equal(h.state.game.players[0].avatar, 5); assert.equal(h.state.game.players[1].avatar, 4);
   h.onClose(); h.onMessage({ type: 'hello', nickname: 'Guest', avatar: 4 });
+  h.onMessage({ type: 'battleReady', gameId: h.state.game.id });
   assert.equal(h.publicGame(h.state.game).players[1].avatar, 4);
 });
 
@@ -604,4 +673,290 @@ test('avatar idle animation includes a reduced-motion opt out', () => {
   assert.match(css, /@keyframes avatarIdle/);
   assert.match(css, /@keyframes avatarBlink/);
   assert.match(css, /prefers-reduced-motion: reduce[^}]*lively-avatar[^}]*animation: none !important/s);
+});
+
+test('battle guest readiness starts one shared countdown and rejects all guesses and notes before its deadline', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  const game = h.state.game = h.newGame(6);
+  h.onMessage({ type: 'hello', nickname: 'Guest Cat' });
+  assert.equal(game.status, 'lobby');
+  h.onMessage({ type: 'battleReady', gameId: game.id });
+  const startAt = game.startAt;
+  assert.equal(game.status, 'countdown'); assert.equal(startAt, h.now() + 3000);
+  assert.equal(h.messages.at(-1).state.startAt, startAt);
+  h.onMessage({ type: 'hello', nickname: 'Guest Cat' });
+  assert.equal(game.startAt, startAt, 'duplicate hello must not restart the countdown');
+  const count = h.messages.length;
+  for (const mode of ['guess', 'note']) {
+    h.state.mode = mode; h.renderBattle();
+    assert.equal(h.get('.battle-side.local').querySelector('.battle-board').children.every(cell => cell.disabled), true);
+    h.battleChoose(game.boards[0].puzzle.solution[0]);
+  }
+  assert.equal(h.messages.length, count); assert.equal(h.state.notes.size, 0);
+  h.advance(2999);
+  assert.equal(h.act(0, battleAction(h, 0)).accepted, false);
+  assert.equal(h.act(1, battleAction(h, 1)).accepted, false);
+  assert.deepEqual(json(game.players.map(player => player.hp)), [150, 150]);
+  assert.deepEqual(json(game.boards.map(board => board.found.length)), [0, 0]);
+  assert.equal(game.status, 'countdown'); assert.equal(game.startAt, startAt);
+});
+
+test('battle host interval starts at the authoritative countdown deadline and broadcasts that transition once', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  h.state.game = h.newGame(6); h.onMessage({ type: 'hello', nickname: 'Guest Cat' });
+  h.onMessage({ type: 'battleReady', gameId: h.state.game.id });
+  const game = h.state.game, startAt = game.startAt;
+  h.advance(2999); for (const interval of h.intervals) interval();
+  assert.equal(game.status, 'countdown');
+  h.advance(1); for (const interval of h.intervals) interval();
+  assert.equal(game.status, 'playing'); assert.equal(game.startAt, startAt);
+  const revisions = h.messages.filter(message => message.type === 'state' && message.state.status === 'playing').map(message => message.state.revision);
+  assert.equal(revisions.length, 1);
+  for (const interval of h.intervals) interval();
+  assert.equal(h.messages.filter(message => message.type === 'state' && message.state.status === 'playing').length, 1);
+  assert.equal(h.act(0, battleAction(h, 0)).accepted, true);
+});
+
+test('battle guest never self-activates when its countdown clock reaches zero', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  const authority = h.newGame(6); authority.players.forEach(player => { player.connected = true; });
+  h.context.CatBattle.start(authority, h.now());
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = null;
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) });
+  const startAt = h.state.game.startAt;
+  h.advance(6000); for (const interval of h.intervals) interval();
+  h.renderBattle();
+  assert.equal(h.state.game.status, 'countdown'); assert.equal(h.state.game.startAt, startAt);
+  const count = h.messages.filter(message => message.type === 'action').length;
+  for (const mode of ['guess', 'note']) { h.state.mode = mode; h.battleChoose(authority.boards[1].puzzle.solution[0]); }
+  assert.equal(h.state.notes.size, 0); assert.equal(h.messages.filter(message => message.type === 'action').length, count);
+  h.context.CatBattle.advance(authority, h.now());
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) });
+  assert.equal(h.state.game.status, 'playing'); assert.equal(h.state.game.startAt, startAt);
+  h.state.mode = 'guess'; h.battleChoose(authority.boards[1].puzzle.solution[0]);
+  assert.equal(h.messages.filter(message => message.type === 'action').length, count + 1);
+  assert.equal(h.state.game.players[0].hp, 150, 'only the host may resolve the guest request');
+});
+
+test('battle guest ignores older and duplicate snapshot revisions without reverting state or replaying attacks', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), authority = h.begin();
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = null;
+  h.context.fxCalls = [];
+  vm.runInContext('battleAttackFX = event => fxCalls.push(event);', h.context);
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) }); h.renderBattle(); h.flushFrames();
+  const previous = json(h.publicGame(authority));
+  h.context.CatBattle.act(authority, 0, { type: 'guess', actionId: 'remote-hit', boardId: authority.boards[0].puzzle.id, index: authority.boards[0].puzzle.solution[0] }, h.now());
+  const hit = json(h.publicGame(authority));
+  h.onMessage({ type: 'state', state: hit }); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 1);
+  h.onMessage({ type: 'state', state: json(hit) }); h.renderBattle(); h.flushFrames();
+  const repeatedEvent = json(hit); repeatedEvent.revision++;
+  h.onMessage({ type: 'state', state: repeatedEvent }); h.renderBattle(); h.flushFrames();
+  h.onMessage({ type: 'state', state: previous }); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 1); assert.equal(h.state.game.revision, repeatedEvent.revision);
+  assert.equal(h.state.game.players[1].hp, 145); assert.deepEqual(json(h.state.game.boards[0].found), json(hit.boards[0].found));
+});
+
+test('battle clock handshake measures a midpoint offset before notifying host that the guest is ready', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), authority = h.newGame(6);
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = null;
+  h.onMessage({ type: 'battlePrepare', gameId: authority.id });
+  const sync = h.messages.find(message => message.type === 'battleSync');
+  assert.ok(sync); assert.equal(sync.gameId, authority.id); assert.equal(sync.sentAt, h.now());
+  assert.equal(h.messages.some(message => message.type === 'battleReady'), false);
+  h.advance(40);
+  h.onMessage({ type: 'battleClock', gameId: authority.id, echo: sync.sentAt, serverTime: h.now() + 100 });
+  assert.equal(h.state.clockOffset, 120);
+  assert.equal(h.messages.at(-1).type, 'battleReady'); assert.equal(h.messages.at(-1).gameId, authority.id);
+  vm.runInContext('startPeerHost(false)', h.context);
+  assert.equal(h.state.clockOffset, 0, 'becoming the next host clears the previous host clock offset');
+});
+
+test('battle reconnect suppresses historical hit effects but permits the next live event', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), authority = h.begin();
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = null;
+  h.context.fxCalls = [];
+  vm.runInContext('battleAttackFX = event => fxCalls.push(event);', h.context);
+  const hit = index => h.context.CatBattle.act(authority, 0, { type: 'guess', actionId: `reconnect-hit-${index}`, boardId: authority.boards[0].puzzle.id, index }, h.now());
+  assert.equal(hit(authority.boards[0].puzzle.solution[0]).accepted, true);
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) }); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 0, 'joining a match must not replay its last attack');
+  h.advance(300); assert.equal(hit(authority.boards[0].puzzle.solution[1]).accepted, true);
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) }); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 1);
+  h.onClose(); assert.equal(h.state.game.status, 'paused');
+  h.state.mode = 'guess'; h.battleChoose(authority.boards[1].puzzle.solution[0]);
+  assert.equal(h.messages.some(message => message.type === 'action'), false);
+  h.onOpen();
+  h.advance(300); assert.equal(hit(authority.boards[0].puzzle.solution[2]).accepted, true);
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) }); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 1, 'reconnect snapshot only synchronizes the historical hit');
+  h.advance(300); assert.equal(hit(authority.boards[0].puzzle.solution[3]).accepted, true);
+  h.onMessage({ type: 'state', state: json(h.publicGame(authority)) }); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 2);
+});
+
+test('battle rematch resets event identity so the new match can animate the same sequence number once', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), previous = h.begin();
+  h.context.fxCalls = [];
+  vm.runInContext('battleAttackFX = event => fxCalls.push(event);', h.context);
+  h.renderBattle(); h.act(0, battleAction(h, 0)); h.renderBattle(); h.flushFrames();
+  assert.equal(h.context.fxCalls.length, 1);
+  const oldSequence = previous.lastEvent.sequence, oldID = previous.id;
+  previous.status = 'finished'; previous.winner = 0; previous.players[1].hp = 0;
+  h.renderBattle(); h.rematchVote(0); h.rematchVote(1); h.renderBattle();
+  const game = h.state.game;
+  assert.notEqual(game.id, oldID); assert.equal(game.status, 'countdown');
+  h.advance(3000); h.context.CatBattle.advance(game, h.now()); h.renderBattle();
+  h.act(0, battleAction(h, 0)); h.renderBattle(); h.flushFrames();
+  assert.equal(game.lastEvent.sequence, oldSequence);
+  assert.equal(h.context.fxCalls.length, 2); assert.notEqual(game.lastEvent.id, previous.lastEvent.id);
+  h.renderBattle(); h.flushFrames(); assert.equal(h.context.fxCalls.length, 2);
+});
+
+test('battle opening displays 3, 2, 1 from the shared deadline and clears for authoritative play', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  const game = h.state.game = h.newGame(6); game.players[1].connected = true;
+  h.context.CatBattle.start(game, h.now()); h.enableRendering(); h.renderBattle();
+  const opening = h.get('#battleOpening');
+  assert.equal(opening.classList.contains('hidden'), false);
+  assert.equal(String(opening.querySelector('.opening-count').textContent), '3');
+  h.advance(1000); h.updateBattleTimers();
+  assert.equal(String(opening.querySelector('.opening-count').textContent), '2');
+  h.advance(1000); h.updateBattleTimers();
+  assert.equal(String(opening.querySelector('.opening-count').textContent), '1');
+  h.advance(1000); for (const interval of h.intervals) interval();
+  assert.equal(game.status, 'playing'); assert.equal(opening.classList.contains('is-countdown'), false);
+  assert.equal(h.get('.battle-side.local').querySelector('.battle-board').children.every(cell => !cell.disabled), true);
+  h.advance(2000); for (const interval of h.intervals) interval();
+  assert.equal(opening.classList.contains('hidden'), true);
+  assert.doesNotMatch(opening.querySelector('.opening-count').textContent, /-\d/);
+});
+
+test('battle miss lock shows local seconds and progress while the opponent remains active and private notes remain usable', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.enableRendering(); h.renderBattle();
+  const miss = game.boards[0].puzzle.regions.findIndex((_, index) => !game.boards[0].puzzle.solution.includes(index));
+  assert.equal(h.act(0, battleAction(h, 0, { index: miss })).accepted, true);
+  let own = h.get('.battle-side.local'), lock = own.querySelector('.battle-lock');
+  assert.equal(lock.classList.contains('hidden'), false);
+  assert.match(String(lock.querySelector('.lock-seconds').textContent), /2(?:\.0)?/);
+  assert.equal(h.get('.battle-side.opponent').querySelector('.battle-lock').classList.contains('hidden'), true);
+  assert.equal(own.querySelector('.battle-board').children.every(cell => cell.disabled), true);
+  assert.equal(h.act(1, battleAction(h, 1)).accepted, true, 'one player missing must not lock the opponent');
+  h.advance(1000); h.updateBattleTimers();
+  own = h.get('.battle-side.local'); lock = own.querySelector('.battle-lock');
+  assert.match(String(lock.querySelector('.lock-seconds').textContent), /1(?:\.0)?/);
+  const progress = Number.parseFloat(lock.querySelector('.lock-progress > i').style.width);
+  assert.equal(progress, 50);
+  const privateCell = game.boards[0].puzzle.solution[0], sent = h.messages.length;
+  h.state.mode = 'note'; h.battleChoose(privateCell);
+  assert.equal(h.state.notes.has(privateCell), true); assert.equal(h.messages.length, sent);
+  own = h.get('.battle-side.local');
+  assert.equal(own.querySelector('.battle-board').children[privateCell].disabled, false);
+  assert.equal(own.querySelector('.battle-lock').classList.contains('notes-available'), true);
+  assertNoPrivateKeys(json(h.publicGame(game)));
+});
+
+test('battle interval removes the miss lock at its exact deadline and never displays negative time or progress', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.enableRendering(); h.renderBattle();
+  const miss = game.boards[0].puzzle.regions.findIndex((_, index) => !game.boards[0].puzzle.solution.includes(index));
+  h.act(0, battleAction(h, 0, { index: miss }));
+  h.advance(1999); for (const interval of h.intervals) interval();
+  assert.equal(h.get('.battle-side.local').querySelector('.battle-lock').classList.contains('hidden'), false);
+  assert.equal(h.get('.battle-side.local').querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, true);
+  h.advance(1); for (const interval of h.intervals) interval();
+  let own = h.get('.battle-side.local');
+  assert.equal(own.querySelector('.battle-lock').classList.contains('hidden'), true);
+  assert.equal(own.querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, false);
+  h.advance(10000); h.updateBattleTimers(); own = h.get('.battle-side.local');
+  const lock = own.querySelector('.battle-lock');
+  assert.doesNotMatch(String(lock.querySelector('.lock-seconds').textContent), /-\d/);
+  const width = Number.parseFloat(lock.querySelector('.lock-progress > i').style.width);
+  assert.ok(Number.isFinite(width) && width >= 0 && width <= 100);
+});
+
+test('battle attack launches matching cat artwork from the hit cell and observes each event only once', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.renderBattle();
+  const index = game.boards[0].puzzle.solution[0];
+  h.act(0, battleAction(h, 0, { index })); h.renderBattle(); h.flushFrames();
+  const launches = () => h.context.document.body.children.filter(node => node.classList.contains('battle-cat-launch'));
+  assert.equal(launches().length, 1);
+  const launch = launches()[0], cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  assert.ok(launch.innerHTML.includes(cell.innerHTML), 'the flight must use the revealed cell cat art');
+  assert.equal(Number.parseFloat(launch.style.left), 120 + (index % 6) * 40);
+  assert.equal(Number.parseFloat(launch.style.top), 220 + Math.floor(index / 6) * 40);
+  assert.equal(game.players[1].hp, 145, 'damage is authoritative before visual impact');
+  const timerIDs = [...h.timers.keys()];
+  h.observeBattleEvent(game.lastEvent); h.renderBattle(); h.flushFrames();
+  assert.equal(launches().length, 1); assert.deepEqual([...h.timers.keys()], timerIDs);
+  h.tick(1600); assert.equal(launches().length, 0); assert.equal(game.players[1].hp, 145);
+});
+
+for (const status of ['finished', 'aborted']) test(`battle ${status} clears every in-flight effect and timer without replaying the final snapshot`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.renderBattle(); h.act(0, battleAction(h, 0)); h.renderBattle(); h.flushFrames();
+  assert.ok(h.context.document.body.children.some(node => node.classList.contains('battle-cat-launch')));
+  const fxTimers = [...h.timers].filter(([, timer]) => !timer.interval).map(([id]) => id);
+  assert.ok(fxTimers.length > 0);
+  if (status === 'finished') { game.status = status; game.winner = 0; game.players[1].hp = 0; game.revision++; }
+  else h.context.CatBattle.abort(game, h.now());
+  h.renderBattle();
+  assert.equal(h.frames.size, 0); assert.equal(fxTimers.some(id => h.timers.has(id)), false);
+  assert.equal(h.context.document.body.children.some(node => /battle-(cat-launch|paw-shot|spark)/.test(node.className)), false);
+  const snapshot = json(h.publicGame(game));
+  h.state.role = 'guest'; h.state.you = 1; h.state.game = json(snapshot);
+  h.onMessage({ type: 'state', state: json(snapshot) }); h.renderBattle(); h.flushFrames();
+  h.onMessage({ type: 'state', state: json(snapshot) }); h.renderBattle(); h.flushFrames();
+  h.tick(1600);
+  assert.equal(h.frames.size, 0);
+  assert.equal(h.context.document.body.children.some(node => /battle-(cat-launch|paw-shot|spark)/.test(node.className)), false);
+  assert.deepEqual(json(h.state.game.players.map(player => player.hp)), json(snapshot.players.map(player => player.hp)));
+});
+
+test('battle disconnect immediately cancels in-flight attacks and their cleanup timers', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }); h.begin(); h.renderBattle();
+  h.act(0, battleAction(h, 0)); h.renderBattle();
+  assert.ok(h.state.battleFXNodes.size > 0);
+  assert.ok(h.state.battleFXTimers.size > 0);
+  h.onClose(); assert.equal(h.state.game.status, 'paused');
+  assert.equal(h.state.battleFXNodes.size, 0); assert.equal(h.state.battleFXTimers.size, 0);
+  h.flushFrames();
+  assert.equal(h.context.document.body.children.some(node => /battle-(cat-launch|paw-shot|spark)/.test(node.className)), false);
+});
+
+test('battle sixth-cat rollover launches from the old cell with its original art and bounds concurrent attack batches', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.renderBattle();
+  const oldBoard = game.boards[0], oldID = oldBoard.puzzle.id, solution = [...oldBoard.puzzle.solution];
+  for (const index of solution) {
+    assert.equal(h.act(0, battleAction(h, 0, { index })).accepted, true);
+    h.renderBattle(); h.advance(300);
+    assert.ok(h.state.battleFXBatches.length <= 3);
+    assert.ok(h.context.document.body.children.filter(node => node.classList.contains('battle-cat-launch')).length <= 3);
+  }
+  assert.notEqual(game.boards[0].puzzle.id, oldID); assert.equal(game.lastEvent.advanced, true);
+  const launch = h.context.document.body.children.find(node => node.classList.contains('battle-cat-launch') && node.dataset.eventId === game.lastEvent.id);
+  assert.ok(launch, 'the sixth hit must still launch after its old board is replaced');
+  const index = solution.at(-1);
+  h.context.expectedCatKey = `${oldID}:${index}`;
+  assert.equal(launch.innerHTML, vm.runInContext('battleCat(stableHash(expectedCatKey))', h.context));
+  assert.equal(Number.parseFloat(launch.style.left), 120 + (index % 6) * 40);
+  assert.equal(Number.parseFloat(launch.style.top), 220 + Math.floor(index / 6) * 40);
+  assert.equal(game.players[1].hp, 45); assert.equal(game.boards[0].combo, 6);
+});
+
+test('battle reduced-motion mode keeps damage feedback without launching moving cats or changing combat timing', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.context.matchMedia = () => ({ matches: true }); h.renderBattle();
+  h.act(0, battleAction(h, 0)); h.renderBattle();
+  assert.equal(h.context.document.body.children.some(node => /battle-(cat-launch|paw-shot|spark)/.test(node.className)), false);
+  const target = h.get('.battle-side.opponent').querySelector('.hp-meter');
+  assert.equal(target.children.filter(node => node.classList.contains('battle-damage')).length, 1);
+  assert.equal(game.players[1].hp, 145); assert.equal(game.boards[0].cooldownUntil, h.now() + 300);
+  h.tick(1600);
+  assert.equal(target.children.filter(node => node.classList.contains('battle-damage')).length, 0);
+  assert.equal(h.state.battleFXTimers.size, 0); assert.equal(game.players[1].hp, 145);
 });

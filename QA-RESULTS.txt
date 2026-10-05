@@ -1,10 +1,10 @@
 CAT HIDE & SEEK — LOCAL REVIEW BUILD
 Date: 2026-10-05
-Base repository commit: 85e2b9d5ae1ad7be7344a195435b5044f9d6330d
-Status: Pre-publication test snapshot. User approved updating the original GitHub Pages before visual acceptance. Previous release remains in Git history for rollback.
+Base repository commit: d65ad24e40cdea8e9b1c54de7f78dff916ce60b7
+Status: User explicitly approved publishing the countdown / lock / attack feedback release. Previous release d65ad24 is preserved for a normal revert. Browser and real P2P acceptance remain pending.
 
-PASS — 63 Node tests (node --test)
-22 battle engine tests:
+PASS — 86 Node tests (node --test)
+29 battle engine tests:
 - 1,080 generated puzzles checked with an independent exact solver.
 - 270 additional constant-RNG stress puzzles.
 - All 90 valid 6x6 answer patterns; diverse region layouts.
@@ -21,7 +21,7 @@ PASS — 63 Node tests (node --test)
 - Explicit public snapshot whitelist excludes solutions and private histories.
 - Rematch avoids recent puzzle repeats.
 
-41 app/legacy integration and fake-DOM tests:
+57 app/legacy integration and fake-DOM tests:
 - All four original modes, default streak cap off, no ordinary clue numbers.
 - Fish limit, magnifier/private intel, yarn, shield and hourglass.
 - Treasure scoring, cooperative shared progress and completion.
@@ -75,3 +75,14 @@ USER-REPORTED UI FIX (2026-10-05)
 - Gentle portrait bob/sway; reduced-motion disables it.
 - Four additional tests cover default navigation, all six mappings, persisted/reconnected
   avatar identity, and reduced-motion opt-out.
+
+LOCAL COUNTDOWN / FEEDBACK ADDITIONS
+- Shared host deadline with midpoint clock sync and explicit ready handshake.
+- Guesses/notes rejected before host-authorized start; late guest clocks cannot unlock.
+- Paused countdown and miss cooldown retain remaining time through reconnect.
+- Numeric miss lock/progress, private notes still usable during the lock.
+- Stable event IDs, stale-snapshot rejection, reconnect/foreground replay suppression.
+- Actual hit-cell origin/art retained even on the sixth-cat board rollover.
+- At most three live FX batches; static damage under reduced motion.
+- Finish, abort and disconnect clean up all flight nodes/timers.
+- These new visuals have NOT been verified in a browser or captured in screenshots.

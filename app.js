@@ -283,33 +283,84 @@ function act(who,action) {
 }
 
 function onMessage(message) {
-  let data;try{data=typeof message==='string'?JSON.parse(message):message}catch{return}if(!data||typeof data!=='object')return;
-  if(data.type==='ping'){send({type:'pong'});return}if(data.type==='pong'){state.lastPong=Date.now();return}
-  if(data.type==='battleAck'&&state.role==='guest'){if(state.pendingAction?.actionId===data.actionId)state.pendingAction=null;render();return}
-  if (state.role==='host') {
-    if (data.type==='hello') {
-      state.game.players[1].nickname=String(data.nickname||'貓友').slice(0,16);
-      state.game.players[1].avatar=Math.max(0,Math.min(AVATARS.length-1,+data.avatar||0));
-      state.game.players[1].connected=true;
-      if(state.game.settings.mode==='battle'){if(state.game.status==='lobby')CatBattle.start(state.game);else if(state.game.status==='paused'){if(Date.now()-(state.game.pausedAt||Date.now())>=60000)CatBattle.abort(state.game);else CatBattle.reconnect(state.game)}state.disconnectAt=null;state.pendingAction=null;}
-      else if (state.game.status==='lobby') {
-        state.game.status='playing'; state.game.turn=state.game.starter; state.game.turnId++; setDeadline();
+  let data;
+  try { data=typeof message==='string'?JSON.parse(message):message; } catch { return; }
+  if(!data||typeof data!=='object')return;
+  if(data.type==='ping'){send({type:'pong',echo:data.sentAt,serverTime:Date.now()});return;}
+  if(data.type==='pong'){
+    state.lastPong=Date.now();
+    if(state.role==='guest'&&Number.isFinite(data.echo)&&Number.isFinite(data.serverTime))syncBattleClock(data.echo,data.serverTime);
+    return;
+  }
+  if(data.type==='battleAck'&&state.role==='guest'){
+    if(state.pendingAction?.actionId===data.actionId)state.pendingAction=null;
+    render();return;
+  }
+  if(state.role==='host'){
+    const game=state.game;if(!game)return;
+    if(data.type==='hello'){
+      game.players[1].nickname=String(data.nickname||'貓友').slice(0,16);
+      game.players[1].avatar=Math.max(0,Math.min(AVATARS.length-1,+data.avatar||0));
+      game.players[1].connected=true;
+      if(game.settings.mode==='battle'){
+        state.pendingAction=null;
+        if(game.status==='lobby'||game.status==='paused'){
+          state.awaitingBattleReady=game.id;
+          send({type:'battlePrepare',gameId:game.id});
+        }
+      }else if(game.status==='lobby'){
+        game.status='playing';game.turn=game.starter;game.turnId++;setDeadline();
       }
       broadcast();
-    } else if (data.type==='action') act(1,data.action);
-    else if (data.type==='rematch') rematchVote(1);
-    else if(data.type==='battleAbort'&&state.game?.settings.mode==='battle'){CatBattle.abort(state.game);broadcast();}
-  } else if (data.type==='state') {
-    const previousPuzzle=state.game?.settings?.mode==='battle'?state.game.boards[state.you].puzzle.id:state.game?.puzzle?.id;
+    }else if(data.type==='battleSync'&&game.settings.mode==='battle'&&data.gameId===game.id&&state.awaitingBattleReady===game.id&&Number.isFinite(data.sentAt)){
+      send({type:'battleClock',gameId:game.id,echo:data.sentAt,serverTime:Date.now()});
+    }else if(data.type==='battleReady'&&game.settings.mode==='battle'&&data.gameId===game.id&&state.awaitingBattleReady===game.id){
+      state.awaitingBattleReady=null;
+      if(game.status==='lobby')CatBattle.start(game,Date.now());
+      else if(game.status==='paused'){
+        if(Date.now()-(game.pausedAt||Date.now())>=60000)CatBattle.abort(game);
+        else CatBattle.reconnect(game,Date.now());
+      }
+      state.disconnectAt=null;state.suppressBattleFX=true;broadcast();
+    }else if(data.type==='action')act(1,data.action);
+    else if(data.type==='rematch')rematchVote(1);
+    else if(data.type==='battleAbort'&&game.settings.mode==='battle'){CatBattle.abort(game);broadcast();}
+  }else if(data.type==='battlePrepare'&&typeof data.gameId==='string'){
+    state.pendingBattleSync=data.gameId;state.suppressBattleFX=true;
+    send({type:'battleSync',gameId:data.gameId,sentAt:Date.now()});
+  }else if(data.type==='battleClock'&&data.gameId===state.pendingBattleSync&&Number.isFinite(data.echo)&&Number.isFinite(data.serverTime)){
+    if(!syncBattleClock(data.echo,data.serverTime))return;
+    state.pendingBattleSync=null;send({type:'battleReady',gameId:data.gameId});
+  }else if(data.type==='state'){
     if(!data.state?.settings||!Array.isArray(data.state.players))return;
-    state.game=data.state;if(state.game.settings.mode==='battle'){if(Number.isFinite(state.game.serverTime))state.clockOffset=state.game.serverTime-Date.now();if(state.game.status!=='paused')state.disconnectAt=null;}
-    const currentPuzzle=state.game.settings.mode==='battle'?state.game.boards[state.you].puzzle.id:state.game.puzzle.id;
-    if(previousPuzzle&&previousPuzzle!==currentPuzzle){state.intel=[];state.notes.clear();state.tool=null;state.yarnTargets=[]}
-    saveLocal(); render();
-  } else if(data.type==='intel'){state.intel.push(data.intel);if(state.intel.length>12)state.intel.shift();saveLocal();render()}
+    const previous=state.game,incoming=data.state,battle=incoming.settings.mode==='battle';
+    if(battle&&previous?.id===incoming.id&&Number.isFinite(previous.revision)&&incoming.revision<previous.revision)return;
+    const previousPuzzle=previous?.settings?.mode==='battle'?previous.boards[state.you].puzzle.id:previous?.puzzle?.id;
+    state.game=incoming;
+    if(battle){
+      if(!state.clockSyncedAt&&Number.isFinite(incoming.serverTime))state.clockOffset=incoming.serverTime-Date.now();
+      if(!previous||previous.id!==incoming.id||previous.status==='paused')state.suppressBattleFX=true;
+      if(incoming.status!=='paused')state.disconnectAt=null;
+      if(['paused','aborted','finished'].includes(incoming.status)&&typeof clearBattleFX==='function')clearBattleFX();
+    }
+    const currentPuzzle=battle?incoming.boards[state.you].puzzle.id:incoming.puzzle.id;
+    if(previousPuzzle&&previousPuzzle!==currentPuzzle){state.intel=[];state.notes.clear();state.tool=null;state.yarnTargets=[];}
+    saveLocal();render();
+  }else if(data.type==='intel'){
+    state.intel.push(data.intel);if(state.intel.length>12)state.intel.shift();saveLocal();render();
+  }
 }
+function syncBattleClock(sentAt,serverTime){
+  const receivedAt=Date.now(),rtt=receivedAt-sentAt;
+  if(!Number.isFinite(rtt)||rtt<0||rtt>10000)return false;
+  if(!Number.isFinite(state.bestClockRtt)||rtt<=state.bestClockRtt+25){
+    state.clockOffset=serverTime-(sentAt+receivedAt)/2;state.bestClockRtt=rtt;state.clockSyncedAt=receivedAt;
+  }
+  return true;
+}
+
 function onOpen() {
-  state.lastPong=Date.now();if(state.game?.settings.mode!=='battle')state.disconnectAt=null;
+  state.lastPong=Date.now();state.bestClockRtt=Infinity;state.clockSyncedAt=null;state.suppressBattleFX=true;if(state.game?.settings.mode!=='battle')state.disconnectAt=null;
   if (state.role==='guest') state.suppressNextTurnSound=true;
   $('#connection').textContent='P2P 已連線';
   if (state.role==='host') { state.game.players[1].connected=true; broadcast(); }
@@ -317,7 +368,8 @@ function onOpen() {
 }
 function onClose() {
   $('#connection').textContent='連線中斷－盤面已保留';
-  if(state.game?.settings.mode==='battle'){if(['playing','paused'].includes(state.game.status)){CatBattle.pause(state.game,Date.now());state.disconnectAt??=Date.now();state.pendingAction=null;}}
+  if(state.game?.settings.mode==='battle'){if(['playing','countdown','paused'].includes(state.game.status)){if(state.role==='host')CatBattle.pause(state.game,Date.now());else if(state.game.status!=='paused'){state.game.pausedFrom=state.game.status;state.game.countdownRemaining=state.game.status==='countdown'?Math.max(0,state.game.startAt-(Date.now()+(state.clockOffset||0))):null;state.game.status='paused';state.game.pausedAt=Date.now()+(state.clockOffset||0);}state.disconnectAt??=Date.now();state.pendingAction=null;}}
+  state.suppressBattleFX=true;if(typeof clearBattleFX==='function')clearBattleFX();
   if (state.game) { state.game.players[1-state.you].connected=false; saveLocal(); render(); }
 }
 function attachPeerConnection(connection) {
@@ -340,7 +392,7 @@ const randomRoom=()=>`CAT-${String(randomInt(10000)).padStart(4,'0')}`;
 const peerIdForRoom=room=>SHORT_ROOM_RE.test(room)?`cat-hide-seek-v1-${room.toLowerCase()}`:room;
 function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`房號 ${room}`}
 function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
-  state.practice=false;state.role='host'; state.you=0; state.manual=false;
+  state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=false;
   if (!restored) { state.room=forcedRoom||randomRoom(); state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
   $('#roomInput').value='';
   $('#setupStatus').textContent='正在向免費 PeerJS Cloud 登記房號…';
@@ -385,7 +437,7 @@ async function useOffer(code) { const pc=rtcPeer('guest'); await pc.setRemoteDes
 async function useAnswer(code) { await state.rtc.setRemoteDescription(decode(code)); }
 function showManual(title) { $('#manual').classList.remove('hidden'); $('#manualTitle').textContent=title; }
 async function manualHost(restored=false) {
-  state.practice=false;state.role='host'; state.you=0; state.manual=true;
+  state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=true;
   if (!restored) { state.room='手動連線'; state.game=newGame(+$('#size').value); }
   $('#outCode').value=await makeOffer(); showManual('步驟 1：把邀請碼傳給對方，再貼回覆碼');
   $('#setupStatus').textContent='等待對方回覆碼';
@@ -396,7 +448,7 @@ function manualJoin() {
 }
 async function resumeHost() {
   const saved=JSON.parse(sessionStorage.p2pHost||'null');
-  if(saved?.game?.settings?.mode==='battle'){if(!saved.game.boards?.every(board=>board.puzzle.solution))throw Error('沒有可恢復的房主局面');state.game=saved.game;CatBattle.pause(state.game,Date.now());state.game.players[0].connected=true;state.game.players[1].connected=false;state.disconnectAt=state.game.pausedAt||Date.now();syncSettingsUI(state.game.settings);state.room=randomRoom();state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));startPeerHost(true);return}
+  if(saved?.game?.settings?.mode==='battle'){if(!saved.game.boards?.every(board=>board.puzzle.solution))throw Error('沒有可恢復的房主局面');state.game=saved.game;state.suppressBattleFX=true;CatBattle.pause(state.game,Date.now());state.game.players[0].connected=true;state.game.players[1].connected=false;state.disconnectAt=state.game.pausedAt||Date.now();syncSettingsUI(state.game.settings);state.room=randomRoom();state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));startPeerHost(true);return}
   if (!saved?.game?.puzzle?.solution) throw Error('沒有可恢復的房主局面');
   state.game=saved.game; state.game.settings=cleanSettings(state.game.settings||{}); state.game.clues=state.game.clues||{};
   state.game.players.forEach((player,index)=>{if(player.avatar===undefined)player.avatar=index;if(player.cats===undefined)player.cats=player.score||0;if(player.fish===undefined)player.fish=0});

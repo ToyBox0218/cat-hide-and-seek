@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
 
-  const SIZE = 6, CELLS = SIZE * SIZE, HIT_COOLDOWN = 300, MISS_COOLDOWN = 2000;
+  const SIZE = 6, CELLS = SIZE * SIZE, HIT_COOLDOWN = 300, MISS_COOLDOWN = 2000, OPENING_COUNTDOWN = 3000;
   const HISTORY_LIMIT = 90, ACTION_HISTORY_LIMIT = 256;
   // These are 73 separate random connected-region constructions, each exhaustively
   // checked against all 90 non-touching row/column permutations. Their transforms
@@ -277,7 +277,7 @@
     game._history.boards.push(boardKey(puzzle.regions));
     if (game._history.patterns.length > HISTORY_LIMIT) game._history.patterns.shift();
     if (game._history.boards.length > HISTORY_LIMIT) game._history.boards.shift();
-    return {puzzle, found:[], misses:[], number, combo, cooldownUntil:0};
+    return {puzzle, found:[], misses:[], number, combo, cooldownUntil:0, cooldownStartedAt:null, cooldownKind:null};
   }
   function create(input, players, previousGame) {
     const clean = settings(input), game = {
@@ -288,9 +288,9 @@
           avatar:Number.isInteger(player.avatar) && player.avatar >= 0 && player.avatar < 6 ? player.avatar : who,
           hp:clean.maxHP, maxHP:clean.maxHP, cats:0, connected:player.connected !== false};
       }),
-      boards:[], status:'lobby', winner:null, revision:0, startedAt:null, pausedAt:null, endedAt:null,
+      boards:[], status:'lobby', winner:null, revision:0, startedAt:null, startAt:null, countdownStartedAt:null, pausedAt:null, endedAt:null,
       lastEvent:null, actionIds:[], _boardActions:[[],[]], _history:{patterns:[],boards:[]},
-      _pausedCooldowns:null, _lastNow:0
+      _pausedCooldowns:null, _pausedFrom:null, _pausedCountdown:null, _lastNow:0
     };
     if (previousGame && previousGame._history) {
       const previous = previousGame._history;
@@ -303,32 +303,62 @@
   function time(game, now) {
     const value = now == null ? Date.now() : now;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
-    return Math.max(game._lastNow || 0,value);
+    return Math.max(Number.isFinite(game._lastNow) ? game._lastNow : 0,value);
+  }
+  function isAuthority(game) {
+    return !!game && Array.isArray(game.boards) && game.boards.length === 2 &&
+      game.boards.every(board => board && board.puzzle && Array.isArray(board.puzzle.solution));
+  }
+  function eventIdentity(game) {
+    return {id:`${game.id}:${game.revision}`, sequence:game.revision};
   }
   function transition(game, status, type, now) {
     game.status = status; game._lastNow = now; game.revision++;
-    game.lastEvent = {type, at:now};
+    game.lastEvent = {...eventIdentity(game), type, at:now};
     return true;
   }
   function start(game, now) {
-    if (!game || game.status !== 'lobby') return false;
+    if (!isAuthority(game) || game.status !== 'lobby' || game.players.some(player => player.connected === false)) return false;
     const at = time(game,now); if (at === null) return false;
-    game.startedAt = at;
+    game.countdownStartedAt = at; game.startAt = at + OPENING_COUNTDOWN; game.startedAt = null;
+    return transition(game,'countdown','countdown',at);
+  }
+  // Called only on the host's authority state. A snapshot/client clock reaching
+  // zero must not itself authorize an attack or alter the shared start deadline.
+  function advance(game, now) {
+    if (!isAuthority(game) || game.status !== 'countdown' || game.players.some(player => player.connected === false)) return false;
+    const at = time(game,now); if (at === null || !Number.isFinite(game.startAt) || at < game.startAt) return false;
+    game.startedAt = game.startAt;
     return transition(game,'playing','start',at);
   }
   function pause(game, now) {
-    if (!game || game.status !== 'playing') return false;
+    if (!isAuthority(game) || !['playing','countdown'].includes(game.status)) return false;
     const at = time(game,now); if (at === null) return false;
     game._pausedCooldowns = game.boards.map(board => Math.max(0,board.cooldownUntil-at));
+    game._pausedFrom = game.status;
+    game._pausedCountdown = game.status === 'countdown' ? Math.max(0,game.startAt-at) : null;
     game.pausedAt = at;
     return transition(game,'paused','pause',at);
   }
   function reconnect(game, now) {
-    if (!game || game.status !== 'paused') return false;
+    if (!isAuthority(game) || game.status !== 'paused' || game.players.some(player => player.connected === false)) return false;
     const at = time(game,now); if (at === null) return false;
-    game.boards.forEach((board,who) => { board.cooldownUntil = at + (game._pausedCooldowns && game._pausedCooldowns[who] || 0); });
-    game._pausedCooldowns = null; game.pausedAt = null;
-    return transition(game,'playing','reconnect',at);
+    const status = game._pausedFrom === 'countdown' ? 'countdown' : 'playing';
+    game.boards.forEach((board,who) => {
+      const saved = game._pausedCooldowns && game._pausedCooldowns[who];
+      const remaining = Number.isFinite(saved) ? Math.max(0,saved) : 0;
+      // Shift both ends of an in-progress lock, keeping the same visual fraction.
+      // Old saves have no cooldownStartedAt; that field remains optional.
+      const elapsed = Number.isFinite(board.cooldownStartedAt) && Number.isFinite(game.pausedAt) ? Math.max(0,game.pausedAt-board.cooldownStartedAt) : null;
+      board.cooldownUntil = at + remaining;
+      if (remaining > 0 && elapsed !== null) board.cooldownStartedAt = at-elapsed;
+    });
+    if (status === 'countdown') {
+      const remaining = Number.isFinite(game._pausedCountdown) ? Math.max(0,Math.min(OPENING_COUNTDOWN,game._pausedCountdown)) : 0;
+      game.startAt = at + remaining; game.countdownStartedAt = game.startAt - OPENING_COUNTDOWN;
+    }
+    game._pausedCooldowns = null; game._pausedFrom = null; game._pausedCountdown = null; game.pausedAt = null;
+    return transition(game,status,'reconnect',at);
   }
   function abort(game, now, reason) {
     if (!game || ['finished','aborted'].includes(game.status)) return false;
@@ -348,7 +378,7 @@
   }
   const rejected = reason => ({accepted:false, reason});
   function act(game, who, action, now) {
-    if (!game || game.status !== 'playing') return rejected('not-playing');
+    if (!game || !['playing','countdown'].includes(game.status)) return rejected('not-playing');
     if (who !== 0 && who !== 1) return rejected('invalid-player');
     if (!action || typeof action !== 'object' || action.type !== 'guess') return rejected('invalid-action');
     if (typeof action.actionId !== 'string' || !action.actionId.length || action.actionId.length > 128) return rejected('invalid-action-id');
@@ -361,20 +391,24 @@
     if (board.found.includes(action.index) || board.misses.includes(action.index)) return rejected('resolved-cell');
     if (isExcluded(board,action.index)) return rejected('excluded-cell');
     const at = time(game,now); if (at === null) return rejected('invalid-time');
-    if (at < board.cooldownUntil) return rejected('cooldown');
     if (game.players.some(player => player.connected === false)) return rejected('disconnected');
+    if (game.status === 'countdown' && !advance(game,at)) return rejected('countdown');
+    if (at < board.cooldownUntil) return rejected('cooldown');
     // Recent IDs are bounded; active-board IDs cannot be evicted (max. 36 each).
     // After replacement every replay of that old action fails the board ID check.
     game.actionIds.push(scopedId);
     if (game.actionIds.length > ACTION_HISTORY_LIMIT) game.actionIds.shift();
     game._boardActions[who].push(action.actionId);
     game._lastNow = at; game.revision++;
-    const event = {who, index:action.index, boardId:board.puzzle.id, boardNumber:board.number, at};
+    const event = {...eventIdentity(game), who, index:action.index, boardId:board.puzzle.id, boardNumber:board.number, at};
+    board.cooldownStartedAt = at;
     if (!board.puzzle.solution.includes(action.index)) {
       board.misses.push(action.index); board.combo = 0; board.cooldownUntil = at+MISS_COOLDOWN;
+      board.cooldownKind = 'miss';
       event.type = 'miss'; event.combo = 0; event.damage = 0;
     } else {
       board.found.push(action.index); board.combo++; board.cooldownUntil = at+HIT_COOLDOWN;
+      board.cooldownKind = 'hit';
       const damage = board.combo * 5, opponent = game.players[1-who];
       opponent.hp = Math.max(0,opponent.hp-damage); game.players[who].cats++;
       Object.assign(event,{type:'hit', damage, combo:board.combo, advanced:false});
@@ -382,7 +416,8 @@
         game.status = 'finished'; game.winner = who; game.endedAt = at; event.winner = who;
       } else if (board.found.length === SIZE) {
         const next = makeBoard(game,board.number+1,board.combo);
-        next.cooldownUntil = board.cooldownUntil; game.boards[who] = next;
+        next.cooldownUntil = board.cooldownUntil; next.cooldownStartedAt = board.cooldownStartedAt;
+        next.cooldownKind = board.cooldownKind; game.boards[who] = next;
         game._boardActions[who] = []; event.advanced = true;
       }
     }
@@ -392,30 +427,38 @@
   function publicEvent(event) {
     if (!event || typeof event !== 'object') return null;
     const result = {};
-    for (const key of ['type','who','index','boardId','boardNumber','at','damage','combo','advanced','winner','reason']) {
+    for (const key of ['id','sequence','type','who','index','boardId','boardNumber','at','damage','combo','advanced','winner','reason']) {
       if (Object.prototype.hasOwnProperty.call(event,key) && ['string','number','boolean'].includes(typeof event[key])) result[key] = event[key];
     }
     return result;
   }
   function publicGame(game, now) {
     if (!game) return null;
-    const serverTime = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();
+    const serverTime = time(game,now) ?? time(game,Date.now());
     // Deliberately no object spreads from private state: adding future authority
     // fields cannot accidentally disclose answers, histories, notes or action IDs.
     return {
       id:game.id, settings:settings(game.settings), status:game.status, winner:game.winner,
       revision:game.revision, startedAt:game.startedAt, pausedAt:game.pausedAt, endedAt:game.endedAt, serverTime,
+      startAt:Number.isFinite(game.startAt) ? game.startAt : null,
+      countdownStartedAt:Number.isFinite(game.countdownStartedAt) ? game.countdownStartedAt : null,
+      pausedFrom:game.status === 'paused' ? game._pausedFrom === 'countdown' ? 'countdown' : 'playing' : null,
+      countdownRemaining:game.status === 'paused' && game._pausedFrom === 'countdown' ?
+        Number.isFinite(game._pausedCountdown) ? Math.max(0,Math.min(OPENING_COUNTDOWN,game._pausedCountdown)) : 0 :
+        game.status === 'countdown' && Number.isFinite(game.startAt) ? Math.max(0,game.startAt-serverTime) : 0,
       players:game.players.map(player => ({nickname:player.nickname, avatar:player.avatar, hp:player.hp,
         maxHP:player.maxHP, cats:player.cats, connected:player.connected})),
       boards:game.boards.map(board => ({
         puzzle:{id:board.puzzle.id, size:SIZE, regions:board.puzzle.regions.slice()},
         found:board.found.slice(), misses:board.misses.slice(), number:board.number,
-        combo:board.combo, cooldownUntil:board.cooldownUntil
+        combo:board.combo, cooldownUntil:board.cooldownUntil,
+        cooldownStartedAt:Number.isFinite(board.cooldownStartedAt) ? board.cooldownStartedAt : null,
+        cooldownKind:['hit','miss'].includes(board.cooldownKind) ? board.cooldownKind : null
       })),
       lastEvent:publicEvent(game.lastEvent)
     };
   }
-  return Object.freeze({create, start, pause, reconnect, abort, act, publicGame, generatePuzzle, validatePuzzle,
+  return Object.freeze({create, start, advance, pause, reconnect, abort, act, publicGame, generatePuzzle, validatePuzzle,
     settings, isExcluded, solutionPattern:pattern, boardKey,
-    constants:Object.freeze({SIZE,HIT_COOLDOWN,MISS_COOLDOWN,HISTORY_LIMIT,ACTION_HISTORY_LIMIT,ANSWER_PATTERNS:ANSWERS.length})});
+    constants:Object.freeze({SIZE,HIT_COOLDOWN,MISS_COOLDOWN,OPENING_COUNTDOWN,HISTORY_LIMIT,ACTION_HISTORY_LIMIT,ANSWER_PATTERNS:ANSWERS.length})});
 });
