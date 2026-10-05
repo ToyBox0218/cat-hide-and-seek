@@ -14,7 +14,7 @@ function battleMessage(){
   if(state.pendingAction)return '等待房主確認…';
   const remaining=board.cooldownUntil-battleNow();
   if(remaining>350)return `稍等 ${(remaining/1000).toFixed(1)} 秒，再找下一隻。私人筆記仍可使用。`;
-  if(state.mode==='note')return '私人筆記只留在你的瀏覽器；再按一次可取消。';
+  if(state.mode==='note')return '記號模式已開：點格子切換紫色 ◇；只有你看得到。';
   return board.combo?`連鎖 ${board.combo}！下一隻造成 ${(board.combo+1)*5} 傷害，換盤也不中斷。`:'請找出貓咪！先找到一隻，開始你的連鎖。';
 }
 function renderBattle(){
@@ -54,17 +54,18 @@ function renderBattle(){
     }
     for(const cell of Array.from(grid.children)){
       const index=+cell.dataset.index,region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
-      const found=board.found.includes(index),miss=board.misses.includes(index),out=excluded(board,index);
-      const cellState=found?'cat':miss?'opened':out?'auto-x':local&&state.notes.has(index)?'note':'hidden';
+      const found=board.found.includes(index),miss=board.misses.includes(index);
+      const cellState=found?'cat':miss?'opened':local&&state.notes.has(index)?'note':'hidden';
       if(cell.dataset.renderState!==cellState){
         cell.dataset.renderState=cellState;
         for(const name of ['cat','opened','auto-x','note'])cell.classList.toggle(name,name===cellState);
-        cell.innerHTML=found?battleCat(stableHash(`${board.puzzle.id}:${index}`)):'';
-        const suffix={cat:'，已找到貓',opened:'，翻開空格','auto-x':'，規則排除',note:'，私人筆記',hidden:''}[cellState];
+        if(found)cell.innerHTML=battleCat(stableHash(`${board.puzzle.id}:${index}`));
+        else cell.textContent=miss?'×':cellState==='note'?'◇':'';
+        const suffix={cat:'，已找到貓',opened:'，已翻開的空格，確認沒有貓',note:'，私人筆記，尚未確認',hidden:''}[cellState];
         cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${col+1} 列，區域 ${region+1}${suffix}`);
       }
       cell.classList.toggle('latest-result',game.lastEvent?.who===who&&game.lastEvent?.boardId===board.puzzle.id&&game.lastEvent?.index===index);
-      if(local){cell.disabled=found||miss||out||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));cell.classList.toggle('pending-cell',state.pendingAction?.index===index);}
+      if(local){cell.disabled=found||miss||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));cell.classList.toggle('pending-cell',state.pendingAction?.index===index);}
     }
     const basket=root.querySelector('.cat-basket'),basketKey=`${board.puzzle.id}:${board.found.join(',')}`;
     if(basket.dataset.foundKey!==basketKey){
@@ -107,7 +108,7 @@ function refreshBattleInputState(){
   const board=game.boards[state.you],grid=$('.battle-side.local .battle-board');if(!grid)return;
   for(const cell of Array.from(grid.children)){
     const index=+cell.dataset.index;
-    cell.disabled=board.found.includes(index)||board.misses.includes(index)||excluded(board,index)||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));
+    cell.disabled=board.found.includes(index)||board.misses.includes(index)||(state.mode==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));
   }
   state.battleCooldownActive=board.cooldownUntil>battleNow();
 }
@@ -115,7 +116,7 @@ function refreshBattleInputState(){
 function battleChoose(index){
   const game=state.game,board=game.boards[state.you];
   if(!battleNotesAllowed(game))return;
-  if(board.found.includes(index)||board.misses.includes(index)||excluded(board,index))return;
+  if(board.found.includes(index)||board.misses.includes(index))return;
   if(state.mode==='note'){state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();return}
   if(game.status!=='playing'||state.pendingAction||board.cooldownUntil>battleNow())return;
   const action={type:'guess',index,boardId:board.puzzle.id,actionId:crypto.randomUUID()};state.pendingAction=action;render();

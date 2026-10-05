@@ -158,7 +158,7 @@ function switchTurn() {
 const itemMode=game=>['items','coop'].includes(game.settings.mode);
 const fishBalance=(game,who)=>game.settings.mode==='coop'?game.sharedFish:game.players[who].fish;
 function changeFish(game,who,delta){if(game.settings.mode==='coop')game.sharedFish=Math.max(0,Math.min(4,game.sharedFish+delta));else game.players[who].fish=Math.max(0,Math.min(4,game.players[who].fish+delta))}
-function unresolved(game,index){return Number.isInteger(index)&&index>=0&&index<game.puzzle.size**2&&!game.found.includes(index)&&!game.misses.includes(index)&&!excluded(game,index)}
+function unresolved(game,index){return Number.isInteger(index)&&index>=0&&index<game.puzzle.size**2&&!game.found.includes(index)&&!game.misses.includes(index)}
 function connectedTargets(size,targets){const set=new Set(targets),seen=new Set([targets[0]]),queue=[targets[0]];while(queue.length){const i=queue.shift(),r=Math.floor(i/size),c=i%size;for(const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){const rr=r+dr,cc=c+dc,n=rr*size+cc;if(rr>=0&&rr<size&&cc>=0&&cc<size&&set.has(n)&&!seen.has(n)){seen.add(n);queue.push(n)}}}return seen.size===targets.length}
 function deliverIntel(game,who,intel){
   if(game.settings.mode==='coop'){game.sharedIntel.push(intel);if(game.sharedIntel.length>12)game.sharedIntel.shift();return}
@@ -182,23 +182,14 @@ function applyItem(who,action){
   else if(kind==='hourglass')game.deadline+=10000;
   changeFish(game,who,-cost);game.itemUsedThisTurn=true;game.lastEvent={type:'item',kind,who,at:Date.now()};if(intel)deliverIntel(game,who,intel);broadcast();return true;
 }
+// Used only when both players explicitly request the textual teaching hint.
+// Never use logical deductions to reveal, disable or style unopened cells.
 function excluded(game,index) {
   const puzzle=game.puzzle, size=puzzle.size, row=Math.floor(index/size), column=index%size, region=puzzle.regions[index];
   return game.found.some(cat=>{
     const catRow=Math.floor(cat/size), catColumn=cat%size;
     return row===catRow||column===catColumn||region===puzzle.regions[cat]||(Math.abs(row-catRow)<=1&&Math.abs(column-catColumn)<=1);
   });
-}
-function exclusionReason(game,index){
-  const {size,regions}=game.puzzle,row=Math.floor(index/size),column=index%size,region=regions[index],reasons=new Set();
-  for(const cat of game.found){
-    const catRow=Math.floor(cat/size),catColumn=cat%size;
-    if(row===catRow)reasons.add('與已找到的貓同行');
-    if(column===catColumn)reasons.add('與已找到的貓同列');
-    if(region===regions[cat])reasons.add('同區已經有貓');
-    if(Math.abs(row-catRow)<=1&&Math.abs(column-catColumn)<=1)reasons.add('緊鄰已找到的貓');
-  }
-  return [...reasons].join('、');
 }
 function neighborIndexes(size,index) {
   const row=Math.floor(index/size),column=index%size,out=[];
@@ -253,7 +244,7 @@ function act(who,action) {
   if (action.type==='pass') { switchTurn(); broadcast(); return; }
   if (action.type!=='guess') return;
   const index=+action.index;
-  if (!Number.isInteger(index)||index<0||index>=game.puzzle.size**2||excluded(game,index)||game.found.includes(index)||game.misses.includes(index)) return;
+  if (!Number.isInteger(index)||index<0||index>=game.puzzle.size**2||game.found.includes(index)||game.misses.includes(index)) return;
   if (game.puzzle.solution.includes(index)) {
     const points=game.settings.mode==='treasure'&&game.treasures.includes(index)?2:1;
     game.found.push(index); game.foundBy[index]=who; game.players[who].score+=points; game.players[who].cats=(game.players[who].cats||0)+1; game.streak++; game.hint=null; game.hintVotes=[];
@@ -484,8 +475,8 @@ function syncNoteModeUI(){
   const active=state.mode==='note';document.body.classList.toggle('note-mode-active',active);
   for(const [buttonId,statusId] of [['#noteMode','#noteModeStatus'],['#battleNote','#battleNoteStatus']]){
     const button=$(buttonId),status=$(statusId);
-    if(button){button.textContent=`◇ 私人記號：${active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=active?'關閉私人記號，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
-    if(status)status.textContent=active?'記號模式：點格子加／取消；再按一次按鈕即可找貓':'直接點格子找貓';
+    if(button){button.textContent=`◇ 記號模式：${active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=active?'關閉記號模式，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
+    if(status)status.textContent=active?'記號模式已開：點格子加／取消紫色 ◇，不會猜測；關閉即可找貓':'直接點格子找貓；深灰 × 表示已確認的空格';
   }
 }
 function observeLegacyAudio(game){
@@ -540,8 +531,8 @@ function render() {
     if (column===size-1||game.puzzle.regions[index+1]!==region) cell.classList.add('er');
     if (row===size-1||game.puzzle.regions[index+size]!==region) cell.classList.add('eb');
     if (game.found.includes(index)) { cell.classList.add('cat'); cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到貓`); }
-    else if (game.misses.includes(index)||excluded(game,index)) { cell.classList.add('x'); cell.textContent='×'; cell.disabled=true; }
-    else if (state.notes.has(index)) { cell.classList.add('note'); cell.textContent='×'; }
+    else if (game.misses.includes(index)) { cell.classList.add('opened'); cell.textContent='×'; cell.disabled=true; }
+    else if (state.notes.has(index)) { cell.classList.add('note'); cell.textContent='◇'; }
     if (state.mode==='guess'&&game.turn!==state.you) cell.disabled=true;
     cell.onclick=()=>{
       if (state.mode==='note') { state.notes.has(index)?state.notes.delete(index):state.notes.add(index); saveLocal(); render(); return; }
@@ -580,7 +571,7 @@ function renderV2() {
   if(game.settings.mode==='battle'){renderBattle();return}document.body.classList.remove('is-battle');$('#battleArena').classList.add('hidden');
   game.clues=game.clues||{};game.foundBy=game.foundBy||{};game.settings=cleanSettings(game.settings||{});game.sharedIntel=game.sharedIntel||[];game.sharedFish=game.sharedFish||0;
   game.players.forEach((player,index)=>{player.cats??=player.score||0;player.fish??=0;player.avatar??=index});
-  if(state.pendingAction&&(state.pendingAction.turnId!==game.turnId||game.turn!==state.you||game.found.includes(state.pendingAction.index)||game.misses.includes(state.pendingAction.index)||excluded(game,state.pendingAction.index)))state.pendingAction=null;
+  if(state.pendingAction&&(state.pendingAction.turnId!==game.turnId||game.turn!==state.you||game.found.includes(state.pendingAction.index)||game.misses.includes(state.pendingAction.index)))state.pendingAction=null;
   if(game.turn!==state.you||game.itemUsedThisTurn||game.status!=='playing'){state.tool=null;state.yarnTargets=[]}
   const previousTurn=state.observed.turn,turnChanged=game.status==='playing'&&previousTurn!==game.turn,audibleTurnChanged=turnChanged&&previousTurn!==null&&state.observed.status==='playing'&&!state.suppressNextTurnSound;
   const visibleIntel=game.settings.mode==='coop'?game.sharedIntel:state.intel,probed=new Set(visibleIntel.flatMap(intel=>intel.targets||[]));
@@ -616,10 +607,9 @@ function renderV2() {
     if(column===size-1||game.puzzle.regions[index+1]!==region)cell.classList.add('er');
     if(row===size-1||game.puzzle.regions[index+size]!==region)cell.classList.add('eb');
     if(game.found.includes(index)){cell.classList.add('cat');cell.innerHTML=catCharacter(catVariant(game,index),'board-character');const treasure=game.settings.mode==='treasure'&&(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));if(treasure)cell.classList.add('treasure-cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到${treasure?'鈴鐺':''}貓`)}
-    else if(game.misses.includes(index)){cell.classList.add('opened');cell.textContent='';cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻開的空格`)}
-    else if(excluded(game,index)){const reason=exclusionReason(game,index);cell.classList.add('auto-x');cell.disabled=true;cell.title=`${cell.title}｜${reason}`;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，規則自動排除：${reason}`)}
-    else if(state.notes.has(index)){cell.classList.add('note');cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記`)}
-    if(probed.has(index)&&!game.found.includes(index)&&!game.misses.includes(index)&&!excluded(game,index))cell.classList.add('probed');
+    else if(game.misses.includes(index)){cell.classList.add('opened');cell.textContent='×';cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻開的空格，確認沒有貓`)}
+    else if(state.notes.has(index)){cell.classList.add('note');cell.textContent='◇';cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記，尚未確認`)}
+    if(probed.has(index)&&!game.found.includes(index)&&!game.misses.includes(index))cell.classList.add('probed');
     if(state.yarnTargets.includes(index))cell.classList.add('yarn-picked');
     if(game.lastEvent?.index===index)cell.classList.add('latest-result');
     if(state.selectedCell===index)cell.classList.add('selected-cell');
@@ -679,7 +669,7 @@ function sendItem(payload){
   if(!game||!itemMode(game)||game.status!=='playing'||game.turn!==state.you||game.itemUsedThisTurn){toast('現在不能使用道具');return false}
   const costs={magnifier:2,yarn:2,shield:3,hourglass:2},cost=costs[payload.item];
   if(!cost||fishBalance(game,state.you)<cost){toast('小魚乾不足');return false}
-  if(payload.item==='magnifier'&&!unresolved(game,+payload.target)){toast('請選尚未揭開、未被排除的格子');return false}
+  if(payload.item==='magnifier'&&!unresolved(game,+payload.target)){toast('請選尚未翻開的格子');return false}
   if(payload.item==='yarn'){
     const targets=[...new Set((payload.targets||[]).map(Number))];
     if(targets.length<2||targets.length>3||targets.some(index=>!unresolved(game,index))||!connectedTargets(game.puzzle.size,targets)){toast('毛線球要圈選 2～3 個相連的未解格');return false}
@@ -698,7 +688,7 @@ function sendItem(payload){
 document.querySelectorAll('#toolbox [data-item]').forEach(button=>button.onclick=()=>{
   const item=button.dataset.item;
   if(item==='magnifier'||item==='yarn'){
-    state.tool=state.tool===item?null:item;state.yarnTargets=[];render();return;
+    state.mode='guess';state.tool=state.tool===item?null:item;state.yarnTargets=[];render();return;
   }
   sendItem({item});
 });

@@ -125,8 +125,10 @@ function element(tagName = 'div') {
 }
 
 function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = false, local = {}, session = {}, fakeAudio = false, AudioContext, matchEnabled, meowSamples = ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav'] } = {}) {
-  const nodes = new Map(), messages = [], intervals = [], timers = new Map(), frames = new Map();
+  const nodes = new Map(), messages = [], intervals = [], timers = new Map(), frames = new Map(), toolButtons = new Map();
   const get = selector => {
+    const tool = /^#toolbox \[data-item="([\w-]+)"\]$/.exec(selector);
+    if (tool) return toolButtons.get(tool[1]) || null;
     const match = /^#board \.cell\[data-index="(\d+)"\]$/.exec(selector);
     if (match) return get('#board').children.find(node => +node.dataset.index === +match[1]) || null;
     const side = /^(\.battle-side\.(?:local|opponent))(?: (.+))?$/.exec(selector);
@@ -141,6 +143,9 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
   };
   Object.entries({ '#size': size, '#gameMode': mode, '#secondsA': 45, '#secondsB': 60,
     '#cap': 3, '#battleHP': 150, '#nick': 'Test Cat' }).forEach(([key, value]) => get(key).value = String(value));
+  for (const item of ['magnifier', 'yarn', 'shield', 'hourglass']) {
+    const button = element('button'); button.dataset.item = item; toolButtons.set(item, button); get('#toolbox').appendChild(button);
+  }
   let now = 1_900_000_000_000, serial = 0, rng = seed >>> 0;
   class Clock extends Date { static now() { return now; } }
   const context = vm.createContext({
@@ -152,7 +157,7 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
         return array;
       }, randomUUID: () => `test-action-${++serial}`
     },
-    document: { ...eventTarget(), querySelector: get, querySelectorAll: selector => [...nodes.values(), context.document.body].flatMap(node => node.querySelectorAll(selector)), createElement: element,
+    document: { ...eventTarget(), querySelector: get, querySelectorAll: selector => selector === '#toolbox [data-item]' ? [...toolButtons.values()] : [...nodes.values(), context.document.body].flatMap(node => node.querySelectorAll(selector)), createElement: element,
       hidden: false, body: element() },
     localStorage: storage(local), sessionStorage: storage(session),
     navigator: { clipboard: { writeText: async () => {} } },
@@ -228,6 +233,32 @@ function harness({ mode = 'basic', size = 6, seed = 0x1873, battle, battleUI = f
 
 function emptyCell(game, h) {
   return game.puzzle.regions.findIndex((_, index) => !game.puzzle.solution.includes(index) && h.unresolved(game, index));
+}
+function ruleRelatedEmptyCells(puzzle, cat) {
+  const { size, regions, solution } = puzzle, row = Math.floor(cat / size), column = cat % size;
+  const empty = regions.flatMap((_, index) => solution.includes(index) ? [] : [index]);
+  const groups = {
+    row: empty.filter(index => Math.floor(index / size) === row),
+    column: empty.filter(index => index % size === column),
+    region: empty.filter(index => regions[index] === regions[cat]),
+    adjacent: empty.filter(index => Math.abs(Math.floor(index / size) - row) <= 1 && Math.abs(index % size - column) <= 1)
+  };
+  for (const [name, cells] of Object.entries(groups)) assert.ok(cells.length, `fixture must cover the ${name} rule`);
+  return [...new Set(Object.values(groups).flat())];
+}
+function assertUnopenedCell(cell, { note = false, disabled = false } = {}) {
+  assert.equal(cell.textContent, note ? '◇' : '', `unopened cell ${cell.dataset.index} has no factual X`);
+  for (const name of ['opened', 'cat', 'auto-x', 'dimmed']) assert.equal(cell.classList.contains(name), false, `unopened cell ${cell.dataset.index} must not be ${name}`);
+  assert.equal(cell.classList.contains('note'), note);
+  assert.equal(cell.disabled, disabled);
+  assert.doesNotMatch(cell.getAttribute('aria-label'), /自動排除|規則排除|已翻開|確認沒有貓/);
+  if (note) assert.match(cell.getAttribute('aria-label'), /私人筆記.*尚未確認/);
+  assert.equal(cell.style.opacity ?? '', ''); assert.equal(cell.style.filter ?? '', '');
+}
+function assertConfirmedEmpty(cell) {
+  assert.equal(cell.textContent, '×'); assert.equal(cell.classList.contains('opened'), true);
+  assert.equal(cell.classList.contains('note'), false); assert.equal(cell.classList.contains('auto-x'), false);
+  assert.match(cell.getAttribute('aria-label'), /已翻開的空格.*確認沒有貓/);
 }
 function assertNoPrivateKeys(value, at = 'snapshot') {
   if (!value || typeof value !== 'object') return;
@@ -315,9 +346,40 @@ test('basic misses expose an empty cell, no adjacent count, and switch turns onc
   assert.equal(game.deadline, h.now() + 60_000);
   h.renderLegacy();
   const cell = h.get('#board').children[index];
-  assert.equal(cell.textContent, ''); assert.ok(cell.classList.contains('opened'));
-  assert.match(cell.getAttribute('aria-label'), /已翻開的空格/);
+  assertConfirmedEmpty(cell);
   assert.equal(h.messages.at(-1).state.clues[index], undefined);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} found cats leave every unopened rule-related cell playable and real misses cannot be farmed`, () => {
+  const h = harness({ mode }), game = h.begin(), cat = game.puzzle.solution[0];
+  const related = ruleRelatedEmptyCells(game.puzzle, cat);
+  h.enableRendering(); h.renderLegacy(); h.get('#board').children[cat].click();
+  assert.deepEqual(json(game.found), [cat]);
+  for (let index = 0; index < game.puzzle.size ** 2; index++) if (index !== cat) {
+    assertUnopenedCell(h.get('#board').children[index]);
+    assert.equal(h.unresolved(game, index), true, `cell ${index} remains unresolved until explicitly opened`);
+  }
+  h.get('#noteMode').click();
+  const sent = h.messages.length;
+  h.get('#board').children[related[0]].click();
+  assertUnopenedCell(h.get('#board').children[related[0]], { note: true });
+  assert.equal(h.messages.length, sent, 'manual notes are private, even on a rule-related cell');
+  assertNoPrivateKeys(json(h.publicGame(game)));
+  h.get('#noteMode').click();
+  for (const index of related) {
+    if (game.turn !== 0) h.act(1, h.action('pass'));
+    const beforeFish = mode === 'coop' ? game.sharedFish : game.players[0].fish;
+    h.get('#board').children[index].click();
+    assert.equal(game.misses.includes(index), true, `rule-related cell ${index} accepts a real miss`);
+    assert.equal(game.turn, 1); assertConfirmedEmpty(h.get('#board').children[index]);
+    const afterFish = mode === 'coop' ? game.sharedFish : game.players[0].fish;
+    assert.equal(afterFish, ['items', 'coop'].includes(mode) ? Math.min(4, beforeFish + 1) : beforeFish);
+    const snapshot = json(h.publicGame(game)), count = h.messages.length;
+    const repeat = h.action('guess', { index });
+    h.act(game.turn, repeat); h.act(game.turn, repeat);
+    assert.deepEqual(json(h.publicGame(game)), snapshot, 'repeated misses never change fish, score, turn or deadline');
+    assert.equal(h.messages.length, count, 'already opened cells do not broadcast another result');
+  }
 });
 
 test('basic hits keep the turn beyond the old cap and duplicate actions cannot score twice', () => {
@@ -449,6 +511,102 @@ test('private notes are role-isolated in storage and toggling a note never trans
   assert.deepEqual(JSON.parse(h.context.sessionStorage.getItem('p2pNotes-host')), [3]);
   assert.deepEqual(JSON.parse(h.context.sessionStorage.getItem('p2pNotes-guest')), [17]);
   assertNoPrivateKeys(json(h.publicGame(game)));
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} snapshots and reconnect preserve factual empty cells and never recreate automatic marks or another player's notes`, () => {
+  const host = harness({ mode }), game = host.begin(), cat = game.puzzle.solution[0];
+  const [miss, hostNote, guestNote] = ruleRelatedEmptyCells(game.puzzle, cat);
+  host.act(0, host.action('guess', { index: cat }));
+  host.act(0, host.action('guess', { index: miss })); host.state.notes.add(hostNote);
+  const snapshot = json(host.publicGame(game)); assertNoPrivateKeys(snapshot);
+  const guest = harness({ mode }); guest.state.role = 'guest'; guest.state.you = 1;
+  guest.enableRendering(); guest.onMessage({ type: 'state', state: snapshot });
+  assertConfirmedEmpty(guest.get('#board').children[miss]);
+  for (let index = 0; index < 36; index++) if (![cat, miss].includes(index)) assertUnopenedCell(guest.get('#board').children[index]);
+  guest.get('#noteMode').click(); guest.get('#board').children[guestNote].click(); guest.get('#noteMode').click();
+  assertUnopenedCell(guest.get('#board').children[guestNote], { note: true });
+  guest.onMessage({ type: 'state', state: json(snapshot) });
+  guest.onClose(); guest.onOpen(); guest.onMessage({ type: 'state', state: json(snapshot) });
+  assertConfirmedEmpty(guest.get('#board').children[miss]);
+  for (let index = 0; index < 36; index++) if (![cat, miss].includes(index)) {
+    assertUnopenedCell(guest.get('#board').children[index], { note: index === guestNote });
+  }
+  assert.equal(guest.state.notes.has(hostNote), false); assert.equal(guest.state.notes.has(guestNote), true);
+});
+
+for (const mode of ['items', 'coop']) test(`${mode} explicit scans can target rule-related cells and show only probed intel without factual X marks`, () => {
+  for (const item of ['magnifier', 'yarn']) {
+    const h = harness({ mode }), game = h.begin(), cat = game.puzzle.solution[0];
+    h.act(0, h.action('guess', { index: cat }));
+    game.players[0].fish = 4; game.sharedFish = 4;
+    let targets;
+    if (item === 'magnifier') targets = [ruleRelatedEmptyCells(game.puzzle, cat)[0]];
+    else {
+      for (let index = 0; index < 36 && !targets; index++) for (const next of [index % 6 < 5 ? index + 1 : -1, index + 6]) {
+        if (next < 0 || next >= 36 || [index, next].includes(cat)) continue;
+        if (game.puzzle.regions[index] !== game.puzzle.regions[cat] || game.puzzle.regions[next] !== game.puzzle.regions[cat]) continue;
+        if (game.puzzle.regions.filter(region => region === game.puzzle.regions[cat]).length > 3) targets = [index, next];
+      }
+      assert.ok(targets, 'fixture has a connected proper subset in the already-found region');
+    }
+    assert.equal(h.applyItem(0, h.action('item', { item, target: targets[0], targets })), true);
+    assert.deepEqual(json(game.misses), [], 'a scan never confirms an empty cell');
+    const intel = mode === 'coop' ? game.sharedIntel : h.state.intel;
+    assert.equal(intel.length, 1); assert.deepEqual(json(intel[0].targets), targets);
+    if (item === 'yarn') assert.equal(intel[0].hasCat, 0, 'even a no-cat scan remains intel rather than an opened cell');
+    h.renderLegacy();
+    for (let index = 0; index < 36; index++) if (index !== cat) {
+      const cell = h.get('#board').children[index]; assertUnopenedCell(cell);
+      assert.equal(cell.classList.contains('probed'), targets.includes(index), 'only explicitly scanned targets get the probed accent');
+    }
+    const guest = harness({ mode }); guest.state.role = 'guest'; guest.state.you = 1;
+    guest.onMessage({ type: 'state', state: json(h.publicGame(game)) }); guest.renderLegacy();
+    for (let index = 0; index < 36; index++) if (index !== cat) {
+      const cell = guest.get('#board').children[index]; assertUnopenedCell(cell, { disabled: true });
+      assert.equal(cell.classList.contains('probed'), mode === 'coop' && targets.includes(index), 'competitive scan intel stays private; cooperative intel stays shared');
+    }
+  }
+});
+
+test('a jointly requested teaching hint may retain text deductions without marking or disabling unopened cells', () => {
+  const h = harness(), game = h.begin(), cat = game.puzzle.solution[0];
+  h.act(0, h.action('guess', { index: cat }));
+  h.act(0, h.action('hint')); assert.equal(game.hint, null);
+  h.act(1, h.action('hint')); assert.equal(typeof game.hint, 'string'); assert.ok(game.hint.length);
+  h.renderLegacy(); assert.equal(h.get('#message').textContent, game.hint);
+  for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(h.get('#board').children[index]);
+});
+
+test('cell styles cannot recreate automatic X marks or block direct private-note toggles', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
+  assert.doesNotMatch(css, /\.auto-x\b/, 'automatic exclusion styling must not survive');
+  const noteRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selectors]) => /\.cell\.note\b/.test(selectors));
+  assert.ok(noteRules.length, 'private notes retain their own visible style');
+  for (const [, selectors, declarations] of noteRules) {
+    assert.doesNotMatch(declarations, /pointer-events\s*:\s*none\b/i, `${selectors.trim()} cannot prevent toggling a private note`);
+    assert.doesNotMatch(declarations, /\bcontent\s*:/i, `${selectors.trim()} must not duplicate the actual diamond text`);
+  }
+  for (const [, selectors, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (/\.cell\.opened\b[^{}]*::?(?:before|after)\b/.test(selectors)) assert.doesNotMatch(declarations, /\bcontent\s*:\s*['"][^'"]+['"]/i, 'confirmed-empty text is rendered by the DOM, not a second generated glyph');
+  }
+});
+
+test('purple private-note and dark-gray confirmed-empty glyphs retain readable contrast on every base region color', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const luminance = hex => hex.match(/[\da-f]{2}/gi).map(component => parseInt(component, 16) / 255)
+    .map(component => component <= 0.04045 ? component / 12.92 : ((component + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, component, index) => sum + component * [0.2126, 0.7152, 0.0722][index], 0);
+  const palette = require('../region-palette.js');
+  for (const [state, expected] of [['note', '#58306f'], ['opened', '#493d35']]) {
+    const colors = rules.filter(([, selectors]) => selectors.includes(`.cell.${state}`))
+      .flatMap(([, , declarations]) => [...declarations.matchAll(/(?:^|;)\s*color\s*:\s*(#[\da-f]{6})\b/gi)].map(match => match[1]));
+    assert.equal(colors.at(-1), expected, `${state} has the distinct final scoped text color`);
+    for (const background of palette.colors) {
+      const ratio = (Math.max(luminance(background), luminance(expected)) + 0.05) / (Math.min(luminance(background), luminance(expected)) + 0.05);
+      assert.ok(ratio >= 4.5, `${state} contrast on ${background}: ${ratio}`);
+    }
+  }
 });
 
 test('new guest puzzle clears local notes/intel but ordinary state refresh preserves them', () => {
@@ -625,6 +783,87 @@ test('battle rendered note markers appear only on the local board and cooldown d
   assert.equal(own.children.every(cell => !cell.disabled), true);
   h.advance(2000); h.state.mode = 'guess'; h.renderBattle(); own = h.get('.battle-side.local').querySelector('.battle-board');
   assert.equal(own.children.every(cell => !cell.disabled), true);
+});
+
+for (const practice of [false, true]) test(`${practice ? 'offline practice' : 'battle'} keeps rule-related cells unmarked, accepts their real misses after cooldown, and never repeats damage`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  h.enableRendering();
+  if (practice) { h.startPractice(); h.advance(3000); h.updateBattleTimers(); }
+  else h.begin();
+  const game = h.state.game, board = game.boards[0], cat = board.puzzle.solution[0];
+  const related = ruleRelatedEmptyCells(board.puzzle, cat);
+  const own = () => h.get('.battle-side.local').querySelector('.battle-board');
+  h.renderBattle(); own().children[cat].click();
+  assert.deepEqual(json(board.found), [cat]); assert.equal(game.players[1].hp, 145);
+  for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index], { disabled: true });
+  h.get('#battleNote').click();
+  const sent = h.messages.length;
+  own().children[related[0]].click();
+  assertUnopenedCell(own().children[related[0]], { note: true });
+  assert.equal(h.messages.length, sent, 'manual notes work privately during the real hit cooldown');
+  h.get('#battleNote').click(); h.advance(299); h.updateBattleTimers();
+  assertUnopenedCell(own().children[related[0]], { note: true, disabled: true });
+  h.advance(1); h.updateBattleTimers();
+  for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index], { note: index === related[0] });
+  const hp = json(game.players.map(player => player.hp));
+  for (const index of related) {
+    own().children[index].click();
+    assert.equal(board.misses.includes(index), true, `rule-related cell ${index} accepts a real miss`);
+    assertConfirmedEmpty(own().children[index]); assert.equal(own().children[index].disabled, true);
+    assert.equal(board.combo, 0); assert.equal(board.cooldownUntil, h.now() + 2000);
+    assert.deepEqual(json(game.players.map(player => player.hp)), hp, 'a real miss causes no hit damage');
+    const before = json(h.publicGame(game));
+    own().children[index].click(); h.battleChoose(index);
+    assert.deepEqual(json(h.publicGame(game)), before, 'repeated UI clicks leave an opened miss unchanged');
+    h.advance(1999); h.updateBattleTimers();
+    for (const remaining of related.filter(value => !board.misses.includes(value))) assert.equal(own().children[remaining].disabled, true);
+    h.advance(1); h.updateBattleTimers();
+    const afterCooldown = json(h.publicGame(game));
+    assert.equal(h.act(0, battleAction(h, 0, { index })).reason, 'resolved-cell');
+    assert.deepEqual(json(h.publicGame(game)), afterCooldown, 'a fresh action ID cannot reopen a miss or restart cooldown');
+    for (const remaining of related.filter(value => !board.misses.includes(value))) assertUnopenedCell(own().children[remaining]);
+  }
+  assert.deepEqual(json(board.misses), related); assert.deepEqual(json(game.players.map(player => player.hp)), hp);
+  assert.equal(board.found.length, 1); assert.equal(board.puzzle.id, game.boards[0].puzzle.id);
+  if (practice) { assert.equal(h.state.transport, null); assert.equal(h.messages.length, 0); }
+});
+
+test('battle snapshots, stable rerenders and reconnect preserve only actual misses and local private notes on both views', () => {
+  const host = harness({ mode: 'battle', battle: true, battleUI: true }), game = host.begin();
+  const fixtures = game.boards.map(board => {
+    const cat = board.puzzle.solution[0], [miss, note] = ruleRelatedEmptyCells(board.puzzle, cat);
+    return { cat, miss, note };
+  });
+  for (const who of [0, 1]) assert.equal(host.act(who, battleAction(host, who, { index: fixtures[who].cat })).accepted, true);
+  host.advance(300);
+  for (const who of [0, 1]) assert.equal(host.act(who, battleAction(host, who, { index: fixtures[who].miss })).accepted, true);
+  host.advance(2000); host.state.notes.add(fixtures[0].note);
+  host.renderBattle();
+  const snapshot = json(host.publicGame(game)); assertNoPrivateKeys(snapshot);
+  const guest = harness({ mode: 'battle', battle: true, battleUI: true });
+  guest.advance(5300); guest.state.role = 'guest'; guest.state.you = 1;
+  guest.enableRendering(); guest.onMessage({ type: 'state', state: json(snapshot) });
+  guest.state.notes.add(fixtures[1].note); guest.renderBattle();
+  const verify = h => {
+    for (const side of ['local', 'opponent']) {
+      const who = side === 'local' ? h.state.you : 1 - h.state.you;
+      const grid = h.get(`.battle-side.${side}`).querySelector('.battle-board'), { cat, miss, note } = fixtures[who];
+      assertConfirmedEmpty(grid.children[miss]);
+      assert.equal(grid.children[cat].classList.contains('cat'), true);
+      for (let index = 0; index < 36; index++) if (![cat, miss].includes(index)) {
+        assertUnopenedCell(grid.children[index], { note: side === 'local' && index === note });
+        assert.notEqual(grid.children[index].dataset.renderState, 'auto-x');
+      }
+      if (side === 'opponent') assert.equal(grid.children.every(cell => cell.tagName === 'SPAN' && cell.getAttribute('aria-readonly') === 'true'), true);
+    }
+  };
+  verify(host); verify(guest);
+  for (let attempt = 0; attempt < 3; attempt++) { host.renderBattle(); guest.onMessage({ type: 'state', state: json(snapshot) }); verify(host); verify(guest); }
+  host.onClose(); host.advance(10000); host.onMessage({ type: 'hello', nickname: 'Guest Cat' });
+  host.onMessage({ type: 'battleReady', gameId: game.id }); host.renderBattle();
+  guest.onClose(); guest.onOpen(); guest.onMessage({ type: 'state', state: json(host.publicGame(game)) });
+  assert.equal(game.status, 'playing'); assert.equal(guest.state.game.status, 'playing');
+  verify(host); verify(guest);
 });
 
 test('battle UI clears local notes only when the local player advances to a new puzzle', () => {
@@ -1197,42 +1436,99 @@ test('game audio receives the page-provided sample sources including offline dat
 });
 
 test('classic private-note control toggles back to direct guessing without sending note actions', () => {
-  const h = harness(), game = h.begin(); h.enableRendering(); h.renderLegacy();
+  const h = harness({ fakeAudio: true }), game = h.begin(); h.enableRendering(); h.renderLegacy();
   const note = h.get('#noteMode'), [first, second] = game.puzzle.solution;
   assert.equal(h.state.mode, 'guess');
-  assert.match(note.textContent, /私人記號：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
+  assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
   assert.match(h.get('#noteModeStatus').textContent, /直接點格子找貓/);
   h.get('#board').children[first].click();
   assert.deepEqual(json(game.found), [first], 'the default cell action is a guess');
+  const beforeNotes = json(h.publicGame(game)), priorSounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
   note.click();
-  assert.equal(h.state.mode, 'note'); assert.match(note.textContent, /私人記號：開/); assert.equal(note.getAttribute('aria-pressed'), 'true');
+  assert.equal(h.state.mode, 'note'); assert.match(note.textContent, /記號模式：開/); assert.equal(note.getAttribute('aria-pressed'), 'true');
   assert.match(h.get('#noteModeStatus').textContent, /記號模式/);
   const sent = h.messages.length;
   h.get('#board').children[second].click();
   assert.equal(h.state.notes.has(second), true); assert.equal(h.messages.length, sent); assert.deepEqual(json(game.found), [first]);
   note.click();
-  assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /私人記號：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
+  assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(json(h.publicGame(game)), beforeNotes, 'mode and note toggles change no revealed cells, score, fish or turn');
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), priorSounds, 'private editing causes no miss, capture or attack sounds');
   h.get('#board').children[second].click();
   assert.deepEqual(json(game.found), [first, second]);
 });
 
 test('battle private-note control toggles without changing direct-hit or cooldown rules', () => {
-  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const note = h.get('#battleNote'), [first, second] = game.boards[0].puzzle.solution;
   const grid = () => h.get('.battle-side.local').querySelector('.battle-board');
-  assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /私人記號：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
+  assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
   assert.match(h.get('#battleNoteStatus').textContent, /直接點格子找貓/);
   grid().children[first].click(); assert.deepEqual(json(game.boards[0].found), [first]);
+  const beforeNotes = json(h.publicGame(game)), priorSounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
   note.click();
-  assert.equal(h.state.mode, 'note'); assert.match(note.textContent, /私人記號：開/); assert.equal(note.getAttribute('aria-pressed'), 'true');
+  assert.equal(h.state.mode, 'note'); assert.match(note.textContent, /記號模式：開/); assert.equal(note.getAttribute('aria-pressed'), 'true');
   const sent = h.messages.length;
   grid().children[second].click();
   assert.equal(h.state.notes.has(second), true); assert.equal(h.messages.length, sent); assert.deepEqual(json(game.boards[0].found), [first]);
+  assert.deepEqual(json(h.publicGame(game)), beforeNotes, 'private notes change no revealed cells, HP, combo, cooldown or revision');
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), priorSounds, 'private editing causes no miss, capture or attack sounds');
   h.advance(300); h.renderBattle(); assert.match(h.get('#battleNoteStatus').textContent, /記號模式/);
   note.click();
-  assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /私人記號：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
+  assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
   grid().children[second].click(); assert.deepEqual(json(game.boards[0].found), [first, second]);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle']) test(`${mode} note mode stays private during off-turn or miss lock and protects resolved cells through repeated button activation`, () => {
+  const battle = mode === 'battle', h = harness({ mode, battle, battleUI: battle, fakeAudio: true }), game = h.begin();
+  const board = battle ? game.boards[0] : game, [cat, target] = board.puzzle.solution;
+  const miss = ruleRelatedEmptyCells(board.puzzle, cat)[0];
+  h.enableRendering(); h.renderLegacy();
+  const grid = () => battle ? h.get('.battle-side.local').querySelector('.battle-board') : h.get('#board');
+  grid().children[cat].click();
+  if (battle) { h.advance(300); h.updateBattleTimers(); }
+  grid().children[miss].click();
+  const before = json(h.publicGame(game)), sent = h.messages.length, sounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
+  const button = h.get(battle ? '#battleNote' : '#noteMode'); button.click();
+  assert.match(button.textContent, /記號模式：開/);
+  for (const expected of [true, false, true]) {
+    const cell = grid().children[target]; assert.equal(cell.tagName, 'BUTTON'); assert.equal(cell.disabled, false);
+    cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch' }); cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch' });
+    assert.equal(h.state.notes.has(target), !expected, 'touch preparation alone cannot apply a note or a guess');
+    cell.click();
+    assert.equal(h.state.notes.has(target), expected, 'the shared native button activation toggles exactly once');
+    assertUnopenedCell(grid().children[target], { note: expected });
+  }
+  for (const resolved of [cat, miss]) { assert.equal(grid().children[resolved].disabled, true); grid().children[resolved].click(); assert.equal(h.state.notes.has(resolved), false); }
+  assertConfirmedEmpty(grid().children[miss]);
+  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), sounds, 'note editing never causes miss, capture or attack sounds');
+  button.click(); assert.match(button.textContent, /記號模式：關/);
+  assert.equal(grid().children[target].disabled, true, 'disabling note mode preserves the real off-turn or miss lock');
+  grid().children[target].click(); assert.deepEqual(json(h.publicGame(game)), before);
+});
+
+for (const mode of ['items', 'coop']) test(`${mode} note mode clears armed scans and choosing a scan explicitly turns note mode off`, () => {
+  for (const item of ['magnifier', 'yarn']) {
+    const h = harness({ mode }), game = h.begin(), target = game.puzzle.solution[0];
+    game.players[0].fish = 4; game.sharedFish = 4; h.enableRendering(); h.renderLegacy();
+    const note = h.get('#noteMode'), tool = h.get(`#toolbox [data-item="${item}"]`);
+    tool.click(); assert.equal(h.state.tool, item);
+    if (item === 'yarn') { h.get('#board').children[target].click(); assert.deepEqual(json(h.state.yarnTargets), [target]); }
+    note.click();
+    assert.equal(h.state.mode, 'note'); assert.equal(h.state.tool, null); assert.deepEqual(json(h.state.yarnTargets), []);
+    const before = json(h.publicGame(game)), sent = h.messages.length;
+    h.get('#board').children[target].click();
+    assertUnopenedCell(h.get('#board').children[target], { note: true });
+    assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent); assert.equal(h.state.intel.length, 0);
+    tool.click();
+    assert.equal(h.state.mode, 'guess'); assert.equal(h.state.tool, item); assert.match(note.textContent, /記號模式：關/);
+    h.get('#board').children[target].click();
+    if (item === 'magnifier') { assert.equal(game.itemUsedThisTurn, true); assert.equal((mode === 'coop' ? game.sharedIntel : h.state.intel).length, 1); }
+    else { assert.deepEqual(json(h.state.yarnTargets), [target]); assert.equal(game.itemUsedThisTurn, false); }
+    assert.deepEqual(json(game.found), []); assert.deepEqual(json(game.misses), []);
+  }
 });
 
 test('quick match is hidden unless explicitly enabled and keeps the enabled service hook', () => {

@@ -368,14 +368,6 @@
     if (typeof reason === 'string') game.lastEvent.reason = reason.slice(0,120);
     return true;
   }
-  function isExcluded(board, index) {
-    if (!board || !Number.isInteger(index) || index < 0 || index >= CELLS) return true;
-    const row = Math.floor(index/SIZE), column = index%SIZE, region = board.puzzle.regions[index];
-    return board.found.some(cat => {
-      const r = Math.floor(cat/SIZE), c = cat%SIZE;
-      return row === r || column === c || region === board.puzzle.regions[cat] || (Math.abs(row-r) <= 1 && Math.abs(column-c) <= 1);
-    });
-  }
   const rejected = reason => ({accepted:false, reason});
   function act(game, who, action, now) {
     if (!game || !['playing','countdown'].includes(game.status)) return rejected('not-playing');
@@ -388,8 +380,8 @@
     const scopedId = `${who}:${action.actionId}`;
     if (game.actionIds.includes(scopedId) || game._boardActions[who].includes(action.actionId)) return rejected('duplicate');
     if (!Number.isInteger(action.index) || action.index < 0 || action.index >= CELLS) return rejected('invalid-cell');
+    // Only opened cells are resolved. Deductions never prevent a player's guess.
     if (board.found.includes(action.index) || board.misses.includes(action.index)) return rejected('resolved-cell');
-    if (isExcluded(board,action.index)) return rejected('excluded-cell');
     const at = time(game,now); if (at === null) return rejected('invalid-time');
     if (game.players.some(player => player.connected === false)) return rejected('disconnected');
     if (game.status === 'countdown' && !advance(game,at)) return rejected('countdown');
@@ -459,6 +451,6 @@
     };
   }
   return Object.freeze({create, start, advance, pause, reconnect, abort, act, publicGame, generatePuzzle, validatePuzzle,
-    settings, isExcluded, solutionPattern:pattern, boardKey,
+    settings, solutionPattern:pattern, boardKey,
     constants:Object.freeze({SIZE,HIT_COOLDOWN,MISS_COOLDOWN,OPENING_COUNTDOWN,HISTORY_LIMIT,ACTION_HISTORY_LIMIT,ANSWER_PATTERNS:ANSWERS.length})});
 });

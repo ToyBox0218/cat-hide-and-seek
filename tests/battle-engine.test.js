@@ -18,7 +18,7 @@ function guess(value, who, index, now, actionId) {
     index,actionId:actionId || `test-${++actionSequence}`},now);
 }
 function cat(value,who = 0) { return value.boards[who].puzzle.solution.find(index => !value.boards[who].found.includes(index)); }
-function empty(value,who = 0) { return Array.from({length:36},(_,i) => i).find(index => !value.boards[who].puzzle.solution.includes(index) && !value.boards[who].misses.includes(index) && !Battle.isExcluded(value.boards[who],index)); }
+function empty(value,who = 0) { return Array.from({length:36},(_,i) => i).find(index => !value.boards[who].puzzle.solution.includes(index) && !value.boards[who].misses.includes(index)); }
 function seeded(seed) { return () => { seed = Math.imul(seed,1664525)+1013904223; return (seed >>> 0)/0x100000000; }; }
 
 // Independent reference solver: row-by-row DFS, not the engine's permutation table.
@@ -425,13 +425,66 @@ test('validator rejects disconnected / too-small regions, touching cats, and amb
 });
 
 
-test('auto-excluded cells cannot become misses or reset a combo', () => {
-  const value = game(); guess(value,0,cat(value),PLAY_AT);
-  const board = value.boards[0], blocked = Array.from({length:36},(_,i) => i).filter(i => !board.found.includes(i) && Battle.isExcluded(board,i));
-  const snapshot = JSON.stringify(value);
-  assert.ok(blocked.length > 0);
-  for (const index of blocked) assert.equal(guess(value,0,index,PLAY_AT+300).reason,'excluded-cell');
-  assert.equal(JSON.stringify(value),snapshot);
+for (const rule of ['row','column','region','diagonal']) {
+  test(`an unopened cell excluded only by ${rule} is a real miss with normal cooldown and replay protection`, () => {
+    const value = game(), board = value.boards[0];
+    board.puzzle = Battle.generatePuzzle({rng:seeded(44)});
+    assert.equal(Battle.validatePuzzle(board.puzzle).valid,true);
+    let found, missed;
+    // Isolate each deduction rule so a regression cannot hide behind another rule.
+    for (const candidate of board.puzzle.solution) {
+      for (let index = 0; index < 36; index++) {
+        if (board.puzzle.solution.includes(index)) continue;
+        const row = Math.floor(index/6), column = index%6;
+        const catRow = Math.floor(candidate/6), catColumn = candidate%6;
+        const rules = {row:row === catRow, column:column === catColumn,
+          region:board.puzzle.regions[index] === board.puzzle.regions[candidate],
+          diagonal:Math.abs(row-catRow) === 1 && Math.abs(column-catColumn) === 1};
+        if (rules[rule] && Object.entries(rules).every(([name,matches]) => name === rule || !matches)) {
+          found = candidate; missed = index;
+        }
+      }
+    }
+    assert.notEqual(missed,undefined,`fixture covers ${rule} in isolation`);
+    assert.equal(guess(value,0,found,PLAY_AT).accepted,true);
+    assert.equal(guess(value,1,cat(value,1),PLAY_AT).accepted,true);
+    const health = value.players.map(player => player.hp), before = JSON.stringify(value);
+    assert.equal(guess(value,0,missed,PLAY_AT+299).reason,'cooldown');
+    assert.equal(JSON.stringify(value),before);
+
+    const action = {type:'guess',actionId:`deduced-${rule}`,boardId:board.puzzle.id,index:missed};
+    const result = Battle.act(value,0,action,PLAY_AT+300);
+    assert.equal(result.accepted,true); assert.equal(result.event.type,'miss');
+    assert.equal(result.event.index,missed); assert.equal(result.event.damage,0); assert.equal(result.event.combo,0);
+    assert.deepEqual(board.found,[found]); assert.deepEqual(board.misses,[missed]);
+    assert.deepEqual(value.boards.map(current => current.combo),[0,1]);
+    assert.deepEqual(value.players.map(player => player.hp),health);
+    assert.equal(board.cooldownUntil,PLAY_AT+2300); assert.equal(board.cooldownStartedAt,PLAY_AT+300);
+    assert.equal(board.cooldownKind,'miss');
+
+    const afterMiss = JSON.stringify(value);
+    assert.equal(Battle.act(value,0,action,PLAY_AT+2300).reason,'duplicate');
+    assert.equal(Battle.act(value,0,{...action,index:cat(value)},PLAY_AT+2300).reason,'duplicate');
+    assert.equal(guess(value,0,missed,PLAY_AT+2300).reason,'resolved-cell');
+    assert.equal(guess(value,0,found,PLAY_AT+2300).reason,'resolved-cell');
+    assert.equal(guess(value,0,cat(value),PLAY_AT+2299).reason,'cooldown');
+    assert.equal(JSON.stringify(value),afterMiss,'retries cannot emit effects, change HP or extend cooldown');
+    assert.equal(guess(value,0,cat(value),PLAY_AT+2300).event.damage,5);
+  });
+}
+
+test('every unopened in-bounds cell remains guessable after finding cats', () => {
+  const original = game();
+  guess(original,0,cat(original),PLAY_AT);
+  guess(original,0,cat(original),PLAY_AT+300);
+  const board = original.boards[0], snapshot = JSON.stringify(original);
+  const unopened = Array.from({length:36},(_,index) => index).filter(index => !board.found.includes(index));
+  assert.equal(unopened.length,34);
+  for (const index of unopened) {
+    const value = JSON.parse(snapshot), result = guess(value,0,index,PLAY_AT+600);
+    assert.equal(result.accepted,true,`unopened cell ${index} is playable`);
+    assert.equal(result.event.type,board.puzzle.solution.includes(index) ? 'hit' : 'miss');
+  }
 });
 
 test('a disconnected player blocks guesses from either player until connection resumes', () => {
