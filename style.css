@@ -706,7 +706,7 @@ body.is-battle #turnBanner { display: none; }
 #battleOpening.is-start-prompt .opening-prompt { padding: 7px 0; color: #227b68; font-size: 25px; font-weight: 950; }
 @keyframes battleOpeningBeat { 0% { transform: scale(.91); } 22% { transform: scale(1.04); } 50%, 100% { transform: scale(1); } }
 
-/* Shared cooldown text and meter; geometry is owned by the reserved slot. */
+/* Shared cooldown text and meter; board-stage geometry is defined below. */
 #battleArena .battle-lock { color: #795335; pointer-events: none; user-select: none; }
 .battle-lock .lock-icon { grid-column: 1; grid-row: 1; display: grid; place-items: center; width: 30px; height: 32px; font-size: 23px; line-height: 1; }
 .battle-lock .lock-copy { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 7px; min-width: 0; line-height: 1.35; }
@@ -715,14 +715,6 @@ body.is-battle #turnBanner { display: none; }
 .battle-lock .lock-progress { grid-column: 1 / -1; display: block; height: 5px; overflow: hidden; border-radius: 9px; background: #e8d8be; }
 .battle-lock .lock-progress > i { display: block; width: 100%; max-width: 100%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #dcaf71, #c88654); }
 .battle-lock .lock-note { grid-column: 1 / -1; min-width: 0; color: #8c7253; text-align: center; font-size: 10px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
-
-.battle-lock.notes-available .lock-icon { display: none; }
-.battle-lock.notes-available .lock-copy { grid-column: 1; gap: 8px; }
-.battle-lock.notes-available .lock-copy > strong { font-size: 9px; }
-.battle-lock.notes-available .lock-seconds { color: #80658f; font-size: 13px; }
-.battle-lock.notes-available .lock-note { font-size: 9px; line-height: 1.2; }
-.battle-lock.notes-available .lock-progress { position: absolute; left: 9px; right: 9px; bottom: 2px; height: 2px; background: #e8deee; }
-.battle-lock.notes-available .lock-progress > i { background: #ab91bb; }
 
 /* --dx / --dy use source-to-target center deltas; --lift is a positive length. */
 .battle-cat-launch, .battle-paw-shot, .battle-spark {
@@ -1286,7 +1278,7 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
 #game .player-card.inactive .basket { filter: saturate(.6); opacity: .85; }
 #game > .arena > .center { min-width: 0; width: 100%; max-width: 100%; overflow: visible; }
 #game #boardWrap { width: 100%; max-width: 100%; overflow: auto; overscroll-behavior: contain; }
-#game #board { margin-inline: auto; }
+#game #board { width: calc(var(--n) * var(--s) + 8px); height: calc(var(--n) * var(--s) + 8px); margin-inline: auto; }
 #game > .top { flex-wrap: wrap; }
 #game .room-tag { min-width: 0; max-width: 100%; }
 #game .room-tag > small { font-size: 12px; }
@@ -1389,7 +1381,6 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   white-space: normal;
 }
 #battleArena .battle-toolbar #battleNote { flex: 0 1 auto; }
-#battleArena #battleNote[data-temporary='true']:disabled { opacity: 1; filter: none; cursor: default; }
 #battleArena .battle-toolbar #battleHelp { min-width: 44px; }
 #battleArena #battleNoteStatus { flex: 1 0 100%; margin: 0; padding: 0; font-size: 14px; line-height: 1.6; }
 #battleArena .battle-instructions {
@@ -1408,63 +1399,6 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   letter-spacing: 0;
 }
 #battleArena .battle-instructions::before, #battleArena .battle-instructions::after { display: none; }
-#battleArena .battle-lock .lock-copy > strong { font-size: 14px; }
-#battleArena .battle-lock .lock-note { font-size: 12px; }
-#battleArena .battle-lock.notes-available .lock-copy > strong,
-#battleArena .battle-lock.notes-available .lock-note { font-size: 11px; }
-
-/* This always-present slot separates cooldown feedback from the grid. The
-   temporary message may move within its slot, but never across a playable tile. */
-#battleArena .battle-lock-slot {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  height: 64px;
-  margin: 4px 0 8px;
-  overflow: hidden;
-  pointer-events: none;
-}
-#battleArena .battle-lock-slot > .battle-lock,
-#battleArena .battle-lock-slot > .battle-lock.notes-available {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto 3px;
-  align-content: center;
-  gap: 2px;
-  width: 100%;
-  max-width: 100%;
-  height: 100%;
-  padding: 5px 9px;
-  border: 1px solid #d7b893;
-  border-radius: 12px;
-  background: #fff6e5;
-  box-shadow: inset 0 1px 0 #fffdf8;
-  transform: none;
-  pointer-events: none;
-}
-#battleArena .battle-lock-slot > .battle-lock.hidden { display: grid !important; visibility: hidden; }
-#battleArena .battle-lock-slot .lock-icon { display: none; }
-#battleArena .battle-lock-slot .lock-copy {
-  grid-column: 1;
-  grid-row: 1;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 4px;
-  line-height: 1.25;
-}
-#battleArena .battle-lock-slot .lock-copy > strong { min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
-#battleArena .battle-lock-slot .lock-seconds { flex: 0 0 auto; font-size: 21px; }
-#battleArena .battle-lock-slot .lock-note { grid-column: 1; grid-row: 2; font-size: 12px; line-height: 1.35; }
-#battleArena .battle-lock-slot .lock-progress { position: static; grid-column: 1; grid-row: 3; height: 3px; }
-#battleArena .battle-lock-slot .battle-lock.lock-pop { animation: lockStripArrival 520ms ease-out both; }
-#battleArena .battle-lock-slot .battle-lock.is-unlocked { border-color: #92bca6; background: #eaf6e8; color: #287662; }
-@keyframes lockStripArrival {
-  0% { opacity: .55; transform: translateY(5px); }
-  55%, 100% { opacity: 1; transform: translateY(0); }
-}
-
 @media (max-width: 1050px) {
   #game > .arena { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-inline: 12px; gap: 12px; }
   #game > .arena > #p0 { grid-column: 1; grid-row: 1; }
@@ -1519,18 +1453,6 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   #battleArena .opponent .cat-basket b { font-size: 13px; }
   #battleArena .opponent .cat-basket .basket-cat { width: 14px; height: 14px; }
   #battleArena .opponent .battle-lock .lock-copy > strong { font-size: 11px; }
-  #battleArena .opponent .battle-lock-slot { height: 40px; margin: 2px 0 4px; }
-  #battleArena .opponent .battle-lock-slot > .battle-lock,
-  #battleArena .opponent .battle-lock-slot > .battle-lock.notes-available {
-    grid-template-rows: auto 3px;
-    gap: 2px;
-    padding: 3px;
-    border-radius: 6px;
-  }
-  #battleArena .opponent .battle-lock-slot .lock-copy { gap: 2px; }
-  #battleArena .opponent .battle-lock-slot .lock-copy > strong { font-size: 11px; line-height: 1.2; }
-  #battleArena .opponent .battle-lock-slot .lock-seconds { font-size: 14px; }
-  #battleArena .opponent .battle-lock-slot .lock-progress { grid-row: 2; }
   #battleArena .battle-toolbar { padding: 10px 10px 8px; gap: 8px; }
   #battleArena .battle-toolbar > button { padding-inline: 10px; }
   #battleArena .battle-instructions { padding-inline: 10px; }
@@ -1542,7 +1464,7 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   #game .player-card > .turn-label { padding-inline: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #battleArena .battle-lock-slot .battle-lock.lock-pop { animation: none !important; opacity: 1; transform: none; }
+  #battleArena .battle-board-stage > .battle-lock.lock-pop { animation: none !important; opacity: 1; transform: none; }
   .avatar-art.lively-avatar { animation: none !important; transform: none !important; }
   #board .cell.found-glow > :is(.cat-art, .board-character),
   .battle-board .cell.found-glow > :is(.cat-art, .board-character),
@@ -1562,4 +1484,205 @@ body.is-battle.note-mode-active .battle-side.local .battle-board { outline: 3px 
   .battle-board.board-clear-glow { animation: none !important; box-shadow: 0 0 0 3px #ffe39f, 0 0 14px #f5cc7377; }
   .board-clear-celebration > .cat-art { opacity: 1; }
   .battle-paw-shot::after { display: none; }
+}
+
+/* Primary interaction controls belong to the local board, in normal flow.
+   Phone/tablet: above the grid. Desktop: a dedicated sidebar beside the grid. */
+#battleArena .primary-controls-slot { min-width: 0; }
+#battleArena .primary-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 2px solid #b49bc8;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fffaff, #f1e8f8);
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 #bd9ac332;
+}
+#battleArena .primary-controls #battleNote {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 8px;
+  border-width: 2px;
+  border-color: #8b65a5;
+  font-size: 16px;
+  line-height: 1.5;
+  white-space: normal;
+}
+#battleArena .primary-controls #battleNote:disabled { cursor: not-allowed; opacity: .7; }
+#battleArena .primary-controls #battleNoteStatus {
+  order: 0;
+  margin: 0;
+  padding: 0;
+  color: #634971;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+#battleArena .battle-board-stage {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
+  margin-inline: auto;
+  border-radius: 16px;
+}
+#battleArena .battle-board-stage > .battle-board { width: 100%; height: 100%; }
+
+/* A miss blocks the entire local board, including notes. There is no empty
+   strip above the board and hiding the overlay leaves no reserved layout box. */
+#battleArena .battle-board-stage > .battle-lock {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(4, max-content);
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  padding: 20px;
+  border: 2px solid #ba8c67;
+  border-radius: inherit;
+  background: #fff8e8ee;
+  box-shadow: inset 0 0 0 5px #fffdf4b3;
+  color: #795335;
+  text-align: center;
+  transform: none;
+  pointer-events: auto;
+  touch-action: none;
+}
+#battleArena .battle-board-stage > .battle-lock.hidden { display: none !important; }
+#battleArena .battle-board-stage .lock-icon { grid-column: 1; grid-row: 1; width: auto; height: auto; font-size: 28px; }
+#battleArena .battle-board-stage .lock-copy {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+#battleArena .battle-board-stage .lock-copy > strong { font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
+#battleArena .battle-board-stage .lock-seconds { font-size: clamp(34px, 4vw, 48px); line-height: 1.1; }
+#battleArena .battle-board-stage .lock-progress { position: static; grid-column: 1; grid-row: 3; width: min(240px, 85%); height: 6px; }
+#battleArena .battle-board-stage .lock-note { grid-column: 1; grid-row: 4; font-size: 14px; line-height: 1.5; }
+#battleArena .battle-board-stage > .battle-lock.lock-pop { animation: boardLockArrival 180ms ease-out both; }
+@keyframes boardLockArrival { from { opacity: .45; } to { opacity: 1; } }
+
+/* The emergency actions panel exists only when at least one action is visible.
+   No hidden buttons or empty backing consume vertical room during play. */
+#battleArena .battle-toolbar { width: fit-content; margin: 8px auto 0; padding: 6px 8px; border: 1px solid #dcbf97; border-radius: 14px; }
+#battleArena .battle-toolbar:not(:has(> button:not(.hidden))) { display: none; }
+#battleArena .battle-instructions { width: fit-content; margin: 8px auto 0; padding: 6px 10px; border: 1px solid #dcbf97; border-radius: 14px; }
+#battleArena .battle-status #battleHelp { background: #fff7e6; padding-inline: 12px; }
+
+/* Desktop height contract, at 100% browser zoom:
+   B = clamp(288px, H - 376px, 560px), constrained by each column's width.
+   Ordinary play chrome uses about 355px: arena padding 20 + header 92 +
+   notice 32 + player 64 + side gaps 12 + card chrome 52 + basket 44 + rules 39.
+   1280x720 -> B=344, 1366x768 -> B=392, 1920x1080 -> B=560.
+   This leaves ~21px headroom in short viewports, without clipping the page,
+   lowering interface type sizes, or putting essential controls behind menus.
+   Names/status may still grow naturally; these are source budgets, not a
+   browser-measured guarantee for arbitrary font substitution or long content. */
+@media (min-width: 1100px) {
+  #battleArena {
+    --battle-board-size: clamp(288px, calc(100dvh - 376px), 560px);
+    width: min(1460px, calc(100% - 48px));
+    max-width: none;
+    padding-top: 8px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  #battleArena:has(.battle-toolbar > button:not(.hidden)) { --battle-board-size: clamp(272px, calc(100dvh - 440px), 560px); }
+  #battleArena .battle-header { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; padding: 0; }
+  #battleArena .battle-brand { min-width: 260px; padding: 6px 20px; gap: 1px; }
+  #battleArena .battle-brand h1 { font-size: 32px; line-height: 1.2; }
+  #battleArena .battle-brand > span { position: static; min-width: 0; padding: 0; border: 0; background: none; box-shadow: none; color: #fff3d2; font-size: 13px; line-height: 1.3; letter-spacing: .04em; }
+  #battleArena .battle-brand::before, #battleArena .battle-brand::after { height: 12px; top: -12px; }
+  #battleArena .battle-status { justify-content: flex-end; gap: 6px; }
+  #battleArena #battleNotice { margin: 6px auto; line-height: 20px; }
+  #battleArena .battle-layout { grid-template-columns: minmax(0, 1.3fr) 48px minmax(0, 1fr); gap: 16px; }
+  #battleArena .battle-vs { width: 48px; height: 50px; margin-top: 9px; font-size: 21px; }
+  #battleArena .battle-side { display: grid; grid-template-columns: minmax(0, 1fr) 154px; grid-template-rows: repeat(3, max-content); align-content: start; gap: 6px 10px; }
+  #battleArena .battle-player { grid-column: 1; grid-row: 1; grid-template-columns: 64px minmax(0, 1fr); min-height: 64px; margin: 0; padding: 0; gap: 4px 10px; }
+  #battleArena .portrait { width: 64px; height: 64px; }
+  #battleArena .player-identity { padding-top: 0; gap: 4px 8px; }
+  #battleArena .combo-badge { grid-column: 2; grid-row: 1; flex-direction: column; align-self: center; min-width: 0; width: 100%; max-width: 100%; margin: 0; padding: 4px 8px; gap: 0; border-radius: 16px; }
+  #battleArena .board-card { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 6px; min-width: 0; padding: 8px 10px 10px; border-radius: 22px; }
+  #battleArena .board-heading { grid-column: 1 / -1; min-height: 24px; margin: 0; padding: 0; }
+  #battleArena .local .board-card { grid-template-columns: minmax(0, 1fr) 160px; column-gap: 12px; }
+  #battleArena .local .primary-controls-slot { grid-column: 2; grid-row: 2; align-self: start; }
+  #battleArena .primary-controls { margin: 0; padding: 9px; }
+  #battleArena .primary-controls #battleNote { min-height: 52px; }
+  #battleArena .battle-board-stage { width: min(100%, var(--battle-board-size)); }
+  #battleArena .local .battle-board-stage { grid-column: 1; grid-row: 2; }
+  #battleArena .cat-basket { grid-column: 1 / -1; grid-row: 3; width: fit-content; max-width: 100%; min-height: 44px; margin: 0 auto; padding: 4px 12px; gap: 5px; border-width: 5px; }
+  #battleArena .cat-basket::before { inset: -5px; border-width: 5px; }
+  #battleArena .cat-basket .basket-cat { width: 24px; height: 24px; }
+  #battleArena .battle-instructions { margin-top: 6px; padding: 4px 8px; line-height: 1.6; }
+  #battleArena .battle-toolbar:has(> button:not(.hidden)) + .battle-instructions { margin-top: 4px; }
+}
+
+/* Shared-board desktop: put zoom beside the primary controls, keep every
+   action visible in a toolbox beside the board, and spend height on play.
+   The board sizing code budgets 360px for this content; explicit board zoom
+   uses the board's own scroll surface. Side cards are 220px wide, so six
+   26px basket cats plus five 4px gaps fit per row, keeping 24 cats in four
+   real rows without absolute positioning or a clipped basket height. */
+@media (min-width: 1051px) {
+  #game > .top { flex-wrap: nowrap; padding: 6px 24px; }
+  #game > .top .room-tag { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-width: 58%; }
+  #game > .arena { grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(180px, 220px); padding: 4px 20px 6px; gap: 16px; }
+  #game > .arena > .player-card { grid-template-columns: 64px minmax(0, 1fr); padding: 12px 10px; gap: 6px; }
+  #game .player-card > * { grid-column: 1 / -1; }
+  #game .player-card > .turn-label { grid-row: 1; }
+  #game .player-card > .avatar { grid-column: 1; grid-row: 2 / 4; align-self: center; width: 64px; height: 64px; }
+  #game .player-card > .avatar .cat-character { width: 60px; height: 60px; }
+  #game .player-card > .player-name { grid-column: 2; grid-row: 2; align-self: end; font-size: 17px; }
+  #game .player-card > .score { grid-column: 2; grid-row: 3; align-self: start; font-size: 26px; }
+  #game .player-card > small { grid-row: 4; }
+  #game .player-card > .basket { grid-row: 5; }
+  #game .player-card > .intel-list { grid-row: 6; }
+  #game .player-card > .basket { margin-top: 0; padding: 6px 4px; }
+  #game .player-card > .basket .basket-cat { flex-basis: 26px; width: 26px; height: 26px; }
+  #game .player-card > .basket .basket-character { width: 26px; height: 26px; }
+  #game > .arena > .center { display: grid; grid-template-columns: minmax(0, 1fr) 178px; align-content: start; align-items: start; gap: 6px 10px; padding-top: 0; }
+  #game .modes { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 8px; margin: 0; }
+  #game .modes #noteMode { grid-column: 1; grid-row: 1; min-height: 48px; font-size: 16px; }
+  #game .modes #hint { grid-column: 2; grid-row: 1; justify-self: end; }
+  #game #noteModeStatus { grid-column: 1 / -1; grid-row: 2; order: 0; padding: 0; text-align: left; }
+  #game .modes > #message { grid-column: 1 / -1; grid-row: 3; width: 100%; max-width: none; text-align: left; }
+  #game #message:empty { display: none; }
+  #game .board-tools { grid-column: 2; grid-row: 1; align-self: start; margin: 0; padding: 2px 4px; gap: 2px; }
+  #game .board-tools span { min-width: 38px; }
+  #game .toolbox { grid-column: 2; grid-row: 2; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 5px; margin: 0; padding: 5px; }
+  #game .toolbox button { width: 100%; padding: 5px 7px; }
+  #game .toolbox .fish-bank, #game .toolbox #itemStatus { text-align: center; }
+  #game #boardWrap { grid-column: 1; grid-row: 2; max-height: calc(100dvh - 340px); padding: 10px; }
+  #game .center:has(> .toolbox.hidden) #boardWrap { grid-column: 1 / -1; }
+  #game .legend { grid-column: 1 / -1; grid-row: 3; gap: 4px 10px; margin: 0; }
+  #game > footer { padding: 6px 80px 12px; }
+}
+@media (max-width: 700px) {
+  #battleArena .battle-board-stage { border-radius: 12px; }
+  #battleArena .primary-controls { padding: 8px; gap: 6px; }
+  #battleArena .opponent .battle-board-stage > .battle-lock { width: 100%; padding: 4px; gap: 3px; border-radius: 7px; grid-template-rows: repeat(2, max-content); }
+  #battleArena .opponent .battle-board-stage .lock-copy { grid-row: 1; gap: 2px; }
+  #battleArena .opponent .battle-board-stage .lock-copy > strong { font-size: 12px; line-height: 1.3; }
+  #battleArena .opponent .battle-board-stage .lock-seconds { font-size: 22px; }
+  #battleArena .opponent .battle-board-stage .lock-progress { grid-row: 2; height: 3px; }
+  #battleArena .battle-toolbar { margin-top: 8px; padding: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #battleArena .battle-board-stage > .battle-lock.lock-pop { animation: none !important; opacity: 1; transform: none; }
 }

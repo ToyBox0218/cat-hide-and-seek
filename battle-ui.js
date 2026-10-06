@@ -2,19 +2,37 @@
 /* UI and transport adapter. Authority, puzzle generation and public snapshots live in battle-engine.js. */
 const battleNow=()=>Date.now()+(state.clockOffset||0);
 const isBattle=()=>state.game?.settings.mode==='battle';
-const battleNotesAllowed=game=>game.status==='playing'||(game.status==='paused'&&(game.pausedFrom||game._pausedFrom)!=='countdown');
+const battlePhaseAllowsNotes=game=>game.status==='playing'||(game.status==='paused'&&(game.pausedFrom||game._pausedFrom)!=='countdown');
+const battlePrimaryControls=$('#battlePrimaryControls');
 function battleMissRemaining(game=state.game,who=state.you){
-  if(!game||!battleNotesAllowed(game))return 0;
+  if(!game||!battlePhaseAllowsNotes(game))return 0;
   const board=game.boards?.[who];if(board?.cooldownKind!=='miss')return 0;
   const at=game.status==='paused'&&Number.isFinite(game.pausedAt)?game.pausedAt:battleNow();
   return Math.max(0,board.cooldownUntil-at);
 }
 function battleMissLocked(game=state.game){return isBattle()&&battleMissRemaining(game)>0;}
-const battleInputMode=(game=state.game)=>state.mode==='note'||battleMissLocked(game)?'note':'guess';
+const battleNotesAllowed=game=>battlePhaseAllowsNotes(game)&&!battleMissLocked(game);
+const battleInputMode=()=>state.mode==='note'?'note':'guess';
+function syncBattleLockInput(){
+  const game=state.game;if(!isBattle())return;
+  const board=game.boards[state.you],key=battleMissLocked(game)?`${game.id}:${board.puzzle.id}:${board.cooldownUntil}`:'';
+  if(state.battleInputLockKey!==key){state.battleInputLockKey=key;state.battleInputEpoch=(state.battleInputEpoch||0)+1;}
+}
 function captureBattlePress(cell,event){
-  if(cell.disabled||event?.button>0)return;
   const game=state.game,board=game?.boards?.[state.you];if(!board)return;
-  cell.battlePressIntent={mode:battleInputMode(game),gameId:game.id,boardId:board.puzzle.id,epoch:state.battleInputEpoch||0};
+  const context=event?.button===2;
+  const intent={mode:context?'note':battleInputMode(game),gameId:game.id,boardId:board.puzzle.id,
+    epoch:state.battleInputEpoch||0,blocked:battleMissLocked(game)||!battlePhaseAllowsNotes(game)||board.found.includes(+cell.dataset.index)||board.misses.includes(+cell.dataset.index)||(!context&&battleInputMode(game)==='guess'&&(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow())),source:context?'context':'primary'};
+  if(context)cell.battleContextIntent=intent;else if(!event?.button)cell.battlePressIntent=intent;
+}
+function cancelBattlePress(cell){cell.battlePressIntent={cancelled:true};cell.battleContextIntent={cancelled:true};}
+function battleContextMark(index,event,cell){
+  const game=state.game,board=game?.boards?.[state.you],intent=cell.battleContextIntent;cell.battleContextIntent=null;
+  if(!board||!battleNotesAllowed(game)||cell.dataset.gameId!==game.id||cell.dataset.boardId!==board.puzzle.id||board.found.includes(index)||board.misses.includes(index))return;
+  if(intent&&(intent.blocked||intent.cancelled||intent.gameId!==game.id||intent.boardId!==board.puzzle.id||intent.epoch!==(state.battleInputEpoch||0)))return;
+  if(event.button===2&&!intent)return;
+  event.preventDefault();
+  battleChoose(index,intent||{mode:'note',source:'context',gameId:game.id,boardId:board.puzzle.id,epoch:state.battleInputEpoch||0});
 }
 
 const battleCat=(variant,extra='')=>`<span class="cat-art ${variant%2?'orange':'gray'} ${extra}" aria-hidden="true"></span>`;
@@ -26,8 +44,8 @@ function battleMessage(){
   if(game.status==='aborted')return '連線未能恢復，本局已結束，不判勝負。';
   if(game.status==='finished')return game.winner===state.you?'漂亮！所有連鎖都算數。':'這次讓貓友搶先了，再來一局吧！';
   if(state.pendingAction)return '等待房主確認…';
-  const remaining=board.cooldownUntil-battleNow();
-  if(battleMissLocked(game))return `暫停翻格 ${(Math.ceil(battleMissRemaining(game)/100)/10).toFixed(1)} 秒，現在可以做記號。`;
+  if(battleMissLocked(game))return `鎖定 ${(Math.ceil(battleMissRemaining(game)/100)/10).toFixed(1)} 秒，翻格與標記都暫停。`;
+  if(state.battleUnlockNoticeUntil>battleNow())return '可以找貓了！已恢復原本的操作模式。';
   if(state.mode==='note')return '記號模式已開：點格子切換紫色 ×；只有你看得到。';
   return board.combo?`連鎖 ${board.combo}！下一隻造成 ${(board.combo+1)*5} 傷害，換盤也不中斷。`:'請找出貓咪！先找到一隻，開始你的連鎖。';
 }
@@ -38,6 +56,7 @@ function renderBattle(){
   if(['finished','aborted','paused'].includes(game.status))clearBattleFX();
   document.body.classList.add('is-battle');$('#setup').classList.add('hidden');$('#game').classList.remove('hidden');$('#battleArena').classList.remove('hidden');
   const own=game.boards[state.you],oldBoard=state.battleBoardId;
+  syncBattleLockInput();
   if(oldBoard&&oldBoard!==own.puzzle.id){state.notes.clear();state.pendingAction=null;state.selectedCell=null;saveLocal()}
   state.battleBoardId=own.puzzle.id;
   if(state.pendingAction&&(state.pendingAction.boardId!==own.puzzle.id||own.found.includes(state.pendingAction.index)||own.misses.includes(state.pendingAction.index)||game.status!=='playing'))state.pendingAction=null;
@@ -52,16 +71,17 @@ function renderBattle(){
     const board=game.boards[who],player=game.players[who],root=$(`.battle-side.${side}`),local=side==='local',maxHP=player.maxHP||game.settings.maxHP||150;
     root.dataset.player=who;
     const viewKey=`${game.id}:${who}`;
-    if(root.dataset.viewKey!==viewKey){root.dataset.viewKey=viewKey;root.innerHTML=`<div class="battle-player"><div class="portrait">${playerAvatar(player.avatar,'avatar-character')}</div><div class="player-identity"><b>${local?'你':state.practice?'練習貓友':'對手'}</b><span>${escapeHTML(player.nickname)}</span></div><div class="hp-meter" role="meter" aria-label="${local?'你的':'對手'}血量" aria-valuemin="0" aria-valuemax="${maxHP}" aria-valuenow="${player.hp}"><i class="hp-lag" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><i class="hp-fill" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><span>${player.hp} / ${maxHP}</span></div></div><div class="combo-badge"><span>🐾 連鎖 <b>${board.combo}</b></span><span>下次傷害 <strong>${5*(board.combo+1)}</strong></span></div><div class="board-card"><div class="capture-callout" role="status" aria-live="polite"></div><div class="board-heading"><b>${local?'你的尋貓小屋':'貓友的小屋'}</b><span>第 ${board.number} 盤 · ${local?'6×6': '僅觀看'}</span></div><div class="battle-lock-slot"><div class="battle-lock hidden" role="status" aria-live="polite"><span class="lock-icon" aria-hidden="true">🔒</span><div class="lock-copy"><strong>找貓暫時鎖定</strong><span class="lock-seconds"></span></div><span class="lock-progress" aria-hidden="true"><i></i></span><span class="lock-note">現在可以做記號</span></div></div><div class="battle-board" role="grid" aria-label="${local?'你的尋貓棋盤':'對手唯讀棋盤'}" style="--n:6"></div></div><div class="cat-basket" aria-label="本盤已找到 ${board.found.length} 隻貓">${Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')}<b>${board.found.length} / 6</b></div>`;}
+    if(root.dataset.viewKey!==viewKey){root.dataset.viewKey=viewKey;root.innerHTML=`<div class="battle-player"><div class="portrait">${playerAvatar(player.avatar,'avatar-character')}</div><div class="player-identity"><b>${local?'你':state.practice?'練習貓友':'對手'}</b><span>${escapeHTML(player.nickname)}</span></div><div class="hp-meter" role="meter" aria-label="${local?'你的':'對手'}血量" aria-valuemin="0" aria-valuemax="${maxHP}" aria-valuenow="${player.hp}"><i class="hp-lag" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><i class="hp-fill" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><span>${player.hp} / ${maxHP}</span></div></div><div class="combo-badge"><span>🐾 連鎖 <b>${board.combo}</b></span><span>下次傷害 <strong>${5*(board.combo+1)}</strong></span></div><div class="board-card"><div class="capture-callout" role="status" aria-live="polite"></div><div class="board-heading"><b>${local?'你的尋貓小屋':'貓友的小屋'}</b><span>第 ${board.number} 盤 · ${local?'6×6': '僅觀看'}</span></div>${local?'<div class="primary-controls-slot"></div>':''}<div class="battle-board-stage"><div class="battle-lock hidden" role="status" aria-live="polite"><span class="lock-icon" aria-hidden="true">🔒</span><div class="lock-copy"><strong>找貓暫時鎖定</strong><span class="lock-seconds"></span></div><span class="lock-progress" aria-hidden="true"><i></i></span><span class="lock-note">翻格與標記都暫停</span></div><div class="battle-board" role="grid" aria-label="${local?'你的尋貓棋盤':'對手唯讀棋盤'}" style="--n:6"></div></div></div><div class="cat-basket" aria-label="本盤已找到 ${board.found.length} 隻貓">${Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')}<b>${board.found.length} / 6</b></div>`;}
+    if(local&&battlePrimaryControls){const slot=root.querySelector('.primary-controls-slot');if(battlePrimaryControls.parentNode!==slot)slot.appendChild(battlePrimaryControls);}
     syncBattleSideHeader(root,game,board,player,local,maxHP);
     const grid=root.querySelector('.battle-board'),palette=regionPalette(board.puzzle);
     if(grid.dataset.boardId!==board.puzzle.id){
       grid.dataset.boardId=board.puzzle.id;grid.innerHTML='';
       for(let index=0;index<36;index++){
         const cell=document.createElement(local?'button':'span'),region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
-        cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.setAttribute('role','gridcell');cell.style.setProperty('--bg',palette[region]);
+        cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.dataset.gameId=game.id;cell.dataset.boardId=board.puzzle.id;cell.setAttribute('role','gridcell');cell.style.setProperty('--bg',palette[region]);
         if(col===5||board.puzzle.regions[index+1]!==region)cell.classList.add('er');if(row===5||board.puzzle.regions[index+6]!==region)cell.classList.add('eb');
-        if(local){cell.type='button';cell.onpointerdown=event=>captureBattlePress(cell,event);cell.onpointercancel=()=>{cell.battlePressIntent={cancelled:true};};cell.onclick=()=>{const intent=cell.battlePressIntent;cell.battlePressIntent=null;battleChoose(index,intent);};cell.onkeydown=battleKeydown;}
+        if(local){cell.type='button';cell.onpointerdown=event=>captureBattlePress(cell,event);cell.onpointercancel=()=>cancelBattlePress(cell);cell.onblur=()=>cancelBattlePress(cell);cell.onclick=event=>{const intent=cell.battlePressIntent;cell.battlePressIntent=null;if(event?.button>0||(event?.detail>0&&!intent))return;battleChoose(index,intent);};cell.oncontextmenu=event=>battleContextMark(index,event,cell);cell.onkeydown=battleKeydown;}
         else{cell.setAttribute('aria-readonly','true');cell.setAttribute('aria-disabled','true');}
         grid.appendChild(cell);
       }
@@ -79,7 +99,7 @@ function renderBattle(){
         cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${col+1} 列，區域 ${region+1}${suffix}`);
       }
       cell.classList.toggle('latest-result',game.lastEvent?.who===who&&game.lastEvent?.boardId===board.puzzle.id&&game.lastEvent?.index===index);
-      if(local){cell.disabled=found||miss||(battleInputMode(game)==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));cell.classList.toggle('pending-cell',state.pendingAction?.index===index);}
+      if(local){cell.disabled=found||miss||battleMissLocked(game)||!battlePhaseAllowsNotes(game);cell.classList.toggle('pending-cell',state.pendingAction?.index===index);}
     }
     const basket=root.querySelector('.cat-basket'),basketKey=`${board.puzzle.id}:${board.found.join(',')}`;
     if(basket.dataset.foundKey!==basketKey){
@@ -122,7 +142,7 @@ function refreshBattleInputState(){
   const board=game.boards[state.you],grid=$('.battle-side.local .battle-board');if(!grid)return;
   for(const cell of Array.from(grid.children)){
     const index=+cell.dataset.index;
-    cell.disabled=board.found.includes(index)||board.misses.includes(index)||(battleInputMode(game)==='note'?!battleNotesAllowed(game):(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow()));
+    cell.disabled=board.found.includes(index)||board.misses.includes(index)||battleMissLocked(game)||!battlePhaseAllowsNotes(game);
   }
   state.battleCooldownActive=board.cooldownUntil>battleNow();syncNoteModeUI();
 }
@@ -130,7 +150,7 @@ function refreshBattleInputState(){
 function battleChoose(index,intent){
   const game=state.game,board=game?.boards?.[state.you];
   if(!board||!Number.isInteger(index)||index<0||index>=36||!battleNotesAllowed(game))return;
-  if(intent&&(intent.cancelled||intent.gameId!==game.id||intent.boardId!==board.puzzle.id||intent.epoch!==(state.battleInputEpoch||0)))return;
+  if(intent&&(intent.blocked||intent.cancelled||intent.gameId!==game.id||intent.boardId!==board.puzzle.id||intent.epoch!==(state.battleInputEpoch||0)))return;
   const mode=intent?.mode||battleInputMode(game);
   if(mode==='guess'&&battleInputMode(game)!=='guess')return;
   if(board.found.includes(index)||board.misses.includes(index))return;
@@ -140,6 +160,7 @@ function battleChoose(index,intent){
   if(state.role==='host')act(0,action);else{send({type:'action',action});setTimeout(()=>{if(state.pendingAction?.actionId===action.actionId){state.pendingAction=null;toast('尚未收到確認，請檢查連線');render()}},4000)}
 }
 function battleKeydown(event){
+  if(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey)){captureBattlePress(event.currentTarget,{button:2});return;}
   if(['Enter',' ','Spacebar'].includes(event.key)){if(event.repeat){event.preventDefault();return;}captureBattlePress(event.currentTarget,event);return;}
   if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();
   const index=+event.currentTarget.dataset.index,delta={ArrowUp:-6,ArrowDown:6,ArrowLeft:-1,ArrowRight:1}[event.key];let next=index+delta;
@@ -258,25 +279,25 @@ function refreshBattleOverlays({silent=false}={}){
   for(const [side,who] of [['local',state.you],['opponent',1-state.you]]){
     const board=game.boards[who],root=$(`.battle-side.${side}`),lock=root?.querySelector('.battle-lock');if(!lock)continue;
     const remaining=battleMissRemaining(game,who);
-    const unlocked=side==='local'&&game.status==='playing'&&!document.hidden&&!silent&&remaining<=0&&state.battleUnlockNoticeUntil>now;
-    lock.classList.toggle('hidden',remaining<=0&&!unlocked);
-    lock.classList.toggle('notes-available',side==='local'&&remaining>0);
-    lock.classList.toggle('is-unlocked',unlocked);
+    lock.classList.toggle('hidden',remaining<=0);
+    lock.classList.remove('notes-available','is-unlocked');
+    const stage=root.querySelector('.battle-board-stage');if(stage)stage.classList.toggle('is-locked',remaining>0);
+    if(side==='local'){lock.onpointerdown=()=>{state.battleInputEpoch=(state.battleInputEpoch||0)+1;};}
     const secondsNode=lock.querySelector('.lock-seconds'),progress=lock.querySelector('.lock-progress > i'),note=lock.querySelector('.lock-note'),label=lock.querySelector('.lock-copy > strong');
     const streak=Math.max(0,Math.trunc(Number(board.missStreak)||0));
-    if(label)label.textContent=unlocked?'可以找貓了':game.status==='paused'?(side==='local'?'連線暫停':'暫停'):side==='opponent'?'鎖定中':streak>1?`連錯 ${streak} 次・暫停翻格`:'暫停翻格';
-    if(secondsNode)secondsNode.textContent=unlocked?'':`${(Math.ceil(remaining/100)/10).toFixed(1)} 秒`;
+    if(label)label.textContent=game.status==='paused'?(side==='local'?'連線暫停':'暫停'):side==='opponent'?'鎖定中':streak>1?`連錯 ${streak} 次・暫時鎖定`:'猜錯了・暫時鎖定';
+    if(secondsNode)secondsNode.textContent=`${(Math.ceil(remaining/100)/10).toFixed(1)} 秒`;
     const storedDuration=Number(board.cooldownDuration);
     const duration=Number.isFinite(storedDuration)&&storedDuration>0?storedDuration:Math.max(1,Number.isFinite(board.cooldownStartedAt)?board.cooldownUntil-board.cooldownStartedAt:2000);
     if(progress)progress.style.width=`${Math.max(0,Math.min(100,remaining/duration*100))}%`;
-    if(note)note.textContent=side==='local'?(unlocked?(state.mode==='note'?'記號模式仍開啟；關閉後即可找貓':'點格子繼續找貓'):'現在可以做記號'):'對手正在恢復';
+    if(note)note.textContent=side==='local'?'翻格與私人標記都暫停':'對手正在恢復';
   }
 }
 function updateBattleTimers(){
   if(!isBattle())return;
   const game=state.game;
   if(state.role==='host'&&CatBattle.advance(game,Date.now())){broadcast();return;}
-  prepareGameAudio(game.id,game.status);
+  prepareGameAudio(game.id,game.status);syncBattleLockInput();
   if(['finished','aborted','paused'].includes(game.status))clearBattleFX();
   updateBattleUnlockFeedback();
   refreshBattleOverlays({silent:Boolean(state.suppressBattleFX||document.hidden)});$('#battleNotice').textContent=battleMessage();

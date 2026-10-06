@@ -1,158 +1,80 @@
-CAT HIDE & SEEK — APPROVED PENALTY / READABILITY RELEASE
+CAT HIDE & SEEK — APPROVED PRIMARY-CONTROLS / STRICT-LOCK RELEASE
 Date: 2026-10-06
-Base repository commit: 66504df659066ca508a7a7b2870c23798b243b5c
-Status: User approved publication of consecutive-miss penalties, default battle selection and readability fixes. 66504df is the preserved rollback parent. Exact deployment and HTTP verification are recorded separately after publication.
+Base repository commit: 5246551dd107c29060990495bbc120bee39bdf3a
+Status: User approved publication of the primary-control/right-click/centered-lock revision. 5246551 is the preserved rollback parent. Exact deployment and HTTP checks are recorded separately after publication.
 
-PASS — 294 Node tests (node --test)
-40 battle engine tests:
-- 1,080 generated puzzles checked with an independent exact solver.
-- 270 additional constant-RNG stress puzzles.
-- All 90 valid 6x6 answer patterns; diverse region layouts.
-- Every puzzle: one cat per row/column/region, no 8-neighbor touching,
-  connected regions, minimum three cells per region, exactly one solution.
-- Independent boards; hit cooldown 300 ms, consecutive misses 2/4/6/8 seconds capped at 8; hit resets next miss to 2.
-- Hits deal 5, 10, 15 ... 35, 40. Six cats advance only that player's board.
-- HP and combo carry over; miss resets only that player's combo.
-- Duplicate IDs, repeated cells, stale boards and bounded-history replays.
-- Invalid or already-revealed cells, disconnected state and client damage claims rejected. Unopened inferred-empty cells remain playable.
-- First lethal arrival wins and HP never becomes negative.
-- Pause freezes cooldowns; resume and JSON persistence preserve authority.
-- Abort is terminal with no winner.
-- Explicit public snapshot whitelist excludes solutions and private histories.
-- Rematch avoids recent puzzle repeats.
+PASS — 368 Node tests (node --test)
+40 battle-engine tests:
+- Independent legal, connected, minimum-three-cell, uniquely solvable 6x6 puzzles.
+- Generated-board validation and all 90 valid answer patterns remain covered.
+- Hit cooldown 300 ms; consecutive misses 2/4/6/8 seconds, capped at 8.
+- Every miss resets only that player's damage combo; a cat resets next miss to 2.
+- Hits deal 5/10/15/...; sixth cat advances only that player's board.
+- HP and damage combo carry across boards, with no miss HP penalty.
+- Authoritative action IDs, board IDs, cooldowns, stale/replay/duplicate rejection.
+- First lethal arrival wins; paused deadlines, JSON state, legacy saves and reconnect.
+- Explicit answer-free public snapshots include safe penalty duration/streak only.
 
-161 app/legacy integration and fake-DOM tests:
-- All four original modes, default streak cap off, no ordinary clue numbers.
-- Fish limit, magnifier/private intel, yarn, shield and hourglass.
-- Treasure scoring, cooperative shared progress and completion.
-- 24 legacy puzzles sampled across 6/12/20/24, legal and uniquely solvable.
-- Room normalization, role-isolated notes, two-party rematch.
-- Real battle engine via app adapter, guest ACK and public snapshot flow.
-- 36 actionable local cells; 36 read-only opponent cells.
-- Guest clicks do not locally damage HP; repeated pending clicks blocked.
-- Notes remain private and usable during cooldown.
-- Only local board change clears local notes.
-- Explicit offline-practice label and no simulated opponent moves.
-- Disconnect expiry aborts without a winner.
+214 app/legacy integration and fake-DOM tests:
+- All four legacy modes, item/treasure/cooperative rules and battle/practice.
+- Battle selected by default while generic create/join and all modes remain available.
+- No automatic deduction X, dimming or implicit rejection; actual misses are gray X.
+- Private purple X and note controls stay private through snapshots/reconnect.
+- Right-click toggles private notes independent of manual mode in every mode/practice.
+- Right-click remains available off-turn, while pending and during hit cooldown;
+  left-click guessing remains blocked whenever game rules require it.
+- No guesses, score, damage, fish, combat audio or host actions from right-click notes.
+- Native context menu is consumed only for actionable own unresolved cells.
+- Resolved cells, opponent board and unrelated page menus are not intercepted.
+- Own miss lock blocks notes AND guesses through mouse, touch, keyboard, direct
+  callbacks, context-menu keys and toggle attempts; previous manual mode is preserved.
+- Presses started before/during lock, cancelled or blurred presses, modal fall-through,
+  detached old cells and delayed releases cannot trigger an action after unlock.
+- Countdown 2/4/6/8 progress uses authoritative durations; pause/reconnect stays frozen.
+- Lock modal disappears at expiry; unlock feedback remains fresh-only and bounded.
+- Primary controls keep the same node in the own-board slot through rerenders.
+- Countdown, event/sound deduplication, six-cat advance, cross-board combo and audio
+  cleanup remain covered. Legacy dense boards/long names/intel fixtures remain covered.
 
-PASS — Syntax/static checks
-node --check app.js
-node --check battle-engine.js
-node --check battle-ui.js
-node --check scripts/build-preview.js
-node --check scripts/serve.js
-git diff --check
-Self-contained HTML packaging validates no external local image/script/style references.
+52 audio tests:
+- Gesture-only context/sample loading, three actual CC0 recordings and shuffle bags.
+- No immediate repeat, bounded voices/fades, mute/volume, event deduplication.
+- Pause/end/background cleanup and synthetic fallback without late sound replay.
 
-NOT VERIFIED — Important release gates
-- Rendered appearance in desktop Chrome or 320/360/390/430px mobile viewports.
-- Actual visual screenshots of the implemented game.
-- Browser keyboard focus, physical touch behavior, sound playback and motion.
-- Real two-browser WebRTC battle, transport recovery, and host-refresh workflow.
-- External NAT/firewall connectivity, PeerJS service availability or long-run stability.
+20 region-palette tests:
+- Every 6/12/20/24-region board has unique deterministic colors, no cycling duplicates.
+- Full 24-color minimum OKLab distance 0.0762814; base ink contrast >=4.60777:1.
+- Public-only data; colors do not read private answers.
 
-The available cloud browser rejected the local preview URL under its URL policy.
-The restriction was not bypassed. The documented supported preview handoff needs
-an exposed forwarding/preview tool, which is unavailable in this task. Node VM
-and fake-DOM tests verify code behavior, not browser layout or real networking.
+42 CSS/layout source contracts:
+- Primary marking button beside own board on desktop, above it on phone/tablet.
+- Button text 16 px/status 14 px; heading hierarchy and 44 px+ core controls retained.
+- Centered board-bounds lock overlay intercepts pointer input; no reserved top strip.
+- Shared-mode cards, baskets and intel keep real content-sized rows without overlap
+  caused by the retired absolute decorative plate/fixed card height.
+- Battle board height budgets: 344/392/560 px at 1280x720/1366x768/1920x1080.
+- Visible recovery actions reserve extra 64 px; corresponding boards 280/328/560 px.
+- Legacy board dimensions include the outer 8 px border; desktop cells use floor-based
+  available-height/width sizing. Dense 24x24 can use 14 px cells in a small PC viewport.
+- Explicit in-game board zoom may use the board's local scroll surface.
+- Mobile 320/360/390/430 retains primary controls and full-width local battle board.
+- No page clipping/overflow-hidden workaround, no tiny overall interface scaling.
+- Reduced-motion rules remove animation while retaining status/damage feedback.
 
-REMAINING BROWSER ACCEPTANCE
-Open the supplied single-file preview locally for visual/interaction review.
-Use the source build in two Chrome profiles for a real P2P acceptance pass:
-1. Create CAT room and join via short code; verify both original modes and battle.
-2. Confirm independent boards, visible opponent and private note isolation.
-3. Find six cats, verify immediate new board with unchanged HP and combo=6.
-4. Confirm seventh/eighth damage=35/40; test miss reset, cooldown and duplicate clicks.
-5. Disconnect/rejoin within 60s; compare snapshot/HP/board/combo/notes.
-6. Leave disconnected past 60s; confirm no winner and no late revival.
-7. Check 320/360/390/430px portrait and desktop without page overflow.
-8. Check sound toggle after gesture, keyboard focus, and reduced motion.
+PASS — Syntax, packaging and static checks
+- All 16 JavaScript files pass node --check.
+- git diff --check passes.
+- Generated local/opponent battle-card HTML has balanced nested tags.
+- Single-file preview embeds scripts, styles, artwork and the three WAV recordings.
 
-USER-REPORTED UI FIX (2026-10-05)
-- Public entry remains generic create/join; battle mode is now selected by default, with all four legacy modes available.
-- Battle is one of the five options in the host mode picker.
-- One six-character portrait atlas maps consistently across lobby, classic and battle.
-- Gentle portrait bob/sway; reduced-motion disables it.
-- Four additional tests cover default navigation, all six mappings, persisted/reconnected
-  avatar identity, and reduced-motion opt-out.
+NOT VERIFIED — Browser/device acceptance
+- Rendered fit at 100% browser zoom, exact element rectangles, font substitution,
+  real desktop/mobile appearance and screenshots.
+- Physical right mouse, touch, keyboard focus and context-menu ordering in browsers.
+- Actual audio playback/subjective listening quality on devices.
+- Real two-browser WebRTC, reconnect, external NAT/firewall/service availability.
 
-LOCAL COUNTDOWN / FEEDBACK ADDITIONS
-- Shared host deadline with midpoint clock sync and explicit ready handshake.
-- Guesses/notes rejected before host-authorized start; late guest clocks cannot unlock.
-- Paused countdown and miss cooldown retain remaining time through reconnect.
-- Numeric miss lock/progress, private notes still usable during the lock.
-- Stable event IDs, stale-snapshot rejection, reconnect/foreground replay suppression.
-- Actual hit-cell origin/art retained even on the sixth-cat board rollover.
-- At most three live FX batches; static damage under reduced motion.
-- Finish, abort and disconnect clean up all flight nodes/timers.
-- These new visuals have NOT been verified in a browser or captured in screenshots.
-
-AUDIO / COLOR / TOOLBAR / EFFECTS ROUND
-23 dedicated audio tests:
-- No AudioContext or playback before a user gesture.
-- Stable event IDs, mute/volume, bounded dedupe and 12-voice limit.
-- Delayed voice cancellation on pause/disconnect/end/background.
-- Original scores shared by WebAudio and deterministic offline WAV.
-- 45% preview peak -19.16 dBFS; smooth limiting, no full-scale samples.
-20 dedicated palette tests:
-- 6/12/20/24 unique colors, no recycling, same-public-board stability.
-- Global 24-color minimum OKLab distance 0.0762814.
-- Minimum base-color contrast 4.60777:1 against #4d423b.
-- Public regions only; private-answer getters are never read.
-26 added integration tests:
-- Direct tile clicks, clear note-toggle round trips and aria state.
-- Unavailable quick-match hidden, enabled service hooks preserved.
-- Fresh events make audio once; old snapshots/reconnect do not replay.
-- Persistent mute/volume and gesture-only context creation.
-- Local glow/celebration timers, bounded effect batches, unlock pulse.
-- Reduced motion preserves static feedback and combat timing.
-
-The 12-second WAV is an offline score preview, NOT a recording of browser audio.
-Latest audio, visual effects and mobile/P2P behavior remain unverified in-browser.
-
-REAL MEOW / CAPTURE SEQUENCE ROUND
-- Three distinct CC0 source WAVs, provenance hashes, and data-URL embedding checks.
-- Post-gesture loading, deterministic test RNG for actual shuffle bags, no repeats.
-- Two audible meows with 20ms replacement fades; retiring tails cancel on mute/reset.
-- Voice on every local capture, including terminal captures; old events do not revoice.
-- Stable card, avatar, HP and cell nodes across timers/snapshots/notes/HP updates.
-- New boards replace only their cells; the sixth cat retains its old source position.
-- Single overwritten callout; authored CSS timing/reduced-motion checks.
-- Pause/background settles cancelled HP residue frames to authoritative HP.
-- 199 aggregate Node tests pass; audio module contributes 52 tests, integration 98,
-  battle engine 29 and region palette 20.
-
-No real gameplay observation or measured reference animation timing is claimed.
-The audio preview contains actual CC0 recordings plus original musical cues,
-not a browser recording; subjective audio quality has not been auditioned here.
-
-MANUAL MARKS / EXPLICIT NOTE-MODE ROUND
-- Removed automatic deduction marks, styling, hover reasons and action rejection.
-- Row, column, region and diagonal-related unopened cells stay playable.
-- Actual misses display dark-gray ×; private manually toggled notes display purple ×.
-- Note-mode ON/OFF label, aria-pressed, board outline and plain-language status agree.
-- Notes do not reveal cells, alter HP/combo/fish/turns, or trigger combat sounds.
-- Off-turn/miss-lock notes remain usable; confirmed cells cannot be marked again.
-- Notes remain private through snapshots/reconnect; joint hints never paint cells.
-- Explicit scan selection exits note mode; enabling notes clears armed scan tools.
-- Repeated misses do not repeat effects, extend cooldown or farm fish.
-- Minimum calculated base-palette contrast: private #58306f = 4.81001194:1;
-  confirmed #493d35 = 4.96631606:1. Both use ×; note/opened classes, accessible labels and legend retain their distinct meanings.
-- 226 total tests pass: 33 battle engine, 121 app/legacy integration,
-  52 audio and 20 palette. No browser or physical-device pass is implied.
-
-CONSECUTIVE MISS / READABILITY / LOCK MARKING ROUND
-- 2/4/6/8-second consecutive misses, capped8; capture resets next miss to2.
-- Public missStreak/cooldownDuration, backward-compatible snapshots, frozen pause.
-- Battle is the selected default; all four legacy choices remain available.
-- Content-sized legacy cards, wrapping 24-cat baskets, names and intel.
-- In-flow battle bottom panel; readable14–16px core typography and larger headings.
-- Above-board reserved lock slots; fresh-only520ms arrival and1000ms unlock text.
-- Locked cell taps temporarily make private purple X, preserving manual preference.
-- Pointer/Enter/Space intent stays consistent across expiry; stale/cancelled presses
-  cannot guess or carry into a new board. New paused note presses remain usable.
-- Historical reconnect/background/end do not replay lock/unlock cues.
-- 294 tests pass:40 engine,161 integration,52 audio,20 palette,21 CSS contracts.
-- CSS contracts enumerate320/360/390/430/768/1280 widths. Legacy fake DOM checks
-  cover all four modes at320/360/390/430/1280 with long names and populated baskets.
-  These are source/state checks, not rendered box geometry or physical touch QA.
+The existing browser permission/URL/DevTools restrictions remain unresolved and
+were not retried or bypassed. VM and source-level CSS contracts do not render pixels
+and are not proof that every interface fits every real device. No new screenshot
+or physical-device/P2P pass is claimed. Visual and network acceptance is still needed.

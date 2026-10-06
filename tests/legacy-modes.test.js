@@ -256,6 +256,11 @@ function assertUnopenedCell(cell, { note = false, disabled = false } = {}) {
   if (note) assert.match(cell.getAttribute('aria-label'), /私人筆記.*尚未確認/);
   assert.equal(cell.style.opacity ?? '', ''); assert.equal(cell.style.filter ?? '', '');
 }
+function assertGuessBlocked(h, cell, game, message = 'the current restriction blocks left-click guesses') {
+  const before = json(h.publicGame(game)), notes = [...h.state.notes], sent = h.messages.length;
+  cell.click();
+  assert.deepEqual(json(h.publicGame(game)), before, message); assert.deepEqual([...h.state.notes], notes); assert.equal(h.messages.length, sent);
+}
 function assertConfirmedEmpty(cell) {
   assert.equal(cell.textContent, '×'); assert.equal(cell.classList.contains('opened'), true);
   assert.equal(cell.classList.contains('note'), false); assert.equal(cell.classList.contains('auto-x'), false);
@@ -617,7 +622,10 @@ for (const mode of ['items', 'coop']) test(`${mode} explicit scans can target ru
     const guest = harness({ mode }); guest.state.role = 'guest'; guest.state.you = 1;
     guest.onMessage({ type: 'state', state: json(h.publicGame(game)) }); guest.renderLegacy();
     for (let index = 0; index < 36; index++) if (index !== cat) {
-      const cell = guest.get('#board').children[index]; assertUnopenedCell(cell, { disabled: true });
+      const cell = guest.get('#board').children[index]; assertUnopenedCell(cell);
+      const unchanged = json(guest.publicGame(guest.state.game)), sent = guest.messages.length;
+      cell.click();
+      assert.deepEqual(json(guest.publicGame(guest.state.game)), unchanged); assert.equal(guest.messages.length, sent, 'off-turn guests cannot guess even though right-click notes remain reachable');
       assert.equal(cell.classList.contains('probed'), mode === 'coop' && targets.includes(index), 'competitive scan intel stays private; cooperative intel stays shared');
     }
   }
@@ -841,7 +849,7 @@ test('battle guest acknowledgements clear only the matching pending action and s
   assert.equal(h.context.CatBattle.act(h.state.game, 1, { type: 'guess', actionId: 'not-authority', boardId: next.boards[1].puzzle.id, index: 0 }, h.now()).reason, 'not-authority');
 });
 
-test('battle UI renders opponent cells read-only and keeps local notes usable during cooldown', () => {
+test('battle UI renders opponent cells read-only and preserves manual notes during hit cooldown', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.renderBattle();
   const own = h.get('.battle-side.local').querySelector('.battle-board');
@@ -849,7 +857,7 @@ test('battle UI renders opponent cells read-only and keeps local notes usable du
   assert.equal(own.children.length, 36); assert.equal(opponent.children.length, 36);
   assert.equal(own.children.every(cell => cell.tagName === 'BUTTON' && typeof cell.onclick === 'function'), true);
   assert.equal(opponent.children.every(cell => cell.tagName === 'SPAN' && cell.onclick === undefined && cell.getAttribute('aria-readonly') === 'true'), true);
-  game.boards[0].cooldownUntil = h.now() + 2000; h.state.mode = 'note'; h.battleChoose(0);
+  game.boards[0].cooldownUntil = h.now() + 300; game.boards[0].cooldownKind = 'hit'; h.state.mode = 'note'; h.battleChoose(0);
   assert.equal(h.state.notes.has(0), true); assert.equal(h.messages.length, 0); assert.equal(game.boards[0].found.length, 0);
   h.state.mode = 'guess'; h.battleChoose(game.boards[0].puzzle.solution[0]);
   assert.equal(h.messages.length, 0); assert.equal(game.boards[0].found.length, 0);
@@ -874,15 +882,16 @@ test('battle disconnect expiry aborts without a winner and does not auto-resume 
   assert.equal(game.status, 'aborted'); assert.equal(game.winner, null);
 });
 
-test('battle rendered note markers appear only on the local board and cooldown disables guesses, not notes', () => {
+test('battle rendered note markers appear only on the local board and hit cooldown disables guesses, not notes', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
-  h.state.notes.add(0); game.boards[0].cooldownUntil = h.now() + 2000;
+  h.state.notes.add(0); game.boards[0].cooldownUntil = h.now() + 300; game.boards[0].cooldownKind = 'hit';
   h.renderBattle();
   let own = h.get('.battle-side.local').querySelector('.battle-board');
   const opponent = h.get('.battle-side.opponent').querySelector('.battle-board');
   assert.equal(own.children[0].classList.contains('note'), true);
   assert.equal(opponent.children.some(cell => cell.classList.contains('note')), false);
-  assert.equal(own.children.every(cell => cell.disabled), true);
+  assert.equal(own.children.every(cell => !cell.disabled), true, 'right-click stays reachable during a hit cooldown');
+  assertGuessBlocked(h, own.children[game.boards[0].puzzle.solution[0]], game);
   h.state.mode = 'note'; h.renderBattle(); own = h.get('.battle-side.local').querySelector('.battle-board');
   assert.equal(own.children.every(cell => !cell.disabled), true);
   h.advance(2000); h.state.mode = 'guess'; h.renderBattle(); own = h.get('.battle-side.local').querySelector('.battle-board');
@@ -899,14 +908,16 @@ for (const practice of [false, true]) test(`${practice ? 'offline practice' : 'b
   const own = () => h.get('.battle-side.local').querySelector('.battle-board');
   h.renderBattle(); own().children[cat].click();
   assert.deepEqual(json(board.found), [cat]); assert.equal(game.players[1].hp, 145);
-  for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index], { disabled: true });
+  for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index]);
+  assertGuessBlocked(h, own().children[related[0]], game);
   h.get('#battleNote').click();
   const sent = h.messages.length;
   own().children[related[0]].click();
   assertUnopenedCell(own().children[related[0]], { note: true });
   assert.equal(h.messages.length, sent, 'manual notes work privately during the real hit cooldown');
   h.get('#battleNote').click(); h.advance(299); h.updateBattleTimers();
-  assertUnopenedCell(own().children[related[0]], { note: true, disabled: true });
+  assertUnopenedCell(own().children[related[0]], { note: true });
+  assertGuessBlocked(h, own().children[related[0]], game, 'a 299 ms-old hit still blocks guesses');
   h.advance(1); h.updateBattleTimers();
   for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index], { note: index === related[0] });
   const hp = json(game.players.map(player => player.hp));
@@ -922,7 +933,7 @@ for (const practice of [false, true]) test(`${practice ? 'offline practice' : 'b
     own().children[index].click(); h.battleChoose(index);
     assert.deepEqual(json(h.publicGame(game)), before, 'repeated UI clicks leave an opened miss unchanged');
     h.advance(duration - 1); h.updateBattleTimers();
-    for (const remaining of related.filter(value => !board.misses.includes(value))) assert.equal(own().children[remaining].disabled, false, 'unopened cells remain available for automatic private marks during a miss lock');
+    for (const remaining of related.filter(value => !board.misses.includes(value))) assert.equal(own().children[remaining].disabled, true, 'the miss lock blocks every unopened cell, including private marks');
     h.advance(1); h.updateBattleTimers();
     const afterCooldown = json(h.publicGame(game));
     assert.equal(h.act(0, battleAction(h, 0, { index })).reason, 'resolved-cell');
@@ -1098,7 +1109,11 @@ test('capture CSS keeps the authored 520 ms pop and 420 ms attack arrival with r
   assert.match(css, /animation:\s*cozyHpImpact 160ms/);
   assert.match(css, /animation:\s*cozyDamageNumber 620ms ease-out 420ms/);
   assert.match(css, /\.board-card > \.capture-callout\s*\{[^}]*pointer-events:\s*none;/);
-  const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+  const reduced = [...css.matchAll(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{/g)].map(match => {
+    let depth = 1, end = match.index + match[0].length;
+    for (; depth && end < css.length; end++) { if (css[end] === '{') depth++; else if (css[end] === '}') depth--; }
+    return css.slice(match.index, end);
+  }).join('\n');
   assert.match(reduced, /\.board-card > \.capture-callout\.show\s*\{[^}]*opacity:\s*1;/);
   assert.match(reduced, /\.hp-meter > \.battle-damage\s*\{[^}]*animation:\s*none !important;[^}]*opacity:\s*1;/);
   assert.match(reduced, /\.hp-meter > i\.hp-fill, \.hp-meter > i\.hp-lag\s*\{[^}]*transition:\s*none !important;/);
@@ -1262,7 +1277,7 @@ test('battle opening displays 3, 2, 1 from the shared deadline and clears for au
   assert.doesNotMatch(opening.querySelector('.opening-count').textContent, /-\d/);
 });
 
-test('battle miss lock shows local seconds and progress while the opponent remains active and private notes remain usable', () => {
+test('battle miss lock shows local seconds and progress while the opponent remains active and all own inputs stay blocked', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const miss = game.boards[0].puzzle.regions.findIndex((_, index) => !game.boards[0].puzzle.solution.includes(index));
@@ -1271,7 +1286,7 @@ test('battle miss lock shows local seconds and progress while the opponent remai
   assert.equal(lock.classList.contains('hidden'), false);
   assert.match(String(lock.querySelector('.lock-seconds').textContent), /2(?:\.0)?/);
   assert.equal(h.get('.battle-side.opponent').querySelector('.battle-lock').classList.contains('hidden'), true);
-  assert.equal(own.querySelector('.battle-board').children.every((cell, index) => cell.disabled === (index === miss)), true);
+  assert.equal(own.querySelector('.battle-board').children.every(cell => cell.disabled), true);
   assert.equal(h.act(1, battleAction(h, 1)).accepted, true, 'one player missing must not lock the opponent');
   h.advance(1000); h.updateBattleTimers();
   own = h.get('.battle-side.local'); lock = own.querySelector('.battle-lock');
@@ -1280,10 +1295,10 @@ test('battle miss lock shows local seconds and progress while the opponent remai
   assert.equal(progress, 50);
   const privateCell = game.boards[0].puzzle.solution[0], sent = h.messages.length;
   h.state.mode = 'note'; h.battleChoose(privateCell);
-  assert.equal(h.state.notes.has(privateCell), true); assert.equal(h.messages.length, sent);
+  assert.equal(h.state.notes.has(privateCell), false); assert.equal(h.messages.length, sent);
   own = h.get('.battle-side.local');
-  assert.equal(own.querySelector('.battle-board').children[privateCell].disabled, false);
-  assert.equal(own.querySelector('.battle-lock').classList.contains('notes-available'), true);
+  assert.equal(own.querySelector('.battle-board').children[privateCell].disabled, true);
+  assert.equal(own.querySelector('.battle-lock').classList.contains('notes-available'), false);
   assertNoPrivateKeys(json(h.publicGame(game)));
 });
 
@@ -1294,11 +1309,11 @@ test('battle interval removes the miss lock at its exact deadline and never disp
   h.act(0, battleAction(h, 0, { index: miss }));
   h.advance(1999); for (const interval of h.intervals) interval();
   assert.equal(h.get('.battle-side.local').querySelector('.battle-lock').classList.contains('hidden'), false);
-  assert.equal(h.get('.battle-side.local').querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, false, 'the locked board accepts only private marking');
+  assert.equal(h.get('.battle-side.local').querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, true, 'the locked board rejects guesses and private marking');
   h.advance(1); for (const interval of h.intervals) interval();
   let own = h.get('.battle-side.local');
-  assert.equal(own.querySelector('.battle-lock').classList.contains('is-unlocked'), true);
-  assert.equal(own.querySelector('.battle-lock').querySelector('.lock-copy > strong').textContent, '可以找貓了');
+  assert.equal(own.querySelector('.battle-lock').classList.contains('hidden'), true, 'the centered lock leaves immediately at expiry');
+  assert.match(h.get('#battleNotice').textContent, /可以找貓了/);
   assert.equal(own.querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, false);
   h.advance(10000); h.updateBattleTimers(); own = h.get('.battle-side.local');
   const lock = own.querySelector('.battle-lock');
@@ -1307,7 +1322,7 @@ test('battle interval removes the miss lock at its exact deadline and never disp
   assert.ok(Number.isFinite(width) && width >= 0 && width <= 100);
 });
 
-for (const duration of [4000, 6000, 8000]) test(`battle ${duration / 1000}-second lock uses public duration for guest progress, notes and exact unlock`, () => {
+for (const duration of [4000, 6000, 8000]) test(`battle ${duration / 1000}-second lock uses public duration for guest progress, blocked inputs and exact unlock`, () => {
   const host = harness({ mode: 'battle', battle: true }), authority = host.begin();
   const board = authority.boards[1], misses = board.puzzle.regions.flatMap((_, index) => board.puzzle.solution.includes(index) ? [] : [index]);
   for (let attempt = 0; attempt < duration / 2000; attempt++) {
@@ -1326,23 +1341,23 @@ for (const duration of [4000, 6000, 8000]) test(`battle ${duration / 1000}-secon
   assert.equal(seconds(), duration / 1000); assert.equal(progress(), 100);
   assert.equal(lock.classList.contains('hidden'), false);
   const index = board.puzzle.solution[0], grid = own.querySelector('.battle-board');
-  assert.equal(grid.children[index].disabled, false);
-  assert.equal(guest.get('#battleNote').disabled, true); assert.equal(guest.get('#battleNote').getAttribute('aria-pressed'), 'true');
-  assert.equal(guest.state.mode, 'guess', 'temporary marking does not overwrite the manual preference');
+  assert.equal(grid.children[index].disabled, true);
+  assert.equal(guest.get('#battleNote').disabled, true); assert.equal(guest.get('#battleNote').getAttribute('aria-pressed'), 'false');
+  assert.equal(guest.state.mode, 'guess', 'locking must not overwrite the manual preference');
   guest.advance(duration / 2); guest.updateBattleTimers();
   assert.equal(seconds(), duration / 2000); assert.equal(progress(), 50, 'remaining time is divided by the actual 4/6/8-second penalty');
   const beforeNote = JSON.stringify(guest.state.game), sent = guest.messages.length;
   grid.children[index].click();
-  assert.equal(guest.state.notes.has(index), true); assert.equal(grid.children[index].disabled, false);
-  assert.equal(lock.classList.contains('notes-available'), true);
+  assert.equal(guest.state.notes.has(index), false); assert.equal(grid.children[index].disabled, true);
+  assert.equal(lock.classList.contains('notes-available'), false);
   assert.equal(JSON.stringify(guest.state.game), beforeNote); assert.equal(guest.messages.length, sent);
-  guest.get('#battleNote').click(); assert.equal(guest.state.mode, 'guess'); assert.equal(grid.children[index].disabled, false);
+  guest.get('#battleNote').click(); assert.equal(guest.state.mode, 'guess'); assert.equal(grid.children[index].disabled, true);
   guest.advance(duration / 2 - 1); guest.updateBattleTimers();
-  assert.equal(lock.classList.contains('hidden'), false); assert.equal(grid.children[index].disabled, false);
+  assert.equal(lock.classList.contains('hidden'), false); assert.equal(grid.children[index].disabled, true);
   assert.ok(progress() > 0 && progress() < 1); assert.equal(seconds(), 0.1);
   guest.advance(1); guest.updateBattleTimers();
   assert.equal(seconds(), 0); assert.equal(progress(), 0); assert.equal(lock.classList.contains('hidden'), true);
-  assert.equal(grid.children[index].disabled, false); assert.equal(guest.state.notes.has(index), true);
+  assert.equal(grid.children[index].disabled, false); assert.equal(guest.state.notes.has(index), false);
   assert.equal(guest.get('#battleNote').disabled, false); assert.equal(guest.get('#battleNote').getAttribute('aria-pressed'), 'false');
   guest.advance(10000); guest.updateBattleTimers();
   assert.equal(seconds(), 0); assert.equal(progress(), 0); assert.equal(guest.messages.length, sent);
@@ -1367,7 +1382,7 @@ for (const duration of [6000, 8000]) test(`battle reconnect preserves the ${dura
   assert.equal(pauseSnapshot.boards[0].cooldownUntil - pauseSnapshot.pausedAt, remaining);
   const note = board.puzzle.solution[0], sent = h.messages.length;
   h.get('#battleNote').click(); h.get('.battle-side.local').querySelector('.battle-board').children[note].click();
-  assert.equal(h.state.notes.has(note), true); assert.equal(h.messages.length, sent, 'disconnected private notes remain local');
+  assert.equal(h.state.notes.has(note), false); assert.equal(h.messages.length, sent, 'the paused miss lock still blocks private notes');
   h.get('#battleNote').click();
   h.advance(12000); h.updateBattleTimers();
   assert.equal(game.status, 'paused'); assert.equal(board.cooldownUntil, oldDeadline); assert.equal(board.missStreak, streak);
@@ -1377,7 +1392,7 @@ for (const duration of [6000, 8000]) test(`battle reconnect preserves the ${dura
   assert.equal(board.cooldownUntil, oldDeadline + 12000); assert.equal(board.cooldownUntil - h.now(), remaining);
   assert.equal(board.cooldownDuration, duration); assert.equal(board.missStreak, streak); assert.equal(progress(), 75);
   assert.equal(Number.parseFloat(lock().querySelector('.lock-seconds').textContent), remaining / 1000);
-  assert.equal(h.state.notes.has(note), true); assert.equal(h.act(0, battleAction(h, 0)).reason, 'cooldown');
+  assert.equal(h.state.notes.has(note), false); assert.equal(h.act(0, battleAction(h, 0)).reason, 'cooldown');
   const restored = json(h.publicGame(game)); assertNoPrivateKeys(restored);
   assert.equal(restored.boards[0].cooldownUntil, board.cooldownUntil); assert.equal(restored.boards[0].missStreak, streak);
   h.advance(remaining); h.updateBattleTimers();
@@ -1386,7 +1401,7 @@ for (const duration of [6000, 8000]) test(`battle reconnect preserves the ${dura
   assert.equal(board.missStreak, streak + 1); assert.equal(board.cooldownDuration, 8000, 'reconnect preserves escalation rather than resetting it');
 });
 
-for (const manualNotes of [false, true]) test(`miss lock auto-marks privately and restores manual notes ${manualNotes ? 'on' : 'off'} after expiry`, () => {
+for (const manualNotes of [false, true]) test(`miss lock blocks all editing and restores manual notes ${manualNotes ? 'on' : 'off'} after expiry`, () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const board = game.boards[0], [cat, target] = board.puzzle.solution;
@@ -1396,48 +1411,50 @@ for (const manualNotes of [false, true]) test(`miss lock auto-marks privately an
   h.act(0, battleAction(h, 0, { index: miss }));
   const root = h.get('.battle-side.local'), grid = root.querySelector('.battle-board'), lock = root.querySelector('.battle-lock');
   const toggle = h.get('#battleNote'), preference = manualNotes ? 'note' : 'guess';
-  assert.equal(h.state.mode, preference); assert.equal(toggle.disabled, true); assert.equal(toggle.getAttribute('aria-pressed'), 'true');
-  assert.equal(lock.classList.contains('lock-pop'), true); assert.equal(lock.querySelector('.lock-note').textContent, '現在可以做記號');
-  assert.equal(grid.children[target].disabled, false); assert.equal(grid.children[cat].disabled, true); assert.equal(grid.children[miss].disabled, true);
+  assert.equal(h.state.mode, preference); assert.equal(toggle.disabled, true); assert.equal(toggle.getAttribute('aria-pressed'), String(manualNotes));
+  assert.equal(lock.classList.contains('lock-pop'), true); assert.doesNotMatch(lock.querySelector('.lock-note').textContent, /現在可以做記號/);
+  assert.equal(grid.children[target].disabled, true); assert.equal(grid.children[cat].disabled, true); assert.equal(grid.children[miss].disabled, true);
   const before = json(h.publicGame(game)), sent = h.messages.length;
-  for (const expected of [true, false, true]) {
-    grid.children[target].click();
-    assert.equal(h.state.notes.has(target), expected); assertUnopenedCell(grid.children[target], { note: expected });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    grid.children[target].click(); grid.children[target].dispatchEvent({ type: 'click' }); h.battleChoose(target);
+    assert.equal(h.state.notes.has(target), false); assertUnopenedCell(grid.children[target], { disabled: true });
     assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
   }
-  toggle.click(); assert.equal(h.state.mode, preference, 'the disabled temporary toggle cannot overwrite the pre-lock preference');
+  toggle.click(); assert.equal(h.state.mode, preference, 'the disabled toggle cannot overwrite the pre-lock preference');
   assert.equal(h.state.pendingAction, null);
   h.advance(1999); h.updateBattleTimers(); assert.equal(toggle.disabled, true);
   h.advance(1); h.updateBattleTimers();
   assert.equal(toggle.disabled, false); assert.equal(toggle.getAttribute('aria-pressed'), String(manualNotes));
   assert.equal(h.state.mode, preference); assert.equal(board.found.includes(target), false, 'expiry itself cannot submit a marked cell');
-  assert.equal(lock.classList.contains('is-unlocked'), true); assert.equal(lock.querySelector('.lock-copy > strong').textContent, '可以找貓了');
+  assert.equal(lock.classList.contains('hidden'), true); assert.match(h.get('#battleNotice').textContent, /可以找貓了/);
   grid.children[target].click();
-  if (manualNotes) { assert.equal(h.state.notes.has(target), false); assert.equal(board.found.includes(target), false); assert.equal(h.messages.length, sent); }
+  if (manualNotes) { assert.equal(h.state.notes.has(target), true); assert.equal(board.found.includes(target), false); assert.equal(h.messages.length, sent); }
   else { assert.equal(board.found.includes(target), true); assert.equal(board.missStreak, 0); assert.ok(h.messages.length > sent); }
 });
 
-for (const activation of ['pointer', 'Enter', ' ']) test(`a ${activation === ' ' ? 'Space' : activation} press begun as a lock note remains a note when released after expiry`, () => {
+for (const manualNotes of [false, true]) for (const activation of ['mouse', 'touch', 'Enter', ' ']) test(`a ${activation === ' ' ? 'Space' : activation} press begun during miss lock has no effect after expiry with manual notes ${manualNotes ? 'on' : 'off'}`, () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const board = game.boards[0], index = board.puzzle.solution[0];
   const miss = board.puzzle.regions.findIndex((_, index) => !board.puzzle.solution.includes(index));
+  if (manualNotes) h.get('#battleNote').click();
   h.act(0, battleAction(h, 0, { index: miss }));
   const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
-  if (activation === 'pointer') cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', pointerId: 1 });
+  if (['mouse', 'touch'].includes(activation)) cell.dispatchEvent({ type: 'pointerdown', button: 0, pointerType: activation, pointerId: 1 });
   else cell.dispatchEvent({ type: 'keydown', key: activation, repeat: false });
   assert.equal(h.state.notes.has(index), false); assert.equal(board.found.length, 0);
   const sent = h.messages.length, hp = json(game.players.map(player => player.hp)), revision = game.revision;
   h.advance(2000); h.updateBattleTimers();
-  if (activation === 'pointer') cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', pointerId: 1 });
+  if (['mouse', 'touch'].includes(activation)) cell.dispatchEvent({ type: 'pointerup', button: 0, pointerType: activation, pointerId: 1 });
   else cell.dispatchEvent({ type: 'keyup', key: activation });
   cell.click();
-  assertUnopenedCell(cell, { note: true }); assert.equal(h.state.mode, 'guess');
+  assertUnopenedCell(cell); assert.equal(h.state.notes.has(index), false); assert.equal(h.state.mode, manualNotes ? 'note' : 'guess');
   assert.equal(h.messages.length, sent); assert.equal(game.revision, revision); assert.equal(board.found.length, 0);
   assert.deepEqual(json(game.players.map(player => player.hp)), hp);
   cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', pointerId: 2 });
   cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', pointerId: 2 }); cell.click();
-  assert.equal(board.found.includes(index), true, 'only a fresh post-unlock press can guess');
+  assert.equal(board.found.includes(index), !manualNotes, 'a fresh post-unlock press uses the preserved manual mode');
+  assert.equal(h.state.notes.has(index), manualNotes);
 });
 
 for (const activation of ['pointer', 'Enter', ' ']) test(`a pre-lock ${activation === ' ' ? 'Space' : activation} guess press is discarded when authority enters miss lock before release`, () => {
@@ -1460,10 +1477,11 @@ for (const activation of ['pointer', 'Enter', ' ']) test(`a pre-lock ${activatio
   assert.equal(guest.state.notes.has(index), false, 'an old guess intent cannot silently turn into a note');
   cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', pointerId: 2 });
   cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', pointerId: 2 }); cell.click();
-  assert.equal(guest.state.notes.has(index), true, 'a fresh press uses the active temporary marking mode');
+  assert.equal(guest.state.notes.has(index), false, 'even a fresh press cannot edit while the lock is active');
+  assert.equal(guest.messages.length, sent);
 });
 
-test('miss-lock presses are cancelled across disconnect, but new paused-note presses survive ordinary timer ticks', () => {
+test('miss-lock presses are cancelled across disconnect and a paused lock keeps new presses blocked', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const board = game.boards[0], index = board.puzzle.solution[0];
@@ -1478,9 +1496,9 @@ test('miss-lock presses are cancelled across disconnect, but new paused-note pre
   assert.equal(h.get('#battleNote').disabled, true); assert.equal(h.state.mode, 'guess');
   cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', pointerId: 2 });
   h.tick(500);
-  assert.equal(h.state.battleInputEpoch, epoch, 'ordinary paused refresh does not repeatedly cancel new note intent');
+  assert.equal(h.state.battleInputEpoch, epoch, 'ordinary paused refresh does not repeatedly change the input boundary');
   cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', pointerId: 2 }); cell.click();
-  assert.equal(h.state.notes.has(index), true); assert.equal(game.status, 'paused');
+  assert.equal(h.state.notes.has(index), false); assert.equal(game.status, 'paused');
   const after = json(h.publicGame(game)); delete before.serverTime; delete after.serverTime;
   assert.deepEqual(after, before);
   const lock = h.get('.battle-side.local').querySelector('.battle-lock');
@@ -1488,7 +1506,7 @@ test('miss-lock presses are cancelled across disconnect, but new paused-note pre
   assert.equal(Number.parseFloat(lock.querySelector('.lock-progress > i').style.width), 100);
 });
 
-test('a cancelled lock-note pointer press cannot become a post-unlock guess', () => {
+test('a cancelled locked pointer press cannot become a post-unlock guess', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const board = game.boards[0], index = board.puzzle.solution[0];
@@ -1506,7 +1524,7 @@ test('a cancelled lock-note pointer press cannot become a post-unlock guess', ()
   assert.equal(board.found.includes(index), true, 'cancellation only consumes the cancelled activation');
 });
 
-test('a queued lock-note press from the old board cannot mark or guess on the next puzzle', () => {
+test('a queued locked press from the old board cannot mark or guess on the next puzzle', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const board = game.boards[0], cats = [...board.puzzle.solution];
@@ -1526,7 +1544,7 @@ test('a fresh miss pops once and shows one unlock notice without rerender replay
   const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const references = battleNodeReferences(h), root = h.get('.battle-side.local');
-  assert.match(root.innerHTML, /class="battle-lock-slot"[^>]*><div class="battle-lock/);
+  assert.doesNotMatch(root.innerHTML, /battle-lock-slot/, 'a miss lock must not reserve an above-board strip');
   const miss = game.boards[0].puzzle.regions.findIndex((_, index) => !game.boards[0].puzzle.solution.includes(index));
   h.act(0, battleAction(h, 0, { index: miss }));
   const lock = root.querySelector('.battle-lock'), effects = [...h.state.battleClassEffects].filter(effect => effect.className === 'lock-pop');
@@ -1535,16 +1553,16 @@ test('a fresh miss pops once and shows one unlock notice without rerender replay
   assert.deepEqual([...h.state.battleClassEffects].filter(effect => effect.className === 'lock-pop'), effects);
   h.tick(520); assert.equal(lock.classList.contains('lock-pop'), false);
   h.renderBattle(); assert.equal(lock.classList.contains('lock-pop'), false);
-  h.tick(1480); assert.equal(lock.classList.contains('is-unlocked'), true);
-  assert.equal(lock.querySelector('.lock-copy > strong').textContent, '可以找貓了');
+  h.tick(1480); assert.equal(lock.classList.contains('hidden'), true);
+  assert.match(h.get('#battleNotice').textContent, /可以找貓了/);
   assert.equal(playedAudio(h).filter(sound => sound.kind === 'unlock').length, 1);
   h.renderBattle(); h.updateBattleTimers(); assert.equal(playedAudio(h).filter(sound => sound.kind === 'unlock').length, 1);
   h.tick(1100); h.renderBattle();
   assert.equal(lock.classList.contains('is-unlocked'), false); assert.equal(lock.classList.contains('hidden'), true);
-  assertBattleNodesUnchanged(h, references, 'miss pop, note lock and unlock notice');
+  assertBattleNodesUnchanged(h, references, 'miss pop, strict lock and unlock notice');
 });
 
-test('joining or reconnecting into a miss lock auto-marks without replaying its pop or unlock sound', () => {
+test('joining or reconnecting into a miss lock blocks editing without replaying its pop or unlock sound', () => {
   const host = harness({ mode: 'battle', battle: true }), authority = host.begin();
   const board = authority.boards[1], index = board.puzzle.solution[0];
   const miss = board.puzzle.regions.findIndex((_, index) => !board.puzzle.solution.includes(index));
@@ -1556,7 +1574,7 @@ test('joining or reconnecting into a miss lock auto-marks without replaying its 
   let root = guest.get('.battle-side.local'), lock = root.querySelector('.battle-lock');
   assert.equal(lock.classList.contains('lock-pop'), false); assert.equal(guest.get('#battleNote').disabled, true);
   const sounds = json(playedAudio(guest)), sent = guest.messages.length;
-  root.querySelector('.battle-board').children[index].click(); assert.equal(guest.state.notes.has(index), true);
+  root.querySelector('.battle-board').children[index].click(); assert.equal(guest.state.notes.has(index), false);
   assert.equal(guest.messages.length, sent); assert.deepEqual(playedAudio(guest), sounds);
   guest.onClose(); host.onClose(); host.advance(5000); guest.advance(5000);
   assert.equal(guest.state.game.status, 'paused'); assert.equal(guest.get('#battleNote').disabled, true);
@@ -1667,7 +1685,7 @@ function assertBattleNodesUnchanged(h, previous, message) {
   }
 }
 
-test('a 300 ms hit cooldown unlocks cells in place without restarting avatars or capture highlights', () => {
+test('a 300 ms hit cooldown unlocks guesses in place without restarting avatars or capture highlights', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
   h.enableRendering(); h.renderBattle(); const before = battleNodeReferences(h);
   const [first, next] = game.boards[0].puzzle.solution;
@@ -1676,15 +1694,18 @@ test('a 300 ms hit cooldown unlocks cells in place without restarting avatars or
   const cell = before.local.cells[first], cat = cell.querySelector('.cat-art');
   const timers = [...h.state.battleFXTimers], meows = json(playedAudio(h).filter(sound => sound.kind === 'meow'));
   assert.equal(cell.classList.contains('found-glow'), true); assert.equal(before.local.combo.classList.contains('combo-glow'), true);
-  assert.equal(before.local.cells[next].disabled, true);
+  assert.equal(before.local.cells[next].disabled, false, 'the right-click shortcut remains reachable');
+  assert.equal(h.state.battleCooldownActive, true); assertGuessBlocked(h, before.local.cells[next], game);
   h.context.cooldownRerenders = 0;
   vm.runInContext('render = () => { cooldownRerenders++; appTest.renderLegacy(); };', h.context);
   h.tick(299); h.updateBattleTimers();
-  assert.equal(before.local.cells[next].disabled, true, 'the hit cooldown must not unlock early');
+  assert.equal(h.state.battleCooldownActive, true, 'the hit cooldown must not unlock early');
+  assertGuessBlocked(h, before.local.cells[next], game, 'guessing is still blocked at 299 ms');
   assertBattleNodesUnchanged(h, before, '299 ms timer update');
   h.tick(1); h.updateBattleTimers();
-  assert.equal(before.local.cells[next].disabled, false, 'input becomes ready at the 300 ms deadline');
-  assert.equal(h.context.cooldownRerenders, 0, 'the cooldown interval updates disabled state without a full render');
+  assert.equal(before.local.cells[next].disabled, false);
+  assert.equal(h.state.battleCooldownActive, false, 'guessing becomes ready at the 300 ms deadline');
+  assert.equal(h.context.cooldownRerenders, 0, 'the cooldown interval updates input readiness without a full render');
   assert.equal(cell.disabled, true, 'the captured cell remains unavailable');
   assertBattleNodesUnchanged(h, before, '300 ms cooldown unlock');
   assert.strictEqual(cell.querySelector('.cat-art'), cat, 'the captured artwork is not recreated on cooldown unlock');
@@ -1713,7 +1734,8 @@ test('opponent HP updates and private-note toggles preserve both cards, avatars 
   assert.equal(h.state.notes.has(noteIndex), true); assert.equal(before.local.cells[noteIndex].classList.contains('note'), true);
   assertBattleNodesUnchanged(h, before, 'private-note edit');
   h.get('#battleNote').click();
-  assert.equal(before.local.cells[noteIndex].disabled, true, 'switching back to guesses preserves the active cooldown');
+  assert.equal(before.local.cells[noteIndex].disabled, false, 'right-click remains reachable');
+  assertGuessBlocked(h, before.local.cells[noteIndex], game, 'switching back to guesses preserves the active cooldown');
   assertBattleNodesUnchanged(h, before, 'private-note mode toggle');
   assert.equal(before.local.cells[first].classList.contains('found-glow'), true);
   assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'meow'), voice, 'incoming HP and note edits never repeat a local cat voice');
@@ -1830,13 +1852,13 @@ test('classic private-note control toggles back to direct guessing without sendi
   const note = h.get('#noteMode'), [first, second] = game.puzzle.solution;
   assert.equal(h.state.mode, 'guess');
   assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
-  assert.match(h.get('#noteModeStatus').textContent, /直接點格子找貓/);
+  assert.match(h.get('#noteModeStatus').textContent, /點格子找貓/);
   h.get('#board').children[first].click();
   assert.deepEqual(json(game.found), [first], 'the default cell action is a guess');
   const beforeNotes = json(h.publicGame(game)), priorSounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
   note.click();
   assert.equal(h.state.mode, 'note'); assert.match(note.textContent, /記號模式：開/); assert.equal(note.getAttribute('aria-pressed'), 'true');
-  assert.match(h.get('#noteModeStatus').textContent, /記號模式/);
+  assert.match(h.get('#noteModeStatus').textContent, /紫色 ×/);
   const sent = h.messages.length;
   h.get('#board').children[second].click();
   assert.equal(h.state.notes.has(second), true); assert.equal(h.messages.length, sent); assert.deepEqual(json(game.found), [first]);
@@ -1848,13 +1870,30 @@ test('classic private-note control toggles back to direct guessing without sendi
   assert.deepEqual(json(game.found), [first, second]);
 });
 
+test('battle primary note controls belong above the own board and survive stable rerenders', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }); h.begin(); h.enableRendering(); h.renderBattle();
+  const own = h.get('.battle-side.local'), opponent = h.get('.battle-side.opponent'), controls = h.get('#battlePrimaryControls');
+  const slot = own.querySelector('.primary-controls-slot');
+  assert.strictEqual(controls.parentNode, slot);
+  assert.ok(own.innerHTML.indexOf('primary-controls-slot') < own.innerHTML.indexOf('battle-board-stage'), 'the primary toggle slot is before the own board stage');
+  assert.doesNotMatch(opponent.innerHTML, /primary-controls-slot/, 'the read-only opponent board has no primary note toggle');
+  for (let repeat = 0; repeat < 3; repeat++) { h.renderBattle(); assert.strictEqual(controls.parentNode, slot); }
+  assert.equal(slot.children.filter(child => child === controls).length, 1);
+  h.get('#battleNote').click(); assert.equal(h.state.mode, 'note');
+  assert.strictEqual(controls.parentNode, slot);
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.equal((html.match(/id="battleNote"/g) || []).length, 1);
+  assert.equal((html.match(/id="noteMode"/g) || []).length, 1);
+  assert.ok(html.indexOf('id="noteMode"') < html.indexOf('id="boardWrap"'), 'legacy modes keep their main note toggle before the shared board');
+});
+
 test('battle private-note control toggles without changing direct-hit or cooldown rules', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true, fakeAudio: true }), game = h.begin();
   h.enableRendering(); h.renderBattle();
   const note = h.get('#battleNote'), [first, second] = game.boards[0].puzzle.solution;
   const grid = () => h.get('.battle-side.local').querySelector('.battle-board');
   assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
-  assert.match(h.get('#battleNoteStatus').textContent, /直接點格子找貓/);
+  assert.match(h.get('#battleNoteStatus').textContent, /點格子找貓/);
   grid().children[first].click(); assert.deepEqual(json(game.boards[0].found), [first]);
   const beforeNotes = json(h.publicGame(game)), priorSounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
   note.click();
@@ -1864,25 +1903,23 @@ test('battle private-note control toggles without changing direct-hit or cooldow
   assert.equal(h.state.notes.has(second), true); assert.equal(h.messages.length, sent); assert.deepEqual(json(game.boards[0].found), [first]);
   assert.deepEqual(json(h.publicGame(game)), beforeNotes, 'private notes change no revealed cells, HP, combo, cooldown or revision');
   assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), priorSounds, 'private editing causes no miss, capture or attack sounds');
-  h.advance(300); h.renderBattle(); assert.match(h.get('#battleNoteStatus').textContent, /記號模式/);
+  h.advance(300); h.renderBattle(); assert.match(h.get('#battleNoteStatus').textContent, /紫色 ×/);
   note.click();
   assert.equal(h.state.mode, 'guess'); assert.match(note.textContent, /記號模式：關/); assert.equal(note.getAttribute('aria-pressed'), 'false');
   grid().children[second].click(); assert.deepEqual(json(game.boards[0].found), [first, second]);
 });
 
-for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle']) test(`${mode} note mode stays private during off-turn or miss lock and protects resolved cells through repeated button activation`, () => {
-  const battle = mode === 'battle', h = harness({ mode, battle, battleUI: battle, fakeAudio: true }), game = h.begin();
-  const board = battle ? game.boards[0] : game, [cat, target] = board.puzzle.solution;
-  const miss = ruleRelatedEmptyCells(board.puzzle, cat)[0];
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} note mode stays private off-turn and protects resolved cells through repeated button activation`, () => {
+  const h = harness({ mode, fakeAudio: true }), game = h.begin();
+  const [cat, target] = game.puzzle.solution;
+  const miss = ruleRelatedEmptyCells(game.puzzle, cat)[0];
   h.enableRendering(); h.renderLegacy();
-  const grid = () => battle ? h.get('.battle-side.local').querySelector('.battle-board') : h.get('#board');
+  const grid = () => h.get('#board');
   grid().children[cat].click();
-  if (battle) { h.advance(300); h.updateBattleTimers(); }
   grid().children[miss].click();
   const before = json(h.publicGame(game)), sent = h.messages.length, sounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
-  const button = h.get(battle ? '#battleNote' : '#noteMode'); button.click();
-  if (battle) { assert.equal(button.disabled, true); assert.equal(button.getAttribute('aria-pressed'), 'true'); assert.equal(h.state.mode, 'guess'); }
-  else assert.match(button.textContent, /記號模式：開/);
+  const button = h.get('#noteMode'); button.click();
+  assert.match(button.textContent, /記號模式：開/);
   for (const expected of [true, false, true]) {
     const cell = grid().children[target]; assert.equal(cell.tagName, 'BUTTON'); assert.equal(cell.disabled, false);
     cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch' }); cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch' });
@@ -1896,16 +1933,273 @@ for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle']) test(`${mod
   assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
   assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), sounds, 'note editing never causes miss, capture or attack sounds');
   button.click();
-  if (battle) {
-    assert.equal(button.disabled, true); assert.equal(h.state.mode, 'guess');
-    assert.equal(grid().children[target].disabled, false, 'temporary miss-lock marking remains available');
-    grid().children[target].click(); assert.equal(h.state.notes.has(target), false);
-  } else {
-    assert.match(button.textContent, /記號模式：關/);
-    assert.equal(grid().children[target].disabled, true, 'disabling note mode preserves the real off-turn restriction');
-    grid().children[target].click();
-  }
+  assert.match(button.textContent, /記號模式：關/);
+  assert.equal(grid().children[target].disabled, false, 'off-turn cells remain reachable for the independent right-click shortcut');
+  grid().children[target].click();
   assert.deepEqual(json(h.publicGame(game)), before);
+});
+
+// Context-menu behavior here is simulated through VM DOM events. These assertions
+// verify handlers and state effects, not a physical mouse or browser's menu behavior.
+function contextMenu(cell, { press = true } = {}) {
+  if (press) {
+    cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 22 });
+    cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 2, pointerId: 22 });
+  }
+  const event = { type: 'contextmenu', button: 2 };
+  cell.dispatchEvent(event);
+  return event;
+}
+
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) for (const manualNotes of [false, true]) test(`${mode} right-click toggles only a private purple X with manual notes ${manualNotes ? 'on' : 'off'}`, () => {
+  const battle = mode === 'battle' || mode === 'practice';
+  const h = harness({ mode: battle ? 'battle' : mode, battle, battleUI: battle, fakeAudio: true });
+  h.enableRendering();
+  if (mode === 'practice') { h.startPractice(); h.advance(3000); h.updateBattleTimers(); }
+  else h.begin();
+  h.renderLegacy();
+  const game = h.state.game, board = battle ? game.boards[0] : game, index = board.puzzle.solution[0];
+  const grid = () => battle ? h.get('.battle-side.local').querySelector('.battle-board') : h.get('#board');
+  if (manualNotes) h.get(battle ? '#battleNote' : '#noteMode').click();
+  const snapshot = json(h.publicGame(game)), sent = h.messages.length;
+  vm.runInContext('globalThis.rightClickAuthorityCalls = 0; const noteTestAct = act; act = (...args) => { rightClickAuthorityCalls++; return noteTestAct(...args); };', h.context);
+  const sounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
+  for (const expected of [true, false, true]) {
+    const event = contextMenu(grid().children[index]);
+    assert.equal(event.defaultPrevented, true, 'only a handled own-cell shortcut suppresses its native menu');
+    assert.equal(h.state.notes.has(index), expected); assertUnopenedCell(grid().children[index], { note: expected });
+    assert.equal(h.state.mode, manualNotes ? 'note' : 'guess', 'right-click cannot toggle the main manual preference');
+    assert.deepEqual(json(h.publicGame(game)), snapshot, 'a right-click never reveals, awards currency, changes turn, damages, or starts cooldown');
+    assert.equal(h.messages.length, sent, 'a right-click sends no host action or snapshot');
+    assert.equal(h.context.rightClickAuthorityCalls, 0, 'private marking never invokes the host action handler');
+    assert.equal(h.state.pendingAction, null); assert.equal(h.state.selectedCell, null);
+    assertNoPrivateKeys(json(h.publicGame(game)));
+    assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), sounds, 'right-click does not play miss, capture or attack effects');
+    if (battle) assert.equal(h.get('.battle-side.opponent').querySelector('.battle-board').children.some(cell => cell.classList.contains('note')), false);
+  }
+});
+
+for (const manualNotes of [false, true]) test(`battle right-click stays private during hit cooldown with manual notes ${manualNotes ? 'on' : 'off'}`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], [cat, index] = board.puzzle.solution;
+  h.act(0, battleAction(h, 0, { index: cat }));
+  if (manualNotes) h.get('#battleNote').click();
+  const before = json(h.publicGame(game)), sent = h.messages.length, cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  assert.equal(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), true);
+  assert.equal(h.state.mode, manualNotes ? 'note' : 'guess');
+  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.equal(board.cooldownUntil, h.now() + 300); assert.equal(board.found.includes(index), false);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} right-click works off-turn and while a guess is pending without authorizing any left-click`, () => {
+  const h = harness({ mode }), game = h.begin(), index = game.puzzle.solution[0];
+  h.enableRendering(); h.renderLegacy();
+  h.act(0, h.action('pass'));
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  let cell = h.get('#board').children[index];
+  assert.equal(cell.disabled, false, 'own unresolved cells remain reachable for private right-click notes');
+  cell.click(); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.equal(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), true);
+  assert.equal(h.state.mode, 'guess'); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  h.act(1, h.action('pass')); h.state.pendingAction = { index: (index + 1) % 36, actionId: 'in-flight-guess', turnId: game.turnId }; h.renderLegacy();
+  const pending = json(h.state.pendingAction), pendingSnapshot = json(h.publicGame(game)), pendingSent = h.messages.length;
+  cell = h.get('#board').children[index]; cell.click();
+  assert.equal(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
+  assert.deepEqual(json(h.state.pendingAction), pending); assert.deepEqual(json(h.publicGame(game)), pendingSnapshot); assert.equal(h.messages.length, pendingSent);
+});
+
+for (const mode of ['items', 'coop']) for (const item of ['magnifier', 'yarn']) test(`${mode} right-click remains free when ${item} is armed`, () => {
+  const h = harness({ mode }), game = h.begin(), index = game.puzzle.solution[0];
+  game.players[0].fish = 4; game.sharedFish = 4; h.enableRendering(); h.renderLegacy();
+  h.get(`#toolbox [data-item="${item}"]`).click();
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  assert.equal(contextMenu(h.get('#board').children[index]).defaultPrevented, true);
+  assert.equal(h.state.notes.has(index), true); assert.equal(h.state.mode, 'guess');
+  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.deepEqual(json(h.state.yarnTargets), []); assert.equal(h.state.intel.length, 0);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) test(`${mode} leaves resolved, opponent and unrelated context menus untouched`, () => {
+  const battle = mode === 'battle' || mode === 'practice';
+  const h = harness({ mode: battle ? 'battle' : mode, battle, battleUI: battle }); h.enableRendering();
+  if (mode === 'practice') { h.startPractice(); h.advance(3000); h.updateBattleTimers(); } else h.begin();
+  h.renderLegacy();
+  const game = h.state.game, board = battle ? game.boards[0] : game, cat = board.puzzle.solution[0];
+  const miss = ruleRelatedEmptyCells(board.puzzle, cat)[0];
+  const grid = () => battle ? h.get('.battle-side.local').querySelector('.battle-board') : h.get('#board');
+  grid().children[cat].click();
+  if (battle) { h.advance(300); h.updateBattleTimers(); }
+  grid().children[miss].click();
+  const before = json(h.publicGame(game)), sent = h.messages.length, notes = [...h.state.notes];
+  const targets = [grid().children[cat], grid().children[miss], h.get('#battleHelp'), h.get('#helpDialog'), h.get('#nick'), h.context.document.body, h.context.document];
+  if (battle) targets.push(h.get('.battle-side.opponent').querySelector('.battle-board').children[0]);
+  for (const cell of targets) {
+    const event = contextMenu(cell);
+    assert.notEqual(event.defaultPrevented, true, 'non-playable or unrelated targets retain their native menu');
+    assert.deepEqual([...h.state.notes], notes); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  }
+});
+
+for (const manualNotes of [false, true]) test(`battle miss lock rejects right-click, keyboard, touch and direct activations with manual notes ${manualNotes ? 'on' : 'off'}`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], [target, retained] = board.puzzle.solution;
+  h.state.notes.add(retained); if (manualNotes) h.get('#battleNote').click();
+  const miss = ruleRelatedEmptyCells(board.puzzle, target)[0]; h.act(0, battleAction(h, 0, { index: miss }));
+  const before = json(h.publicGame(game)), sent = h.messages.length, preference = h.state.mode;
+  const grid = h.get('.battle-side.local').querySelector('.battle-board');
+  for (const index of [target, retained]) {
+    const cell = grid.children[index]; assert.equal(cell.disabled, true);
+    contextMenu(cell); contextMenu(cell, { press: false });
+    for (const key of ['Enter', ' ', 'Spacebar']) { cell.dispatchEvent({ type: 'keydown', key, repeat: false }); cell.dispatchEvent({ type: 'keyup', key }); cell.dispatchEvent({ type: 'click', detail: 0 }); }
+    cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', button: 0, pointerId: 1 });
+    cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', button: 0, pointerId: 1 }); cell.dispatchEvent({ type: 'click', detail: 1 });
+    h.battleChoose(index);
+    assert.equal(h.state.notes.has(index), index === retained);
+  }
+  h.get('#battleNote').click(); h.get('#battleNote').dispatchEvent({ type: 'click' });
+  assert.equal(h.state.mode, preference); assert.deepEqual([...h.state.notes], [retained]);
+  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent); assert.equal(h.state.pendingAction, null);
+  for (const target of [h.get('#battleHelp'), h.context.document.body, h.context.document]) assert.notEqual(contextMenu(target).defaultPrevented, true);
+});
+
+for (const manualNotes of [false, true]) test(`a press on the lock modal cannot fall through to the newly unlocked board with manual notes ${manualNotes ? 'on' : 'off'}`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], index = board.puzzle.solution[0], miss = ruleRelatedEmptyCells(board.puzzle, index)[0];
+  if (manualNotes) h.get('#battleNote').click();
+  h.act(0, battleAction(h, 0, { index: miss }));
+  const root = h.get('.battle-side.local'), cell = root.querySelector('.battle-board').children[index];
+  root.querySelector('.battle-lock').dispatchEvent({ type: 'pointerdown', pointerType: 'touch', button: 0, pointerId: 1 });
+  h.advance(2000); h.updateBattleTimers();
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', button: 0, pointerId: 1 }); cell.dispatchEvent({ type: 'click', detail: 1, button: 0 });
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', button: 0, pointerId: 2 });
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', button: 0, pointerId: 2 }); cell.dispatchEvent({ type: 'click', detail: 1, button: 0 });
+  assert.equal(h.state.notes.has(index), manualNotes); assert.equal(board.found.includes(index), !manualNotes);
+});
+
+test('a right press on the lock modal cannot create a late private note on the newly unlocked board', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], index = board.puzzle.solution[0], miss = ruleRelatedEmptyCells(board.puzzle, index)[0];
+  h.act(0, battleAction(h, 0, { index: miss }));
+  const root = h.get('.battle-side.local'), cell = root.querySelector('.battle-board').children[index];
+  root.querySelector('.battle-lock').dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
+  h.advance(2000); h.updateBattleTimers();
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 2, pointerId: 1 }); contextMenu(cell, { press: false });
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+});
+
+for (const key of ['ContextMenu', 'F10']) test(`a ${key === 'F10' ? 'Shift+F10' : key} press begun locked cannot create a private note after expiry`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], index = board.puzzle.solution[0], miss = ruleRelatedEmptyCells(board.puzzle, index)[0];
+  h.act(0, battleAction(h, 0, { index: miss }));
+  const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  cell.dispatchEvent({ type: 'keydown', key, shiftKey: key === 'F10', repeat: false });
+  h.advance(2000); h.updateBattleTimers();
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  cell.dispatchEvent({ type: 'keyup', key, shiftKey: key === 'F10' }); cell.dispatchEvent({ type: 'contextmenu', button: 0 });
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  cell.dispatchEvent({ type: 'keydown', key, shiftKey: key === 'F10', repeat: false });
+  cell.dispatchEvent({ type: 'contextmenu', button: 0 }); assert.equal(h.state.notes.has(index), true);
+  assert.equal(h.state.mode, 'guess'); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+});
+
+test('battle guest right-click marks only its own board and never sends an authority request', () => {
+  const host = harness({ mode: 'battle', battle: true }), authority = host.begin();
+  const guest = harness({ mode: 'battle', battle: true, battleUI: true }); guest.state.role = 'guest'; guest.state.you = 1; guest.enableRendering();
+  guest.onMessage({ type: 'state', state: json(host.publicGame(authority)) });
+  const root = guest.get('.battle-side.local'), opponent = guest.get('.battle-side.opponent'), index = authority.boards[1].puzzle.solution[0];
+  assert.equal(+root.dataset.player, 1); assert.equal(+opponent.dataset.player, 0);
+  const before = json(guest.publicGame(guest.state.game)), sent = guest.messages.length;
+  assert.equal(contextMenu(root.querySelector('.battle-board').children[index]).defaultPrevented, true);
+  assert.equal(guest.state.notes.has(index), true); assertUnopenedCell(root.querySelector('.battle-board').children[index], { note: true });
+  assert.equal(opponent.querySelector('.battle-board').children.some(cell => cell.classList.contains('note')), false);
+  assert.equal(guest.state.pendingAction, null); assert.equal(guest.messages.length, sent); assert.deepEqual(json(guest.publicGame(guest.state.game)), before);
+  assertNoPrivateKeys(json(guest.publicGame(guest.state.game)));
+});
+
+for (const cancellation of ['pointercancel', 'blur']) test(`a ${cancellation} right-click on an unlocked battle cell cannot be replayed`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const index = game.boards[0].puzzle.solution[0], cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
+  cell.dispatchEvent({ type: cancellation, pointerType: 'mouse', button: 2, pointerId: 1 });
+  for (let repeat = 0; repeat < 2; repeat++) {
+    contextMenu(cell, { press: false });
+    assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  }
+  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+});
+
+for (const manualNotes of [false, true]) test(`a right mouse press begun locked cannot add a note after expiry with manual notes ${manualNotes ? 'on' : 'off'}`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], index = board.puzzle.solution[0], miss = ruleRelatedEmptyCells(board.puzzle, index)[0];
+  if (manualNotes) h.get('#battleNote').click();
+  h.act(0, battleAction(h, 0, { index: miss }));
+  const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
+  h.advance(2000); h.updateBattleTimers();
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 2, pointerId: 1 }); contextMenu(cell, { press: false });
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+  assert.equal(h.state.mode, manualNotes ? 'note' : 'guess'); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+});
+
+for (const cancellation of ['pointercancel', 'blur']) test(`a ${cancellation} right-click intent has no late effect after miss-lock expiry`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], index = board.puzzle.solution[0], miss = ruleRelatedEmptyCells(board.puzzle, index)[0];
+  h.act(0, battleAction(h, 0, { index: miss }));
+  const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
+  cell.dispatchEvent({ type: cancellation, pointerType: 'mouse', button: 2, pointerId: 1 });
+  h.advance(2000); h.updateBattleTimers();
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  contextMenu(cell, { press: false }); assert.equal(h.state.notes.has(index), false);
+  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+});
+
+test('a right-click from a replaced battle puzzle is ignored while the current puzzle remains usable', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  const board = game.boards[0], cats = [...board.puzzle.solution], empty = ruleRelatedEmptyCells(board.puzzle, cats[0])[0];
+  const oldCell = h.get('.battle-side.local').querySelector('.battle-board').children[empty];
+  oldCell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
+  for (const index of cats) { h.act(0, battleAction(h, 0, { index })); h.advance(300); }
+  h.updateBattleTimers();
+  assert.notEqual(board.puzzle.id, game.boards[0].puzzle.id); assert.equal(oldCell.parentNode, null);
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  contextMenu(oldCell, { press: false }); contextMenu(oldCell);
+  assert.equal(h.state.notes.size, 0); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  contextMenu(h.get('.battle-side.local').querySelector('.battle-board').children[empty]);
+  assert.equal(h.state.notes.has(empty), true); assert.deepEqual(json(h.publicGame(game)), before);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} stale board context-menu events cannot mark a new game`, () => {
+  const h = harness({ mode }), first = h.begin(); h.enableRendering(); h.renderLegacy();
+  const index = first.puzzle.solution[0], oldCell = h.get('#board').children[index];
+  oldCell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
+  const game = h.begin(); h.renderLegacy();
+  assert.notEqual(first.puzzle.id, game.puzzle.id); assert.equal(oldCell.parentNode, null);
+  const before = json(h.publicGame(game)), sent = h.messages.length;
+  contextMenu(oldCell, { press: false }); contextMenu(oldCell);
+  assert.equal(h.state.notes.size, 0); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+});
+
+test('ordinary paused battle still allows private notes when there is no miss lock', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
+  h.onClose(); h.get('#battleNote').click();
+  const index = game.boards[0].puzzle.solution[0], cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
+  const before = json(h.publicGame(game)), epoch = h.state.battleInputEpoch;
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', button: 0, pointerId: 1 }); h.tick(500);
+  assert.equal(h.state.battleInputEpoch, epoch);
+  const sent = h.messages.length; // Periodic transport pings during the wait are unrelated to note activation.
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', button: 0, pointerId: 1 }); cell.click();
+  assert.equal(h.state.notes.has(index), true); contextMenu(cell); assert.equal(h.state.notes.has(index), false);
+  const after = json(h.publicGame(game)); delete before.serverTime; delete after.serverTime;
+  assert.deepEqual(after, before); assert.equal(h.messages.length, sent); assert.equal(game.status, 'paused');
 });
 
 for (const mode of ['items', 'coop']) test(`${mode} note mode clears armed scans and choosing a scan explicitly turns note mode off`, () => {
