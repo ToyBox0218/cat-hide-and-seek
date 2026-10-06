@@ -1467,10 +1467,37 @@ body.is-battle #turnBanner { display: none; }
   .battle-paw-shot::after { display: none; }
 }
 
-/* Own-board guidance lives between player status and the cream panel.
-   Its single compact line never takes a column away from the colored grid. */
+/* Shared guidance belongs to the gap between the two player panels.
+   Both side sections stay intact; neither carries an extra instruction row. */
 #battleArena .local > .combo-badge { margin-bottom: 0; }
-#battleArena .local > .gesture-hint { margin: 8px 0; }
+#battleArena .battle-center { min-width: 0; display: flex; justify-content: center; align-items: center; }
+#battleArena .battle-center > .gesture-hint { margin: 0; }
+@media (max-width: 700px) {
+  #battleArena .battle-layout { row-gap: 10px; }
+  #battleArena .battle-center { grid-column: 1; grid-row: 2; }
+  #battleArena .battle-side.opponent { grid-row: 3; }
+}
+/* Shared tracks align both HP/status rows, panel headers, colored grids and
+   baskets. A long nickname or wrapping panel header enlarges the SAME row
+   for both sides; no placeholder, measuring timer or local-only offset. */
+@media (min-width: 701px) {
+  #battleArena .battle-layout { grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr); grid-template-rows: repeat(5, max-content); column-gap: 8px; row-gap: 6px; align-items: stretch; }
+  #battleArena .battle-side { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; grid-row: 1 / 6; min-width: 0; row-gap: 6px; }
+  #battleArena .battle-side.local { grid-column: 1; }
+  #battleArena .battle-side.opponent { grid-column: 3; }
+  #battleArena .battle-player { grid-column: 1 / -1; grid-row: 1; align-self: stretch; grid-template-rows: minmax(min-content, 1fr) 28px; margin: 0; }
+  #battleArena .player-identity { align-self: start; }
+  #battleArena .hp-meter { margin-bottom: 0; }
+  #battleArena .combo-badge { grid-column: 1 / -1; grid-row: 2; align-self: start; justify-self: center; margin: 0; }
+  #battleArena .board-card { grid-column: 1 / -1; grid-row: 3 / 5; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 4px; min-width: 0; padding: 6px 10px 8px; }
+  #battleArena .board-heading { grid-column: 1; grid-row: 1; min-height: 24px; align-self: start; margin: 0; padding: 0; }
+  #battleArena .battle-board-stage { grid-column: 1; grid-row: 2; align-self: start; }
+  #battleArena .cat-basket { grid-column: 1 / -1; grid-row: 5; align-self: start; margin: 0 auto; }
+  #battleArena .battle-center { display: grid; grid-column: 2; grid-row: 1 / 6; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 6px; }
+  #battleArena .battle-center > .battle-vs { grid-row: 1 / 3; align-self: center; justify-self: center; margin: 0; }
+  #battleArena .battle-center > .gesture-hint { grid-row: 3 / 5; align-self: center; flex-direction: column; flex-wrap: nowrap; gap: 8px; }
+  #battleArena .battle-center .gesture-divider { display: none; }
+}
 #battleArena .battle-board-stage {
   position: relative;
   isolation: isolate;
@@ -1534,25 +1561,26 @@ body.is-battle #turnBanner { display: none; }
 #battleArena .battle-status #battleHelp { background: #fff7e6; padding-inline: 12px; }
 
 /* Desktop height contract, at 100% browser zoom:
-   B = clamp(288px, H - 400px, 560px), constrained by the available width.
+   B = clamp(288px, H - 376px, 560px), constrained by the available width.
    Both board panels hug their squares: B + 24px padding/border, no sidebar.
    Status columns keep at least 368px each when the viewport permits, even
    when emergency controls reduce the square; no narrow nickname sliver.
-   Modeled chrome: arena 20 + header 92 + notice 32 + status 64 + guidance 24
-   + side gaps 18 + card chrome 46 + basket 44 + rules 39 = 379px.
-   1280x720 -> B=320, 1366x768 -> B=368, 1920x1080 -> B=560.
-   The 21px short-screen headroom allows ordinary name wrapping. Long status
+   Modeled chrome: arena 20 + header 92 + notice 32 + status 64
+   + side gaps 12 + card chrome 46 + basket 44 + rules 39 = 349px.
+   The two-line guidance occupies the existing center rail, not a height row.
+   1280x720 -> B=344, 1366x768 -> B=392, 1920x1080 -> B=560.
+   The 27px short-screen headroom allows ordinary name wrapping. Long status
    content grows naturally instead of clipping. These are source budgets,
    not browser-measured guarantees for font substitution or arbitrary names. */
 @media (min-width: 1100px) {
   #battleArena {
-    --battle-board-size: clamp(288px, calc(100dvh - 400px), 560px);
+    --battle-board-size: clamp(288px, calc(100dvh - 376px), 560px);
     width: min(1460px, calc(100% - 48px));
     max-width: none;
     padding-top: 8px;
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
-  #battleArena:has(.battle-toolbar > button:not(.hidden)) { --battle-board-size: clamp(256px, calc(100dvh - 464px), 560px); }
+  #battleArena:has(.battle-toolbar > button:not(.hidden)) { --battle-board-size: clamp(272px, calc(100dvh - 440px), 560px); }
   #battleArena .battle-header { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; padding: 0; }
   #battleArena .battle-brand { min-width: 260px; padding: 6px 20px; gap: 1px; }
   #battleArena .battle-brand h1 { font-size: 32px; line-height: 1.2; }
@@ -1560,20 +1588,19 @@ body.is-battle #turnBanner { display: none; }
   #battleArena .battle-brand::before, #battleArena .battle-brand::after { height: 12px; top: -12px; }
   #battleArena .battle-status { justify-content: flex-end; gap: 6px; }
   #battleArena #battleNotice { margin: 6px auto; line-height: 20px; }
-  #battleArena .battle-layout { width: min(100%, max(816px, calc(2 * var(--battle-board-size) + 128px))); margin-inline: auto; grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr); gap: 16px; }
-  #battleArena .battle-vs { width: 48px; height: 50px; margin-top: 9px; font-size: 21px; }
-  #battleArena .battle-side { display: grid; grid-template-columns: minmax(0, 1fr) 128px; grid-auto-rows: max-content; align-content: start; gap: 6px 10px; }
+  #battleArena .battle-layout { width: min(100%, max(864px, calc(2 * var(--battle-board-size) + 176px))); margin-inline: auto; grid-template-rows: repeat(4, max-content); column-gap: 16px; }
+  #battleArena .battle-vs { width: 48px; height: 50px; font-size: 21px; }
+  #battleArena .battle-side { grid-template-columns: minmax(0, 1fr) 128px; grid-row: 1 / 5; column-gap: 10px; }
   #battleArena .battle-player { grid-column: 1; grid-row: 1; grid-template-columns: 64px minmax(0, 1fr); min-height: 64px; margin: 0; padding: 0; gap: 4px 10px; }
   #battleArena .portrait { width: 64px; height: 64px; }
   #battleArena .player-identity { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; padding-top: 0; gap: 4px 8px; }
   #battleArena .combo-badge { grid-column: 2; grid-row: 1; flex-direction: column; align-self: center; min-width: 0; width: 100%; max-width: 100%; margin: 0; padding: 4px 8px; gap: 0; border-radius: 16px; }
-  #battleArena .board-card { grid-column: 1 / -1; grid-row: 2; width: min(100%, calc(var(--battle-board-size) + 24px)); justify-self: center; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; min-width: 0; padding: 6px 10px 8px; border-radius: 22px; }
-  #battleArena .board-heading { grid-column: 1 / -1; min-height: 24px; margin: 0; padding: 0; }
-  #battleArena .local > .gesture-hint { grid-column: 1 / -1; grid-row: 2; margin: 0; }
-  #battleArena .local > .board-card { grid-row: 3; }
+  #battleArena .board-card { grid-row: 2 / 4; width: min(100%, calc(var(--battle-board-size) + 24px)); justify-self: center; border-radius: 22px; }
+  #battleArena .battle-center { grid-row: 1 / 5; }
+  #battleArena .battle-center > .battle-vs { grid-row: 1; }
+  #battleArena .battle-center > .gesture-hint { grid-row: 2 / 4; }
   #battleArena .battle-board-stage { width: min(100%, var(--battle-board-size)); }
-  #battleArena .cat-basket { grid-column: 1 / -1; grid-row: 3; width: fit-content; max-width: 100%; min-height: 44px; margin: 0 auto; padding: 4px 12px; gap: 5px; border-width: 5px; }
-  #battleArena .local > .cat-basket { grid-row: 4; }
+  #battleArena .cat-basket { grid-column: 1 / -1; grid-row: 4; width: fit-content; max-width: 100%; min-height: 44px; margin: 0 auto; padding: 4px 12px; gap: 5px; border-width: 5px; }
   #battleArena .cat-basket::before { inset: -5px; border-width: 5px; }
   #battleArena .cat-basket .basket-cat { width: 24px; height: 24px; }
   #battleArena .battle-instructions { margin-top: 6px; padding: 4px 8px; line-height: 1.6; }

@@ -3,7 +3,6 @@
 const battleNow=()=>Date.now()+(state.clockOffset||0);
 const isBattle=()=>state.game?.settings.mode==='battle';
 const battlePhaseAllowsNotes=game=>game.status==='playing'||(game.status==='paused'&&(game.pausedFrom||game._pausedFrom)!=='countdown');
-const battleGestureHint=$('#battleGestureHint');
 function battleMissRemaining(game=state.game,who=state.you){
   if(!game||!battlePhaseAllowsNotes(game))return 0;
   const board=game.boards?.[who];if(board?.cooldownKind!=='miss')return 0;
@@ -50,8 +49,6 @@ function renderBattle(){
     root.dataset.player=who;
     const viewKey=`${game.id}:${who}`;
     if(root.dataset.viewKey!==viewKey){root.dataset.viewKey=viewKey;root.innerHTML=`<div class="battle-player"><div class="portrait">${playerAvatar(player.avatar,'avatar-character')}</div><div class="player-identity"><b>${local?'你':state.practice?'練習貓友':'對手'}</b><span>${escapeHTML(player.nickname)}</span></div><div class="hp-meter" role="meter" aria-label="${local?'你的':'對手'}血量" aria-valuemin="0" aria-valuemax="${maxHP}" aria-valuenow="${player.hp}"><i class="hp-lag" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><i class="hp-fill" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><span>${player.hp} / ${maxHP}</span></div></div><div class="combo-badge"><span>🐾 連鎖 <b>${board.combo}</b></span><span>下次傷害 <strong>${5*(board.combo+1)}</strong></span></div><div class="board-card"><div class="capture-callout" role="status" aria-live="polite"></div><div class="board-heading"><b>${local?'你的尋貓小屋':'貓友的小屋'}</b><span>第 ${board.number} 盤 · ${local?'6×6': '僅觀看'}</span></div><div class="battle-board-stage"><div class="battle-lock hidden" role="status" aria-live="polite"><span class="lock-icon" aria-hidden="true">🔒</span><div class="lock-copy"><strong>找貓暫時鎖定</strong><span class="lock-seconds"></span></div><span class="lock-progress" aria-hidden="true"><i></i></span><span class="lock-note">翻格與標記都暫停</span></div><div class="battle-board" role="grid" ${local?'aria-describedby="battleGestureHint"':''} aria-label="${local?'你的尋貓棋盤':'對手唯讀棋盤'}" style="--n:6"></div></div></div><div class="cat-basket" aria-label="本盤已找到 ${board.found.length} 隻貓">${Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')}<b>${board.found.length} / 6</b></div>`;}
-    // Guidance is a sibling above the cream panel, never a column inside it.
-    if(local&&battleGestureHint&&battleGestureHint.parentNode!==root)root.insertBefore(battleGestureHint,root.querySelector('.board-card'));
     syncBattleSideHeader(root,game,board,player,local,maxHP);
     const grid=root.querySelector('.battle-board'),palette=regionPalette(board.puzzle);
     if(grid.dataset.boardId!==board.puzzle.id){

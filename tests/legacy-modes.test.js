@@ -78,15 +78,6 @@ function element(tagName = 'div') {
     click() { if (!this.disabled) this.dispatchEvent({ type: 'click' }); },
     remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
-    insertBefore(child, reference) {
-      if (reference && reference.parentNode !== this) throw new Error('reference is not a direct child');
-      child.remove();
-      // Query-backed fixture descendants are lazy; put that reference in the
-      // ordered children list before testing the actual insertion operation.
-      if (reference && !this.children.includes(reference)) this.children.push(reference);
-      const index = reference ? this.children.indexOf(reference) : this.children.length;
-      child.parentNode = this; this.children.splice(index, 0, child); return child;
-    },
     append(...children) { children.forEach(child => this.appendChild(child)); },
     cloneNode() { const clone = element(tagName); clone.className = this.className; clone.innerHTML = html; clone.textContent = this.textContent; return clone; },
     matches(selector) {
@@ -151,6 +142,8 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
     if (!nodes.has(selector)) { const node = element(); if (/^\.[\w.-]+$/.test(selector)) node.className = selector.slice(1).replaceAll('.', ' '); nodes.set(selector, node); }
     return nodes.get(selector);
   };
+  // Static page chrome is mounted once; renderBattle must never move it into a player section.
+  get('.battle-center').appendChild(get('#battleGestureHint'));
   Object.entries({ '#size': size, '#gameMode': mode, '#secondsA': 45, '#secondsB': 60,
     '#cap': 3, '#battleHP': 150, '#nick': 'Test Cat' }).forEach(([key, value]) => get(key).value = String(value));
   for (const item of ['magnifier', 'yarn', 'shield', 'hourglass']) {
@@ -868,15 +861,14 @@ test('battle guest acknowledgements clear only the matching pending action and s
   assert.equal(h.context.CatBattle.act(h.state.game, 1, { type: 'guess', actionId: 'not-authority', boardId: next.boards[1].puzzle.id, index: 0 }, h.now()).reason, 'not-authority');
 });
 
-for (const you of [0, 1]) test(`own-board guidance is outside the panel and stays unique for player ${you}`, () => {
+for (const you of [0, 1]) test(`shared center guidance stays outside both player panels for player ${you}`, () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.state.you = you; h.renderBattle();
-  const hint = h.get('#battleGestureHint'), local = h.get('.battle-side.local'), opponent = h.get('.battle-side.opponent');
+  const hint = h.get('#battleGestureHint'), rail = h.get('.battle-center'), local = h.get('.battle-side.local'), opponent = h.get('.battle-side.opponent');
   const assertPlacement = () => {
-    assert.strictEqual(hint.parentNode, local, 'guidance is a direct local-side child');
-    const card = local.querySelector('.board-card');
-    assert.equal(local.children.indexOf(hint) + 1, local.children.indexOf(card), 'line immediately precedes the cream panel');
-    assert.equal(local.children.filter(node => node === hint).length, 1);
+    assert.strictEqual(hint.parentNode, rail, 'guidance stays in the shared center rail');
+    assert.equal(rail.children.filter(node => node === hint).length, 1);
+    assert.equal(local.children.includes(hint), false, 'the own board has no extra guidance row');
     assert.equal(opponent.children.includes(hint), false, 'no instruction is placed on the read-only board');
     assert.doesNotMatch(local.innerHTML + opponent.innerHTML, /primary-controls|gesture-hint/, 'the board template contains no duplicate sidebar or hidden copy');
   };
@@ -888,12 +880,12 @@ for (const you of [0, 1]) test(`own-board guidance is outside the panel and stay
   h.begin(); h.renderBattle(); assertPlacement();
 });
 
-test('offline practice uses the same single external guidance line', () => {
+test('offline practice preserves the same single shared center guidance', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true });
   h.enableRendering(); h.startPractice();
   assert.equal(h.state.practice, true);
-  assert.strictEqual(h.get('#battleGestureHint').parentNode, h.get('.battle-side.local'));
-  assert.equal(h.get('.battle-side.local').children.filter(node => node === h.get('#battleGestureHint')).length, 1);
+  assert.strictEqual(h.get('#battleGestureHint').parentNode, h.get('.battle-center'));
+  assert.equal(h.get('.battle-center').children.filter(node => node === h.get('#battleGestureHint')).length, 1);
 });
 
 test('battle UI renders opponent cells read-only and preserves manual notes during hit cooldown', () => {

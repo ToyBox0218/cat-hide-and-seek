@@ -1,9 +1,9 @@
-CAT HIDE & SEEK — APPROVED COMPACT OWN-BOARD GUIDANCE RELEASE
+CAT HIDE & SEEK — APPROVED CENTER-RAIL GUIDANCE / SHARED ALIGNMENT RELEASE
 Date: 2026-10-06
-Base repository commit: 7064a99b2267a94f2f1c15733ba2e7959cb00a41
-Status: User approved publication after the visual-QA blocker was disclosed. 7064a99 is the preserved rollback parent. Exact deployment and served-byte checks are recorded separately. The supplied screenshot was inspected as problem evidence, not as a new QA screenshot.
+Base repository commit: 67f7f82fbe7c623747ee715ad71fa8645f90d698
+Status: User approved publication with the browser visual-QA limit disclosed. 67f7f82 is the preserved rollback parent. Exact-commit Pages and served-byte checks are recorded separately. Source tests do not establish rendered alignment.
 
-PASS — 526 Node tests (node --test)
+PASS — 532 Node tests (node --test)
 
 31 shared gesture-controller tests:
 - One single-use press intent per pointer/keyboard activation; click is the only
@@ -33,10 +33,10 @@ PASS — 526 Node tests (node --test)
 - Optional right-click remains private and cancels the cell's pending single.
 - Armed magnifier/yarn clicks deliberately select tool targets, suppressing a rapid
   second same-cell click after completion; no unintended normal mark or reveal.
-- Note toggle remains removed. One persistent, unboxed instruction line is mounted
-  as a direct sibling before the local cream board panel. Opponent gets no copy.
+- Note toggle remains removed. One static instruction lives in the center rail,
+  outside BOTH player sections. renderBattle never moves or duplicates it.
 - Repeated renders, both local player IDs, paused/finished states, replacement games
-  and offline practice preserve one external guidance node without rebuilding cells.
+  and offline practice preserve that shared guidance without rebuilding cells.
 - Existing countdown, audio/FX deduplication, reconnect, item, cooperative, treasure,
   private-intel, no-auto-deduction and confirmed-empty behavior remain covered.
 
@@ -58,19 +58,25 @@ PASS — 526 Node tests (node --test)
 - 24-color minimum OKLab distance 0.0762814; base ink contrast >=4.60777:1.
 - Palette depends only on public board geometry, not hidden answers.
 
-87 CSS/layout source contracts:
+93 CSS/layout source contracts:
 - No region-edge selectors/overrides or thick dark board outlines remain.
 - Existing region colors fill hidden, private-note and confirmed-empty cells; uniform
   subtle ordinary separators replace region-boundary lines.
 - Purple/private and gray/confirmed markers preserve calculated contrast on all colors.
-- Compact '單點 ✕ 標記 ｜ 雙點 [paw SVG] 翻格' guidance is warm, 16px text.
+- Centered warm 16px instructions use two lines between desktop boards; on mobile
+  one compact line occupies the gap between the local and opponent panels.
   Only the private X is purple; no box, background, shadow, or button styling.
-- Authored HTML/template trees verify guidance outside cream panels and exact matching
-  action groups in old modes. Named note text is associated with playable grids.
+- Authored HTML/template trees verify the local / center rail / opponent order,
+  with VS and the accessible single hint outside both player sections.
+- Legacy modes keep their existing guidance location and matching action groups.
 - The 160px sidebar and its wrapper/CSS are removed, not merely hidden. Desktop
   equal columns keep the cream panels sized to square + 24px, without a spare track.
-- Separate status width survives smaller emergency boards; local status/hint/card/
-  basket rows do not overlap. Mobile negative combo margins are reset.
+- At >=701px both sides inherit shared status/header/square/basket row heights;
+  cards use nested row subgrids. Unequal name, combo or header heights increase
+  the same parent track, without a compensating blank opponent spacer.
+- Fixed 28px HP tracks in stretched player containers align both bars.
+- The 96px center rail has room for both 90px instruction groups. Desktop status
+  widths survive smaller emergency boards; mobile player layouts remain intact.
 - Local touch-action: manipulation preserves pan/pinch and page zoom; no global zoom ban.
 - Centered strict lock remains a blocking overlay and reduced motion remains supported.
 - Responsive source budgets include 320/360/390/430/700/701/768/1099/1100 widths and desktop
@@ -82,7 +88,7 @@ PASS — Syntax, packaging and static checks
 - git diff --check passes.
 - Existing preview-builder regression verifies embedded scripts/styles/art/audio.
 - The standalone preview and source ZIP were rebuilt from the frozen revision;
-  compact guidance/sibling mounting and absence of the old sidebar were verified.
+  center-rail guidance, shared-row rules and absence of stale local mounting were verified.
   All 35 source ZIP files match the source revision used for that artifact build.
 - No new browser screenshot or visual/device acceptance result is claimed.
 
