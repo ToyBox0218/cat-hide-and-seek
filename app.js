@@ -178,24 +178,45 @@ function canRevealBoardCell(index){
   const game=state.game,board=localGestureBoard();if(!canMarkBoardCell(index)||game.status!=='playing'||state.pendingAction||state.tool)return false;
   return game.settings.mode==='battle'?board.cooldownUntil<=Date.now()+(state.clockOffset||0):game.turn===state.you;
 }
-function cancelBoardGestures(){
-  state.cellGestures?.cancel();state.gestureEpoch=(state.gestureEpoch||0)+1;state.boardGestureKey=boardGestureContext();state.lastToolCellGesture=null;state.revealClickGuard=null;
+function cancelBoardGestures(reason='state-change'){
+  state.cellGestures?.cancel();state.boardStrokes?.cancel(reason);state.gestureEpoch=(state.gestureEpoch||0)+1;state.boardGestureKey=boardGestureContext();state.lastToolCellGesture=null;state.revealClickGuard=null;
 }
 function syncBoardGestures(){
-  const key=boardGestureContext();if(state.boardGestureKey!==key){state.cellGestures?.cancel();state.boardGestureKey=key;}
+  const key=boardGestureContext();if(state.boardGestureKey!==key){state.cellGestures?.cancel();state.boardStrokes?.cancel('state-change');state.boardGestureKey=key;}state.boardStrokes?.sync();
   const board=localGestureBoard();let changed=false;
   if(board)for(const index of [...state.notes])if(board.found.includes(index)||board.misses.includes(index)){state.notes.delete(index);changed=true;}
   if(changed&&state.role)saveLocal();
 }
-function togglePrivateCell(index,context=boardGestureContext()){
-  if(!canMarkBoardCell(index,context))return false;
-  state.notes.has(index)?state.notes.delete(index):state.notes.add(index);state.selectedCell=null;saveLocal();
+function setPrivateCell(index,marked,context=boardGestureContext(),persist=true){
+  if(!canMarkBoardCell(index,context)||state.notes.has(index)===marked)return false;
+  marked?state.notes.add(index):state.notes.delete(index);state.selectedCell=null;
+  state.noteVersions??=new Map();state.noteVersions.set(index,(state.noteVersions.get(index)||0)+1);if(persist)saveLocal();else state.strokeNotesDirty=true;
   const board=localGestureBoard(),cell=state.game.settings.mode==='battle'?$('.battle-side.local .battle-board')?.querySelector(`.cell[data-index="${index}"]`):boardCell(index);
-  if(cell){const marked=state.notes.has(index),size=board.puzzle.size;cell.classList.toggle('note',marked);cell.classList.remove('selected-cell');cell.textContent=marked?'×':'';cell.dataset.renderState=marked?'note':'hidden';cell.setAttribute('aria-label',`第 ${Math.floor(index/size)+1} 行，第 ${index%size+1} 列，區域 ${board.puzzle.regions[index]+1}${marked?'，私人筆記，尚未確認':''}`);}
+  if(cell){const size=board.puzzle.size;cell.classList.toggle('note',marked);cell.classList.remove('selected-cell');cell.textContent=marked?'×':'';cell.dataset.renderState=marked?'note':'hidden';cell.setAttribute('aria-label',`第 ${Math.floor(index/size)+1} 行，第 ${index%size+1} 列，區域 ${board.puzzle.regions[index]+1}${marked?'，私人筆記，尚未確認':''}`);}
   return true;
 }
+function togglePrivateCell(index,context=boardGestureContext()){return setPrivateCell(index,!state.notes.has(index),context);}
+function markGestureCell(index,context){
+  const before=state.notes.has(index);if(!setPrivateCell(index,!before,context))return false;
+  const version=state.noteVersions.get(index);let used=false;
+  return ()=>{if(used)return false;used=true;return context===boardGestureContext()&&state.noteVersions.get(index)===version?setPrivateCell(index,before,context):false;};
+}
+function explainRevealBlock(index,{pressedBlocked=false}={}){
+  const game=state.game,board=localGestureBoard();let message='';
+  if(!game||!board||document.hidden)return;
+  if(game.status==='countdown'||game.status==='lobby')message='讀秒結束後才能翻格';
+  else if(game.status==='paused')message='對局暫停中，現在只能做私人記號';
+  else if(game.status!=='playing')message='這局已結束，請開始新的一局';
+  else if(game.settings.mode==='battle'&&battleMissLocked(game))message='鎖定倒數中，翻格與標記都暫停';
+  else if(state.pendingAction)message='正在等待翻格結果，請稍候';
+  else if(state.tool)message='正在選擇道具目標，取消道具後可翻格';
+  else if(game.settings.mode!=='battle'&&game.turn!==state.you)message='還沒輪到你，可以先單點做私人記號';
+  else if(game.settings.mode==='battle'&&board.cooldownUntil>Date.now()+(state.clockOffset||0))message='剛找到貓，稍等一下再雙點翻格';
+  else if(pressedBlocked)message='剛才按下時還不能翻格，請放開後重新雙點';
+  if(message&&(state.lastInputNotice!==message||Date.now()-(state.lastInputNoticeAt||0)>900)){state.lastInputNotice=message;state.lastInputNoticeAt=Date.now();toast(message);}
+}
 function revealGestureCell(index,context){
-  if(context!==boardGestureContext()||!canRevealBoardCell(index))return false;
+  if(context!==boardGestureContext()||!canRevealBoardCell(index)){explainRevealBlock(index);return false;}
   state.revealClickGuard={index,boardId:localGestureBoard().puzzle.id,until:Date.now()+BOARD_DOUBLE_MS};
   if(state.game.settings.mode==='battle'){battleChoose(index);return true;}
   const game=state.game,action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};
@@ -205,7 +226,7 @@ function revealGestureCell(index,context){
 }
 function getBoardGestures(){
   if(!state.cellGestures)state.cellGestures=CatCellGestures.create({doubleMs:BOARD_DOUBLE_MS,cellCount:576,
-    getContext:boardGestureContext,canAct:canMarkBoardCell,onMark:togglePrivateCell,onReveal:revealGestureCell,
+    getContext:boardGestureContext,canAct:canMarkBoardCell,canReveal:canRevealBoardCell,onMark:markGestureCell,onReveal:revealGestureCell,onBlockedReveal:index=>explainRevealBlock(index,{pressedBlocked:true}),
     now:()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now(),setTimer:(fn,ms)=>setTimeout(fn,ms),clearTimer:id=>clearTimeout(id)});
   syncBoardGestures();return state.cellGestures;
 }
@@ -216,22 +237,27 @@ function rolloverGestureSuppressed(index){const guard=state.revealClickGuard;ret
 function toolGestureSuppressed(index){const guard=state.lastToolCellGesture,board=localGestureBoard();return !!guard&&guard.boardId===board?.puzzle.id&&guard.index===index&&Date.now()<guard.until;}
 function captureBoardPress(cell,event){
   const index=+cell.dataset.index,context=boardGestureContext();
-  if(event?.button===2){cell.boardContextIntent={context,epoch:state.gestureEpoch||0,allowed:cellMatchesCurrentBoard(cell)&&canMarkBoardCell(index,context)};return;}
   if(event?.button>0)return;
+  cell.boardCancelled=false;cell.boardToolIntent=null;
+  if(event?.key)cell.boardPointerState=null;
+  if(cell.boardPressIntent)state.cellGestures?.cancelPress(cell.boardPressIntent);cell.boardPressIntent=null;
   if(state.tool&&state.game?.settings.mode!=='battle'){
     cell.boardToolIntent={context,epoch:state.gestureEpoch||0,tool:state.tool,allowed:cellMatchesCurrentBoard(cell)&&canMarkBoardCell(index,context)&&state.game.turn===state.you&&!state.pendingAction&&!toolGestureSuppressed(index)};return;
   }
-  const gestures=getBoardGestures(),intent=gestures.press(index);
+  const gestures=getBoardGestures(),intent=gestures.press(index,{pointerType:event?.pointerType||(event?.key?'keyboard':'mouse'),timeStamp:event?.timeStamp});
   if(!cellMatchesCurrentBoard(cell)||toolGestureSuppressed(index)||rolloverGestureSuppressed(index))gestures.cancelPress(intent);
   cell.boardPressIntent=intent;
 }
 function cancelCellPress(cell){
   if(cell.boardPressIntent)state.cellGestures?.cancelPress(cell.boardPressIntent);
-  cell.boardPressIntent=null;cell.boardContextIntent={cancelled:true};cell.boardToolIntent={cancelled:true};cell.boardCancelled=true;
+  cell.boardPressIntent=null;cell.boardToolIntent={cancelled:true};cell.boardCancelled=true;
 }
 function activateBoardCell(cell,event={}){
-  const index=+cell.dataset.index,intent=cell.boardPressIntent,toolIntent=cell.boardToolIntent;
-  cell.boardPressIntent=null;cell.boardToolIntent=null;
+  if(event.button>0)return;
+  if(cell.boardPointerState)finishBoardStroke({...pointerEventValues(event),pointerId:cell.boardPointerState.id,pointerType:cell.boardPointerState.type},cell);
+  const index=+cell.dataset.index,intent=cell.boardPressIntent,toolIntent=cell.boardToolIntent,pointer=cell.boardPointerState;
+  cell.boardPressIntent=null;cell.boardToolIntent=null;cell.boardPointerState=null;
+  if(pointer?.consumed||(!intent&&Date.now()<(state.strokeClickSuppressedUntil||0)))return;
   if(event.button>0||!cellMatchesCurrentBoard(cell)||toolGestureSuppressed(index)||rolloverGestureSuppressed(index)||cell.boardCancelled){cell.boardCancelled=false;return;}
   if(toolIntent||state.tool){
     const captured=toolIntent||{context:boardGestureContext(),epoch:state.gestureEpoch||0,tool:state.tool,allowed:event.detail==null||event.detail===0};
@@ -243,24 +269,134 @@ function activateBoardCell(cell,event={}){
   }
   const gestures=getBoardGestures();
   if(event.detail>0&&!intent)return;
-  gestures.activate(intent||gestures.press(index),{detail:event.detail||0});
-}
-function contextMarkBoardCell(cell,event){
-  const index=+cell.dataset.index,intent=cell.boardContextIntent;cell.boardContextIntent=null;
-  if(!cellMatchesCurrentBoard(cell)||!canMarkBoardCell(index)||event.button===2&&!intent)return;
-  if(intent&&(intent.cancelled||!intent.allowed||intent.context!==boardGestureContext()||intent.epoch!==(state.gestureEpoch||0)))return;
-  event.preventDefault();getBoardGestures().cancelCell(index);togglePrivateCell(index);
+  gestures.activate(intent||gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp}),{detail:event.detail||0,timeStamp:event.timeStamp});
 }
 function boardCellKeydown(event){
-  if(event.key==='ContextMenu'||event.key==='F10'&&event.shiftKey){captureBoardPress(event.currentTarget,{button:2});return;}
   if(['Enter',' ','Spacebar'].includes(event.key)){if(event.repeat){event.preventDefault();return;}event.currentTarget.boardCancelled=false;captureBoardPress(event.currentTarget,event);return;}
   if(state.game?.settings.mode==='battle')battleKeydown(event);
 }
 function wireBoardCell(cell,index){
   const game=state.game,board=localGestureBoard();cell.dataset.gameId=game.id||game.puzzle.id;cell.dataset.boardId=board.puzzle.id;
-  cell.onpointerdown=event=>{cell.boardCancelled=false;captureBoardPress(cell,event);};cell.onpointercancel=()=>cancelCellPress(cell);cell.onblur=()=>cancelCellPress(cell);
-  cell.onclick=event=>activateBoardCell(cell,event);cell.oncontextmenu=event=>contextMarkBoardCell(cell,event);cell.onkeydown=boardCellKeydown;
+  cell.onpointerdown=event=>{if(event.button>0)return;cell.boardCancelled=false;if(event.isPrimary!==false)captureBoardPress(cell,event);startBoardStroke(cell,event);};
+  cell.onpointercancel=event=>{cancelCellPress(cell);cancelBoardStrokePointer(event);};cell.onlostpointercapture=event=>{if(state.boardStrokeCapture?.cell===cell)cancelBoardStrokePointer(event,'lostcapture');};cell.onblur=()=>{cancelCellPress(cell);const pointer=cell.boardPointerState;if(pointer&&state.boardPointerRecords?.get(pointer.id)===pointer)cancelBoardStrokePointer({pointerId:pointer.id},'cell-blur');};
+  cell.onclick=event=>activateBoardCell(cell,event);cell.onkeydown=boardCellKeydown;
 }
+// Pointer strokes are private ADD-only input, separate from click recognition.
+const boardInputNow=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
+function boardAllowsStroke(context){
+  const game=state.game;if(!game||document.hidden||context!==boardGestureContext())return false;
+  return game.settings.mode==='battle'?battlePhaseAllowsNotes(game)&&!battleMissLocked(game):game.status==='playing';
+}
+function playableGrid(){return state.game?.settings.mode==='battle'?$('.battle-side.local .battle-board'):$('#board');}
+function strokeGeometry(){
+  const grid=playableGrid();if(!grid)return null;
+  const bounds=grid.getBoundingClientRect(),key=boardGestureContext(),old=state.strokeGeometry;
+  if(old&&old.grid===grid&&old.key===key&&['left','top','width','height'].every(name=>old.bounds[name]===bounds[name]))return old;
+  const cells=Array.from(grid.children).map(cell=>({index:+cell.dataset.index,rect:cell.getBoundingClientRect()}));
+  return state.strokeGeometry={grid,key,bounds,cells};
+}
+function strokeCellAt(x,y){
+  const geometry=strokeGeometry();if(!geometry)return null;
+  const hit=document.elementFromPoint?.(x,y)?.closest?.('.cell');
+  if(hit&&geometry.grid.contains?.(hit)&&cellMatchesCurrentBoard(hit))return +hit.dataset.index;
+  if(document.elementFromPoint)return null;
+  return geometry.cells.find(({rect})=>x>=rect.left&&x<rect.left+rect.width&&y>=rect.top&&y<rect.top+rect.height)?.index??null;
+}
+function strokeIndicesBetween(from,to,context){
+  if(context!==boardGestureContext())return [];
+  const geometry=strokeGeometry();if(!geometry)return [];
+  const dx=to.x-from.x,dy=to.y-from.y,hits=[];
+  for(const {index,rect} of geometry.cells){
+    const inset=Math.min(.5,rect.width/8,rect.height/8),left=rect.left+inset,right=rect.left+rect.width-inset,top=rect.top+inset,bottom=rect.top+rect.height-inset;
+    let enter=0,leave=1,valid=true;
+    for(const [start,delta,min,max] of [[from.x,dx,left,right],[from.y,dy,top,bottom]]){
+      if(delta===0){if(start<min||start>max){valid=false;break;}continue;}
+      const a=(min-start)/delta,b=(max-start)/delta;enter=Math.max(enter,Math.min(a,b));leave=Math.min(leave,Math.max(a,b));if(enter>leave){valid=false;break;}
+    }
+    if(valid)hits.push({index,enter});
+  }
+  return hits.sort((a,b)=>a.enter-b.enter).map(hit=>hit.index);
+}
+function releaseBoardStrokeCapture(){
+  const capture=state.boardStrokeCapture;state.boardStrokeCapture=null;
+  if(capture)try{if(capture.cell.hasPointerCapture?.(capture.id))capture.cell.releasePointerCapture(capture.id);}catch{}
+}
+function getBoardStrokes(){
+  if(!state.boardStrokes)state.boardStrokes=CatBoardStrokes.create({getContext:boardGestureContext,canAct:boardAllowsStroke,
+    canMark:(index,context)=>!state.tool&&canMarkBoardCell(index,context),onAdd:(index,context)=>!state.tool&&setPrivateCell(index,true,context,false),
+    indicesBetween:strokeIndicesBetween,now:boardInputNow,
+    onStart:event=>{
+      state.cellGestures?.cancel();
+      if(state.tool){state.boardStrokes.cancel('tool-target');return;}
+      const record=state.boardPointerRecords?.get(event.id);if(record){record.consumed=true;cancelCellPress(record.cell);}
+      const grid=playableGrid();grid?.classList.add('marking-stroke');
+      if(record?.cell)try{record.cell.setPointerCapture?.(event.id);state.boardStrokeCapture={cell:record.cell,id:event.id};}catch{}
+    },
+    onEnd:event=>{
+      const record=state.boardPointerRecords?.get(event.id);if(record)record.consumed=event.consumed;
+      if(event.consumed){state.cellGestures?.cancel();state.strokeClickSuppressedUntil=Date.now()+600;if(record?.cell)cancelCellPress(record.cell);}
+      playableGrid()?.classList.remove('marking-stroke');releaseBoardStrokeCapture();
+      if(state.strokeNotesDirty){state.strokeNotesDirty=false;saveLocal();}
+    }});
+  return state.boardStrokes;
+}
+function pointerEventValues(event){
+  return {pointerId:event.pointerId,pointerType:event.pointerType,button:event.button,buttons:event.buttons,isPrimary:event.isPrimary,clientX:event.clientX,clientY:event.clientY,timeStamp:event.timeStamp};
+}
+function pointerStrokeEvent(event,record){
+  const x=Number.isFinite(event.clientX)?event.clientX:record?.x,y=Number.isFinite(event.clientY)?event.clientY:record?.y;
+  let now=boardInputNow();const stamp=event.timeStamp;
+  if(record&&Number.isFinite(stamp)&&Number.isFinite(record.stamp)&&stamp>=record.stamp&&(stamp>=1e12)===(record.stamp>=1e12))now=record.began+(stamp-record.stamp);
+  return {id:event.pointerId??record?.id??1,type:event.pointerType||record?.type||'mouse',button:event.button??0,buttons:event.buttons,primary:event.isPrimary!==false,x,y,index:strokeCellAt(x,y),now};
+}
+function startBoardStroke(cell,event){
+  if(event.button>0)return;
+  const rect=cell.getBoundingClientRect(),id=event.pointerId??1;
+  const record={id,type:event.pointerType||'mouse',cell,consumed:false,x:Number.isFinite(event.clientX)?event.clientX:rect.left+rect.width/2,y:Number.isFinite(event.clientY)?event.clientY:rect.top+rect.height/2,began:boardInputNow(),stamp:event.timeStamp};
+  state.boardPointerRecords??=new Map();state.boardPointerRecords.set(id,record);cell.boardPointerState=record;
+  const outcome=getBoardStrokes().down({...pointerStrokeEvent(event,record),index:+cell.dataset.index});
+  if(outcome.consumed){record.consumed=true;cancelCellPress(cell);state.cellGestures?.cancel();}
+}
+function observeExtraBoardPointer(event){
+  if(event.button>0||!state.boardStrokes?.state().pointerCount||state.boardPointerRecords?.has(event.pointerId??1))return;
+  const id=event.pointerId??1;state.boardPointerRecords??=new Map();
+  const record={id,type:event.pointerType||'mouse',cell:null,consumed:true,x:event.clientX,y:event.clientY,began:boardInputNow(),stamp:event.timeStamp};
+  state.boardPointerRecords.set(id,record);state.boardStrokes.down({...pointerStrokeEvent(event,record),index:null});state.cellGestures?.cancel();
+}
+function moveBoardStroke(event){
+  if(!state.boardStrokes||!state.boardPointerRecords?.has(event.pointerId??1))return;
+  const record=state.boardPointerRecords.get(event.pointerId??1),coalesced=event.getCoalescedEvents?.()||[];
+  if(record.type!=='touch'&&event.buttons!==undefined&&!(event.buttons&1)){cancelBoardStrokePointer(event,'released');return;}
+  for(const sample of [...coalesced,event]){
+    const outcome=state.boardStrokes.move(pointerStrokeEvent({...pointerEventValues(sample),pointerId:event.pointerId,pointerType:event.pointerType},record));
+    if(outcome.consumed){record.consumed=true;state.cellGestures?.cancel();if(record.cell)cancelCellPress(record.cell);}
+  }
+  if(state.boardStrokes.state().active&&event.cancelable)event.preventDefault();
+}
+function finishBoardStroke(event,cell=null){
+  const id=event.pointerId??cell?.boardPointerState?.id??1,current=state.boardPointerRecords?.get(id);
+  if(cell&&current&&current!==cell.boardPointerState)return;
+  const record=current||cell?.boardPointerState;
+  if(!state.boardStrokes||!record)return;
+  const outcome=state.boardStrokes.up(pointerStrokeEvent({...pointerEventValues(event),pointerId:id},record));
+  record.consumed=record.consumed||outcome.consumed;state.boardPointerRecords?.delete(id);
+}
+function cancelBoardStrokePointer(event,reason='pointercancel'){
+  const id=event.pointerId??1,record=state.boardPointerRecords?.get(id);
+  state.boardStrokes?.pointerCancel({id},reason);
+  if(record){record.consumed=true;if(record.cell)cancelCellPress(record.cell);}state.boardPointerRecords?.delete(id);
+}
+function resetBoardStrokes(reason){
+  state.boardStrokes?.reset(reason);
+  for(const record of state.boardPointerRecords?.values()||[]){record.consumed=true;if(record.cell)cancelCellPress(record.cell);}
+  state.boardPointerRecords?.clear();state.strokeGeometry=null;releaseBoardStrokeCapture();
+}
+document.addEventListener('pointerdown',observeExtraBoardPointer);
+document.addEventListener('pointermove',moveBoardStroke,{passive:false});
+document.addEventListener('pointerup',event=>finishBoardStroke(event));
+document.addEventListener('pointercancel',event=>cancelBoardStrokePointer(event));
+document.addEventListener('scroll',()=>{if(state.boardStrokes?.state().tracking)cancelBoardGestures('scroll');},true);
+window.addEventListener('resize',()=>cancelBoardGestures('resize'));
 function connectedTargets(size,targets){const set=new Set(targets),seen=new Set([targets[0]]),queue=[targets[0]];while(queue.length){const i=queue.shift(),r=Math.floor(i/size),c=i%size;for(const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){const rr=r+dr,cc=c+dc,n=rr*size+cc;if(rr>=0&&rr<size&&cc>=0&&cc<size&&set.has(n)&&!seen.has(n)){seen.add(n);queue.push(n)}}}return seen.size===targets.length}
 function deliverIntel(game,who,intel){
   if(game.settings.mode==='coop'){game.sharedIntel.push(intel);if(game.sharedIntel.length>12)game.sharedIntel.shift();return}
@@ -598,8 +734,8 @@ function observeLegacyAudio(game){
 }
 const unlockAudioFromGesture=()=>{if(!state.muted&&state.volume>0)unlockAudio();};
 document.addEventListener('pointerdown',unlockAudioFromGesture);document.addEventListener('keydown',unlockAudioFromGesture);
-window.addEventListener('blur',()=>cancelBoardGestures());
-document.addEventListener('visibilitychange',()=>{cancelBoardGestures();if(document.hidden)stopGameAudio();state.suppressLegacyAudio=true;});
+window.addEventListener('blur',()=>{cancelBoardGestures('blur');resetBoardStrokes('blur');});
+document.addEventListener('visibilitychange',()=>{cancelBoardGestures('visibility');resetBoardStrokes('visibility');if(document.hidden)stopGameAudio();state.suppressLegacyAudio=true;});
 
 function render(){renderV2();}
 
@@ -657,23 +793,31 @@ function renderV2() {
   const baseSize=mobile?(smallSize?Math.min(50,(innerWidth-38)/size):Math.max(18,Math.min(24,(innerWidth-18)/Math.min(size,20)))):Math.max(14,Math.min(smallSize?62:36,(innerHeight-368)/size,(innerWidth-508)/size));
   const cellSize=mobile?Math.round(baseSize*state.zoom):Math.floor(baseSize*state.zoom),palette=regionPalette(game.puzzle);
   $('#zoomLabel').textContent=`${Math.round(state.zoom*100)}%`;$('#zoomOut').disabled=state.zoom<=.75;$('#zoomIn').disabled=state.zoom>=1.75;
-  board.dataset.size=String(size);board.style.setProperty('--n',size);board.style.setProperty('--s',`${cellSize}px`);board.innerHTML='';
+  board.dataset.size=String(size);board.style.setProperty('--n',size);board.style.setProperty('--s',`${cellSize}px`);
+  const boardKey=`${state.role}:${state.you}:${game.puzzle.id}:${size}`,rebuild=board.dataset.viewKey!==boardKey||board.children.length!==size*size;
+  if(rebuild){board.dataset.viewKey=boardKey;board.innerHTML='';}
   for(let index=0;index<size*size;index++){
-    const cell=document.createElement('button'),region=game.puzzle.regions[index],row=Math.floor(index/size),column=index%size;
-    cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}`);cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',palette[region]);
-    if(column===size-1||game.puzzle.regions[index+1]!==region)cell.classList.add('er');
-    if(row===size-1||game.puzzle.regions[index+size]!==region)cell.classList.add('eb');
-    if(game.found.includes(index)){cell.classList.add('cat');cell.innerHTML=catCharacter(catVariant(game,index),'board-character');const treasure=game.settings.mode==='treasure'&&(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));if(treasure)cell.classList.add('treasure-cat');cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到${treasure?'鈴鐺':''}貓`)}
-    else if(game.misses.includes(index)){cell.classList.add('opened');cell.textContent='×';cell.disabled=true;cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已翻開的空格，確認沒有貓`)}
-    else if(state.notes.has(index)){cell.classList.add('note');cell.textContent='×';cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，私人筆記，尚未確認`)}
-    if(probed.has(index)&&!game.found.includes(index)&&!game.misses.includes(index))cell.classList.add('probed');
-    if(state.yarnTargets.includes(index))cell.classList.add('yarn-picked');
-    if(game.lastEvent?.index===index)cell.classList.add('latest-result');
-    if(state.selectedCell===index)cell.classList.add('selected-cell');
-    if(state.pendingAction?.index===index)cell.classList.add('pending-cell');
-    if(game.status!=='playing')cell.disabled=true;
-    wireBoardCell(cell,index);
-    board.appendChild(cell);
+    const cell=rebuild?document.createElement('button'):board.children[index],region=game.puzzle.regions[index],row=Math.floor(index/size),column=index%size;
+    if(rebuild){cell.type='button';cell.className='cell';cell.dataset.index=index;cell.setAttribute('role','gridcell');wireBoardCell(cell,index);board.appendChild(cell);}
+    cell.dataset.region=region;cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',palette[region]);
+    cell.classList.toggle('er',column===size-1||game.puzzle.regions[index+1]!==region);
+    cell.classList.toggle('eb',row===size-1||game.puzzle.regions[index+size]!==region);
+    const found=game.found.includes(index),miss=game.misses.includes(index),note=!found&&!miss&&state.notes.has(index);
+    const treasure=found&&game.settings.mode==='treasure'&&Boolean(state.role==='host'?game.treasures?.includes(index):game.foundTreasures?.includes(index));
+    for(const [name,on] of [['cat',found],['opened',miss],['note',note],['treasure-cat',treasure]])cell.classList.toggle(name,on);
+    const visual=found?`cat:${treasure}`:miss?'opened':note?'note':'hidden';
+    if(cell.dataset.renderState!==visual){
+      if(found)cell.innerHTML=catCharacter(catVariant(game,index),'board-character');else cell.textContent=miss||note?'×':'';
+      cell.dataset.renderState=visual;
+    }
+    const suffix=found?`，已找到${treasure?'鈴鐺':''}貓`:miss?'，已翻開的空格，確認沒有貓':note?'，私人筆記，尚未確認':'';
+    cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}${suffix}`);
+    cell.classList.toggle('probed',probed.has(index)&&!found&&!miss);
+    cell.classList.toggle('yarn-picked',state.yarnTargets.includes(index));
+    cell.classList.toggle('latest-result',game.lastEvent?.index===index);
+    cell.classList.toggle('selected-cell',state.selectedCell===index);
+    cell.classList.toggle('pending-cell',state.pendingAction?.index===index);
+    cell.disabled=found||miss||game.status!=='playing';
   }
   $('#pass').disabled=game.turn!==state.you;
   if(game.status==='finished'&&!$('#result').open){

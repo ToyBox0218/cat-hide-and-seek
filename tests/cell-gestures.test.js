@@ -19,7 +19,16 @@ function harness(options = {}) {
     getContext:() => context, canAct:() => allowed,
     onMark:(index, key) => {
       actions.push(['mark', index, key]);
-      if (marks.has(index)) marks.delete(index); else marks.add(index);
+      const before = marks.has(index);
+      if (before) marks.delete(index); else marks.add(index);
+      let active = true;
+      return () => {
+        if (!active) return false;
+        active = false;
+        if (before) marks.add(index); else marks.delete(index);
+        actions.push(['restore', index, key]);
+        return true;
+      };
     },
     onReveal:(index, key) => actions.push(['reveal', index, key]),
     now, setTimer, clearTimer, ...options
@@ -41,7 +50,8 @@ function harness(options = {}) {
     jump:ms => { time += ms; },
     context:value => { context = value; },
     allow:value => { allowed = value; },
-    click:(index, detail = 1) => controller.activate(controller.press(index), {detail})};
+    click:(index, detail = 1, pointerType = 'unknown', timeStamp) =>
+      controller.activate(controller.press(index, {pointerType, timeStamp}), {detail, timeStamp})};
 }
 
 test('UMD loads without a DOM and exports the same public API', () => {
@@ -115,7 +125,7 @@ test('the last millisecond inside the window is a double', () => {
 });
 
 for (const runTimerFirst of [false, true]) {
-  test(`at the exact deadline, two singles win regardless of task order (timer first: ${runTimerFirst})`, () => {
+  test(`without native mouse proof, exact-deadline clicks stay separate regardless of task order (timer first: ${runTimerFirst})`, () => {
     const h = harness();
     h.click(2);
     if (runTimerFirst) h.tick(300); else h.jump(300);
@@ -334,4 +344,257 @@ test('invalid indices, foreign tokens and malformed setup are rejected safely', 
   assert.throws(() => Gestures.create({}), /getContext/);
   assert.throws(() => harness({doubleMs:0}), /doubleMs/);
   assert.throws(() => harness({cellCount:577}), /cellCount/);
+});
+
+
+for (const gap of [300, 380, 800]) for (const timerFirst of [false, true]) for (const marked of [false, true]) {
+  test(`native mouse double at ${gap} ms restores the exact first-mark state (timer first=${timerFirst}, marked=${marked})`, () => {
+    const h = harness({marked:marked ? [2] : []});
+    h.click(2, 1, 'mouse');
+    if (timerFirst) h.tick(gap); else h.jump(gap);
+    assert.equal(h.click(2, 2, 'mouse'), 'double');
+    h.tick(1000);
+    assert.equal(h.actions.filter(action => action[0] === 'reveal').length, 1);
+    assert.equal(h.actions.filter(action => action[0] === 'mark').length, timerFirst ? 1 : 0);
+    assert.equal(h.actions.filter(action => action[0] === 'restore').length, timerFirst ? 1 : 0);
+    assert.equal(h.marks.has(2), marked);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+for (const pointerType of ['touch', 'keyboard', 'mouse']) {
+  test(`${pointerType} second press begun inside the window remains paired across a late release`, () => {
+    const h = harness();
+    h.click(2, 1, pointerType, 20);
+    h.tick(240);
+    const held = h.controller.press(2, {pointerType, timeStamp:260});
+    h.tick(160);
+    assert.deepEqual(h.actions, [['mark', 2, 'board-1']]);
+    assert.equal(h.controller.activate(held, {detail:pointerType === 'mouse' ? 2 : 1, timeStamp:420}), 'double');
+    h.tick(1000);
+    assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'restore', 'reveal']);
+    assert.equal(h.marks.has(2), false);
+  });
+}
+
+for (const pointerType of ['touch', 'keyboard', 'unknown', 'mouse']) {
+  test(`${pointerType} detail=1 at exactly 300 ms starts a separate single`, () => {
+    const h = harness();
+    h.click(2, 1, pointerType); h.tick(300);
+    assert.equal(h.click(2, 1, pointerType), 'pending');
+    h.tick(300);
+    assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'mark']);
+    assert.equal(h.marks.size, 0);
+  });
+}
+
+for (const pointerType of ['touch', 'keyboard', 'unknown', 'pen']) {
+  test(`${pointerType} detail=2 has no mouse-native deadline override`, () => {
+    const h = harness();
+    h.click(2, 1, pointerType); h.tick(380);
+    assert.equal(h.click(2, 2, pointerType), 'pending');
+    h.tick(300);
+    assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'mark']);
+  });
+}
+
+test('mouse detail=2 with no predecessor cannot reveal or queue a mark', () => {
+  const h = harness();
+  assert.equal(h.click(2, 2, 'mouse'), 'ignored');
+  h.tick(1000);
+  assert.deepEqual(h.actions, []);
+});
+
+test('native mouse recognition cannot borrow a different-cell predecessor', () => {
+  const h = harness();
+  h.click(2, 1, 'mouse'); h.tick(380);
+  assert.equal(h.click(3, 2, 'mouse'), 'pending');
+  h.tick(300);
+  assert.deepEqual(h.actions.map(action => action.slice(0, 2)), [['mark', 2], ['mark', 3]]);
+});
+
+test('an intervening mouse cell prevents promoting an older committed same-cell single', () => {
+  const h = harness();
+  h.click(2, 1, 'mouse'); h.tick(380);
+  h.click(3, 1, 'mouse'); h.tick(20);
+  h.click(2, 2, 'mouse'); h.tick(300);
+  assert.equal(h.actions.some(action => action[0] === 'reveal'), false);
+  assert.equal(h.actions.some(action => action[0] === 'restore'), false);
+});
+
+for (const invalidate of ['cancel', 'cancelCell', 'context', 'dispose']) {
+  test(`${invalidate} discards a committed single's native proof and rollback receipt`, () => {
+    const h = harness();
+    h.click(2, 1, 'mouse'); h.tick(320);
+    const held = h.controller.press(2, {pointerType:'mouse'});
+    if (invalidate === 'context') h.context('board-2');
+    else h.controller[invalidate](2);
+    assert.equal(h.controller.activate(held, {detail:2}), 'ignored');
+    assert.equal(h.click(2, 2, 'mouse'), 'ignored');
+    h.tick(1000);
+    assert.deepEqual(h.actions, [['mark', 2, 'board-1']]);
+    assert.equal(h.marks.has(2), true);
+  });
+}
+
+test('canceling the held second press preserves the first single without revealing', () => {
+  const h = harness();
+  h.click(2, 1, 'touch'); h.tick(240);
+  const held = h.controller.press(2, {pointerType:'touch'});
+  h.controller.cancelPress(held); h.tick(160);
+  assert.equal(h.controller.activate(held, {detail:1}), 'ignored');
+  assert.deepEqual(h.actions, [['mark', 2, 'board-1']]);
+});
+
+test('queued touch timestamps preserve a physical quick pair after the single timer has fired', () => {
+  const h = harness();
+  h.click(2, 1, 'touch', 100);
+  h.tick(500);
+  const held = h.controller.press(2, {pointerType:'touch', timeStamp:200});
+  h.tick(50);
+  assert.equal(h.controller.activate(held, {detail:1, timeStamp:220}), 'double');
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'restore', 'reveal']);
+  assert.equal(h.marks.size, 0);
+});
+
+for (const [first, second] of [[1700000000000, 100], [100, 1700000000000], [100, -1]]) {
+  test(`incompatible event timestamp epochs fall back to controller time (${first}, ${second})`, () => {
+    const h = harness();
+    h.click(2, 1, 'touch', first); h.tick(100);
+    assert.equal(h.click(2, 1, 'touch', second), 'double');
+    assert.deepEqual(h.actions.map(action => action[0]), ['reveal']);
+  });
+}
+
+test('a late native double whose reveal callback declines leaves the exact pre-click mark', () => {
+  let reveals = 0;
+  const h = harness({marked:[2], onReveal:() => { reveals++; return false; }});
+  h.click(2, 1, 'mouse'); h.tick(380); h.click(2, 2, 'mouse'); h.tick(1000);
+  assert.equal(reveals, 1);
+  assert.equal(h.marks.has(2), true);
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'restore']);
+});
+
+test('a refused or unavailable rollback never promotes a committed single', () => {
+  for (const receipt of [undefined, true, () => false]) {
+    let reveals = 0, marks = 0;
+    const h = harness({onMark:() => { marks++; return receipt; }, onReveal:() => { reveals++; }});
+    h.click(2, 1, 'mouse'); h.tick(380);
+    assert.equal(h.click(2, 2, 'mouse'), 'ignored');
+    h.tick(1000);
+    assert.equal(marks, 1); assert.equal(reveals, 0);
+  }
+});
+
+test('a single callback reporting no mutation needs no undo before native promotion', () => {
+  let reveals = 0;
+  const h = harness({onMark:() => false, onReveal:() => { reveals++; }});
+  h.click(2, 1, 'mouse'); h.tick(380);
+  assert.equal(h.click(2, 2, 'mouse'), 'double');
+  assert.equal(reveals, 1);
+});
+
+test('rollback that changes the board invalidates reveal dispatch', () => {
+  let h;
+  h = harness({onMark:() => () => { h.context('new-board'); return true; }});
+  h.click(2, 1, 'mouse'); h.tick(380);
+  assert.equal(h.click(2, 2, 'mouse'), 'ignored');
+  assert.deepEqual(h.actions, []);
+  assert.equal(h.controller.pendingCount(), 0);
+});
+
+for (const blockedPress of ['first', 'second', 'dispatch']) {
+  test(`reveal eligibility blocked at ${blockedPress} consumes the pair without a delayed reveal or extra mark`, () => {
+    let revealAllowed = blockedPress !== 'first';
+    const blocked = [], h = harness({canReveal:() => revealAllowed,
+      onBlockedReveal:(index, context, reason) => blocked.push({index, context, reason})});
+    h.click(2, 1, 'mouse'); h.tick(320);
+    revealAllowed = blockedPress !== 'second';
+    const held = h.controller.press(2, {pointerType:'mouse'});
+    revealAllowed = blockedPress !== 'dispatch';
+    assert.equal(h.controller.activate(held, {detail:2}), 'blocked');
+    revealAllowed = true; h.tick(1000);
+    assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'restore']);
+    assert.equal(h.marks.size, 0);
+    assert.equal(blocked.length, 1);
+    assert.equal(blocked[0].reason.blockedAtPress, blockedPress !== 'dispatch');
+    assert.equal(blocked[0].reason.blockedNow, blockedPress === 'dispatch');
+  });
+}
+
+test('single marking remains available while reveal eligibility alone is blocked', () => {
+  const h = harness({canReveal:() => false});
+  h.click(2, 1, 'touch'); h.tick(300);
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark']);
+});
+
+test('native pair, duplicate token, native dblclick replay and slow triple tail reveal only once', () => {
+  const h = harness();
+  h.click(2, 1, 'mouse'); h.tick(380);
+  const second = h.controller.press(2, {pointerType:'mouse'});
+  assert.equal(h.controller.activate(second, {detail:2}), 'double');
+  assert.equal(h.controller.activate(second, {detail:2}), 'ignored');
+  assert.equal(h.controller.activate(second, {detail:2}), 'ignored');
+  h.tick(400);
+  assert.equal(h.click(2, 3, 'mouse'), 'ignored');
+  assert.equal(h.click(2, 2, 'mouse'), 'ignored');
+  h.tick(1000);
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'restore', 'reveal']);
+});
+
+
+test('compressed dispatch of physically slow touch taps commits two singles rather than losing the second', () => {
+  const h = harness();
+  h.click(2, 1, 'touch', 100);
+  h.tick(100);
+  assert.equal(h.click(2, 1, 'touch', 500), 'pending');
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark']);
+  h.tick(300);
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'mark']);
+  assert.equal(h.marks.size, 0);
+});
+
+test('changing input source cannot promote a mouse sequence through an intervening touch', () => {
+  const h = harness();
+  h.click(2, 1, 'mouse'); h.tick(380);
+  h.click(3, 1, 'touch'); h.tick(20);
+  assert.equal(h.click(2, 2, 'mouse'), 'ignored');
+  h.tick(300);
+  assert.deepEqual(h.actions.map(action => action.slice(0, 2)), [['mark', 2], ['mark', 3]]);
+});
+
+test('an exact-deadline second press cannot extend touch recognition even with a later release', () => {
+  const h = harness();
+  h.click(2, 1, 'touch', 100); h.tick(300);
+  const held = h.controller.press(2, {pointerType:'touch', timeStamp:400});
+  h.tick(100);
+  assert.equal(h.controller.activate(held, {detail:1, timeStamp:500}), 'pending');
+  h.tick(300);
+  assert.deepEqual(h.actions.map(action => action[0]), ['mark', 'mark']);
+});
+
+test('invalid optional reveal hooks are rejected when the controller is created', () => {
+  assert.throws(() => harness({canReveal:true}), /canReveal/);
+  assert.throws(() => harness({onBlockedReveal:true}), /onBlockedReveal/);
+});
+
+
+test('a touch triple tail begun during suppression cannot become a mark after a held release', () => {
+  const h = harness();
+  h.click(2, 1, 'touch', 100); h.tick(100); h.click(2, 1, 'touch', 200);
+  h.tick(100);
+  const held = h.controller.press(2, {pointerType:'touch', timeStamp:300});
+  h.tick(400);
+  assert.equal(h.controller.activate(held, {detail:1, timeStamp:700}), 'ignored');
+  h.tick(1000);
+  assert.deepEqual(h.actions.map(action => action[0]), ['reveal']);
+});
+
+test('queued touch input physically after suppression remains a fresh single', () => {
+  const h = harness();
+  h.click(2, 1, 'touch', 100); h.tick(100); h.click(2, 1, 'touch', 200);
+  h.tick(100);
+  assert.equal(h.click(2, 1, 'touch', 600), 'pending');
+  h.tick(300);
+  assert.deepEqual(h.actions.map(action => action[0]), ['reveal', 'mark']);
 });

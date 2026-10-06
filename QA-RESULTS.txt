@@ -1,103 +1,81 @@
-CAT HIDE & SEEK — APPROVED CENTER-RAIL GUIDANCE / SHARED ALIGNMENT RELEASE
+CAT HIDE & SEEK — APPROVED PRIMARY INPUT / PRIVATE STROKES RELEASE
 Date: 2026-10-06
-Base repository commit: 67f7f82fbe7c623747ee715ad71fa8645f90d698
-Status: User approved publication with the browser visual-QA limit disclosed. 67f7f82 is the preserved rollback parent. Exact-commit Pages and served-byte checks are recorded separately. Source tests do not establish rendered alignment.
+Base repository commit: 01504a244d6d44ad14dd219e6a2e7cd41225adae
+Status: User approved publication after this round's fixes and tests complete. Exact-commit Pages and public-byte checks are recorded separately. Physical browser/device acceptance remains unverified.
 
-PASS — 532 Node tests (node --test)
+PASS — 745 Node tests (node --test), 0 failed
 
-31 shared gesture-controller tests:
-- One single-use press intent per pointer/keyboard activation; click is the only
-  activation event, with no separate touchend or native dblclick action.
-- Single marks wait 300 ms. A second same-cell click strictly before the deadline
-  cancels that mark and requests exactly one reveal.
-- Independent cells retain independent singles; slow taps and exact deadline behavior.
-- Third taps/native triple tails, duplicate press tokens, marked-cell double behavior.
-- Context/eligibility checks at press, activation and dispatch; bounded pending timers.
-- cancel, cancelCell, aborted signals, stale/blocked presses and lifecycle cleanup.
+Confirmed defects reproduced in source/VM tests:
+- Native mouse click count 2 after 300 ms was treated as another single, even
+  though the browser recognized a double. Existing tests had encoded this limit.
+- Legacy rendering replaced buttons between pointerdown and click during a
+  harmless refresh, dropping the captured press.
+- A press begun during hit cooldown could reveal after expiry; reveal eligibility
+  was not separately captured when the press began.
+- A canceled tool-intent flag could swallow the next fresh primary click.
 
-296 app/legacy integration and fake-DOM tests:
-- All four legacy modes, battle and labeled offline practice share the gesture flow.
-- Single clicks/taps change only private purple X, never HP, score, fish, turns,
-  cooldowns, host actions, combat sound or public snapshots.
-- Double same-cell reveals; marked-cell notes persist while awaiting authority and
-  are removed after confirmed reveal. No speculative guest reveal or duplicate action.
-- Different-cell quick singles, slow clicks, native dblclick/triple events, keyboard
-  Enter/Space timing and key-repeat suppression.
-- Non-turn or hit-cooldown double attempts do not guess or fall back to a mark.
-- Strict miss lock still blocks guesses AND notes, including delayed/held input.
-- Disconnect, reconnect, end, board replacement, background, window blur and cancelled
-  presses invalidate inapplicable pending input. Private independent completed singles
-  survive unrelated cell focus changes.
-- Sixth-cat rollover retains HP/combo and cannot turn a rapid third touch into a mark
-  on the replacement board.
-- Optional right-click remains private and cancels the cell's pending single.
-- Armed magnifier/yarn clicks deliberately select tool targets, suppressing a rapid
-  second same-cell click after completion; no unintended normal mark or reveal.
-- Note toggle remains removed. One static instruction lives in the center rail,
-  outside BOTH player sections. renderBattle never moves or duplicates it.
-- Repeated renders, both local player IDs, paused/finished states, replacement games
-  and offline practice preserve that shared guidance without rebuilding cells.
-- Existing countdown, audio/FX deduplication, reconnect, item, cooperative, treasure,
-  private-intel, no-auto-deduction and confirmed-empty behavior remain covered.
+81 click-controller tests:
+- Primary singles retain the 300 ms private-mark delay. Mouse native doubles
+  with a proven same-cell predecessor can complete beyond that window.
+- Guarded exact-state undo restores a committed first-click mark before one
+  reveal, including initially marked cells and declined/blocked reveals.
+- Pointer source, comparable event timestamps, held second press, delayed input,
+  native orphan/double/triple tails, duplicate tokens and deadline task ordering.
+- Mark and reveal eligibility are distinct; both presses and final dispatch
+  enforce reveal restrictions. Stale contexts/cancellation never resume a guess.
+- Pending work and retained records remain bounded by board cell count.
 
-40 battle-engine tests (engine rules unchanged):
-- Legal connected uniquely solvable boards, minimum region size, all 90 valid answers.
-- Hit cooldown 300 ms; consecutive misses 2/4/6/8 seconds capped at 8; a cat resets
-  the next miss to 2 seconds. Misses reset only damage combo, without HP penalty.
-- Independent boards, six-cat advance, HP/combo carry, first lethal winner.
-- Action/board IDs, replay/duplicate rejection, paused deadlines, old saves and snapshots.
-- Explicit answer-free public state whitelist.
+40 private stroke-controller tests:
+- Hold >=250 ms and movement >=8 px activates ADD-only marking; up never starts it.
+- Existing notes are not toggled off; opened/resolved cells are skipped; each cell
+  is processed once per stroke, including fast paths and outside-release segments.
+- Stationary holds, early drags, cancel/lost capture, lock/end/context changes,
+  multi-touch and missed mouse/pen release suppress trailing clicks safely.
+- No DOM, reveal, audio, network or per-cell timer in the stroke controller.
 
-52 audio tests:
-- Gesture-only audio context/loading, three distinct CC0 recordings and shuffled bags.
-- No immediate repeat, bounded voices/fades, mute/volume, event deduplication.
-- Pause/end/background cleanup and disclosed synthetic fallback without late replay.
+419 app/legacy integration and fake-DOM tests:
+- All four legacy modes, battle and labeled offline practice share the input rules.
+- Right button, contextmenu, auxclick, ContextMenu and Shift+F10 cause no game
+  mutation and do not prevent the native menu or cancel an unrelated primary mark.
+- 350 ms native mouse doubles work for marked/unmarked cells and guests; one
+  authority request, no speculative damage or leaked notes.
+- Same-board legacy nodes survive snapshots/renders between press and click.
+- Genuine cooldown/turn/lock/tool/pending/end restrictions remain enforced and
+  blocked double attempts can display a readable reason.
+- Mouse/touch strokes add private X across six modes; off-turn notes, guest
+  privacy, resolved/previously marked cells and full 24x24 paths are covered.
+- All coalesced samples, including a 14-sample curved perimeter, preserve the
+  path instead of truncating it to an unintended straight line.
+- Native PointerEvent properties are read explicitly, including prototype getters.
+- Outside release, cell/window blur, visibility, resize/state changes, lock expiry,
+  missed release with buttons=0, multi-touch and reused-pointer-ID focus ordering.
+- A stale old-cell blur/click cannot cancel or finish a new cell's pointer.
+- Stroke persistence is batched once at completion, without actions, damage,
+  attack audio or per-cell timers. No future gesture is queued during lockout.
+- Existing countdown, board advance/cross-board combo, reconnect, items, coop,
+  treasure, manual marks, no-auto-X, audio and animation regressions remain covered.
 
-20 region-palette tests:
-- Unique deterministic colors for every 6/12/20/24-region board, without recycling.
-- 24-color minimum OKLab distance 0.0762814; base ink contrast >=4.60777:1.
-- Palette depends only on public board geometry, not hidden answers.
+40 battle-engine tests: rules unchanged, including unique legal boards, independent
+6x6 boards, 150 HP default, 5/10/15... damage, six-cat advance with HP/combo carry,
+miss locks 2/4/6/8 capped at8, success resets next miss to2, action IDs and privacy.
+52 audio tests: three CC0 recordings, bounded playback, mute, dedupe and cleanup.
+20 palette tests: unique stable colors for 6/12/20/24, distance and contrast checks.
+93 source layout tests: shared center rail/row alignment, readable text, private X,
+lock containment, scoped pinch-zoom policy, no page-wide zoom restriction, and the
+small drag instruction fitting the existing 96px rail. These do not render pixels.
 
-93 CSS/layout source contracts:
-- No region-edge selectors/overrides or thick dark board outlines remain.
-- Existing region colors fill hidden, private-note and confirmed-empty cells; uniform
-  subtle ordinary separators replace region-boundary lines.
-- Purple/private and gray/confirmed markers preserve calculated contrast on all colors.
-- Centered warm 16px instructions use two lines between desktop boards; on mobile
-  one compact line occupies the gap between the local and opponent panels.
-  Only the private X is purple; no box, background, shadow, or button styling.
-- Authored HTML/template trees verify the local / center rail / opponent order,
-  with VS and the accessible single hint outside both player sections.
-- Legacy modes keep their existing guidance location and matching action groups.
-- The 160px sidebar and its wrapper/CSS are removed, not merely hidden. Desktop
-  equal columns keep the cream panels sized to square + 24px, without a spare track.
-- At >=701px both sides inherit shared status/header/square/basket row heights;
-  cards use nested row subgrids. Unequal name, combo or header heights increase
-  the same parent track, without a compensating blank opponent spacer.
-- Fixed 28px HP tracks in stretched player containers align both bars.
-- The 96px center rail has room for both 90px instruction groups. Desktop status
-  widths survive smaller emergency boards; mobile player layouts remain intact.
-- Local touch-action: manipulation preserves pan/pinch and page zoom; no global zoom ban.
-- Centered strict lock remains a blocking overlay and reduced motion remains supported.
-- Responsive source budgets include 320/360/390/430/700/701/768/1099/1100 widths and desktop
-  1280x720, 1366x768, 1920x1080; content-sized baskets/cards and toolbar fit contracts.
-- These are authored CSS and arithmetic assertions, not rendered rectangles.
+PASS — Final checks and artifacts
+- All 20 JavaScript files pass node --check; git diff --check passes.
+- The current standalone HTML and source ZIP are rebuilt from the final source.
+- Preview embeds both cell-gestures.js and board-strokes.js with art/audio.
+- Source ZIP includes both new stroke files and matches all 37 source file bytes.
 
-PASS — Syntax, packaging and static checks
-- All 18 JavaScript files pass node --check.
-- git diff --check passes.
-- Existing preview-builder regression verifies embedded scripts/styles/art/audio.
-- The standalone preview and source ZIP were rebuilt from the frozen revision;
-  center-rail guidance, shared-row rules and absence of stale local mounting were verified.
-  All 35 source ZIP files match the source revision used for that artifact build.
-- No new browser screenshot or visual/device acceptance result is claimed.
+NOT VERIFIED — Actual browser/device acceptance
+- Physical mouse/touch click sequencing, double-click/long-press feel, pointer
+  capture/zoom behavior, accessibility, exact rendered alignment or PC viewport fit.
+- Real audio listening, two-browser WebRTC/P2P, or external-network connectivity.
+- Browser permissions/URL/DevTools restrictions were not retried or bypassed.
 
-NOT VERIFIED — Browser/device acceptance
-- Actual mobile tap/double-tap, native click compatibility ordering, pinch zoom,
-  physical keyboard/mouse, assistive technology and browser focus behavior.
-- Rendered PC fit at 100% browser zoom, exact layout/typography and device screenshots.
-- Actual audio playback/subjective listening quality and real two-browser WebRTC/P2P.
-
-Existing browser permission/URL/DevTools restrictions remain unresolved and were not
-retried or bypassed. VM and source-level CSS contracts do not render pixels and are
-not device acceptance. No new screenshot, physical-input or P2P pass is claimed.
+Native event semantics referenced during implementation:
+https://developer.mozilla.org/en-US/docs/Web/API/UIEvent/detail
+https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/touch-action

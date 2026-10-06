@@ -814,7 +814,12 @@ body.is-battle #turnBanner { display: none; }
 .gesture-action { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .gesture-mark { color: #58306f; font-size: 17px; font-weight: 850; line-height: 1; }
 .gesture-divider { color: #93775b; }
+.gesture-drag { color: #6b503c; font-size: 14px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
 .gesture-paw { flex: 0 0 18px; width: 18px; height: 18px; fill: currentColor; }
+/* One-finger board movement belongs to the marking stroke; browser pinch
+   zoom stays available, and page scrolling remains native outside the grid. */
+#board, .local .battle-board { touch-action: pinch-zoom; user-select: none; -webkit-touch-callout: none; }
+:is(#board, .local .battle-board).marking-stroke .cell { cursor: crosshair; }
 #game .center > .gesture-hint { width: 100%; margin: 0 0 6px; }
 .battle-toolbar { flex-wrap: wrap; column-gap: 8px; row-gap: 5px; }
 .battle-toolbar > button { flex: 0 1 auto; min-width: 0; }

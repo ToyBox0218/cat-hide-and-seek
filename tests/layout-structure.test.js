@@ -268,6 +268,8 @@ for (const [width, height] of viewports) {
     assert.equal(mark.color, '#58306f', 'only the private-mark symbol is purple');
     assert.equal(mark['line-height'], '1', 'the mark does not enlarge the 24px instruction line');
     assert.equal(style(['.gesture-divider'], width, height).color, '#93775b');
+    const drag = style(['.gesture-drag'], width, height);
+    assert.equal(drag['font-size'], '14px');assert.equal(drag['white-space'], 'nowrap');
     const paw = style(['.gesture-paw'], width, height);
     assert.equal(paw.width, '18px');
     assert.equal(paw.height, '18px');
@@ -368,11 +370,12 @@ for (const [width, height] of viewports) {
     const legacy = style(['#board', '#game #board'], width, height);
     const battle = style(['.battle-board'], width, height);
     const opponent = style(['.battle-board', '.opponent .battle-board'], width, height);
-    for (const board of [legacy, battle, opponent]) {
+    const ownBattle = style(['.battle-board', '.local .battle-board'], width, height);
+    for (const board of [legacy, battle, opponent, ownBattle]) {
       assert.equal(board.border, '0');
       assert.equal(board.outline, undefined);
       assert.equal(board['border-width'], undefined, 'no later breakpoint restores a board edge');
-      assert.equal(board['touch-action'], 'manipulation');
+      assert.equal(board['touch-action'], board === legacy || board === ownBattle ? 'pinch-zoom' : 'manipulation');
       assert.doesNotMatch(board['box-shadow'], /(?:^|,)\s*(?:inset\s+)?0\s+0\s+0\s+\d/, 'no static outer outline masquerades as a shadow');
     }
     const scroll = style(['#boardWrap', '#game #boardWrap'], width, height);
@@ -573,14 +576,15 @@ test('the shared instruction line has an accessible compact action-group structu
   for (const hint of hints) {
     assert.equal(hint.tag, 'p', 'guidance is text, not a button or instruction card');
     assert.equal(hint.attrs.role, 'note', 'the description is a named note, not an interactive control');
-    assert.equal(hint.attrs['aria-label'], '單點做私人標記，快速雙點同一格翻格');
-    assert.deepEqual(elements(hint).map(node => node.attrs.class), ['gesture-action', 'gesture-divider', 'gesture-action']);
+    assert.equal(hint.attrs['aria-label'], '單點做私人標記，快速雙點同一格翻格，長按拖曳連續標記');
+    assert.deepEqual(elements(hint).map(node => node.attrs.class), ['gesture-action', 'gesture-divider', 'gesture-action', 'gesture-drag']);
     const actions = byClass(hint, 'gesture-action');
     assert.equal(textContent(actions[0]), '單點✕標記');
     assert.equal(textContent(actions[1]), '雙點翻格');
     assert.equal(byClass(actions[0], 'gesture-mark').length, 1);
     const paws = byClass(actions[1], 'gesture-paw');
     assert.equal(paws.length, 1);
+    assert.equal(textContent(byClass(hint, 'gesture-drag')[0]), '長按拖曳標記');
     assert.equal(paws[0].tag, 'svg');
     assert.equal(paws[0].attrs.viewBox, '0 0 24 24');
     assert.equal(paws[0].attrs['aria-hidden'], 'true');
@@ -700,6 +704,8 @@ test('gesture touch policy is local and preserves page and pinch zoom', () => {
     if (!touch) continue;
     if (touch.value === 'none') {
       assert.deepEqual(rule.selectors, ['#battleArena .battle-board-stage > .battle-lock'], 'only the existing blocking miss overlay may consume all gestures');
+    } else if(touch.value === 'pinch-zoom') {
+      assert.deepEqual(rule.selectors, ['#board', '.local .battle-board'], 'stroke touch handling is limited to playable grids');
     } else assert.equal(touch.value, 'manipulation');
     assert.ok(rule.selectors.every(selector => !/^(?:html|body|main|\*)$/.test(selector)), 'no page-wide touch restriction');
   }

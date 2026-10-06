@@ -47,13 +47,18 @@ function eventTarget() {
         listener.fn.call(this, event);
       }
       this[`on${event.type}`]?.call(this, event);
+      if (/^pointer(?:down|move|up|cancel)$/.test(event.type) && event.bubbles !== false) {
+        let owner = this.ownerDocument, ancestor = this.parentNode;
+        while (!owner && ancestor) { owner = ancestor.ownerDocument; ancestor = ancestor.parentNode; }
+        if (owner && owner !== this) owner.dispatchEvent(event);
+      }
       return !event.defaultPrevented;
     }
   };
 }
 
 function element(tagName = 'div') {
-  const attributes = new Map(), classes = new Set(), descendants = new Map();
+  const attributes = new Map(), classes = new Set(), descendants = new Map(), capturedPointers = new Set();
   let html = '';
   const node = {
     ...eventTarget(),
@@ -75,6 +80,10 @@ function element(tagName = 'div') {
     getAttribute: key => attributes.get(key) ?? null,
     removeAttribute: key => attributes.delete(key),
     focus() {},
+    setPointerCapture(pointerId) { capturedPointers.add(pointerId); },
+    releasePointerCapture(pointerId) { capturedPointers.delete(pointerId); },
+    hasPointerCapture(pointerId) { return capturedPointers.has(pointerId); },
+    contains(other) { for (let current = other; current; current = current.parentNode) if (current === this) return true; return false; },
     click() { if (!this.disabled) this.dispatchEvent({ type: 'click' }); },
     remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
@@ -90,8 +99,13 @@ function element(tagName = 'div') {
     closest(selector) { return this.matches(selector) ? this : this.parentNode?.closest(selector) || null; },
     showModal() { this.open = true; }, close() { this.open = false; },
     getBoundingClientRect() {
-      if (classes.has('cell')) { const index = +this.dataset.index; return { left: 100 + (index % 6) * 40, top: 200 + Math.floor(index / 6) * 40, width: 40, height: 40 }; }
-      return { left: 0, top: 0, width: 600, height: 600 };
+      const board = classes.has('cell') ? this.parentNode : this;
+      const size = Number(board?.dataset.size) || Math.sqrt(board?.children.length || 36);
+      const origin = board?.closest('.opponent') ? 500 : 100;
+      const index = classes.has('cell') ? +this.dataset.index : null;
+      if (index !== null) { const left = origin + (index % size) * 40, top = 200 + Math.floor(index / size) * 40; return { left, top, right: left + 40, bottom: top + 40, width: 40, height: 40, x: left, y: top }; }
+      if (classes.has('battle-board') || this.children.some(child => child.classList.contains('cell'))) return { left: origin, top: 200, right: origin + size * 40, bottom: 200 + size * 40, width: size * 40, height: size * 40, x: origin, y: 200 };
+      return { left: 0, top: 0, right: 600, bottom: 600, width: 600, height: 600, x: 0, y: 0 };
     },
     querySelector(selector) {
       selector = selector.replace(/\s*>\s*/g, ' ');
@@ -127,6 +141,7 @@ function element(tagName = 'div') {
 
 function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle, battleUI = false, local = {}, session = {}, fakeAudio = false, AudioContext, matchEnabled, meowSamples = ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav'] } = {}) {
   const nodes = new Map(), messages = [], intervals = [], timers = new Map(), frames = new Map(), toolButtons = new Map();
+  let documentOwner = null;
   const get = selector => {
     const tool = /^#toolbox \[data-item="([\w-]+)"\]$/.exec(selector);
     if (tool) return toolButtons.get(tool[1]) || null;
@@ -139,7 +154,7 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
       const root = ['local', 'opponent'].map(side => get(`.battle-side.${side}`)).find(node => +node.dataset.player === +player[1]);
       return root ? player[2] ? root.querySelector(player[2]) : root : null;
     }
-    if (!nodes.has(selector)) { const node = element(); if (/^\.[\w.-]+$/.test(selector)) node.className = selector.slice(1).replaceAll('.', ' '); nodes.set(selector, node); }
+    if (!nodes.has(selector)) { const node = element(); node.ownerDocument = documentOwner; if (/^\.[\w.-]+$/.test(selector)) node.className = selector.slice(1).replaceAll('.', ' '); nodes.set(selector, node); }
     return nodes.get(selector);
   };
   // Static page chrome is mounted once; renderBattle must never move it into a player section.
@@ -160,8 +175,11 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
         return array;
       }, randomUUID: () => `test-action-${++serial}`
     },
-    document: { ...eventTarget(), querySelector: get, querySelectorAll: selector => selector === '#toolbox [data-item]' ? [...toolButtons.values()] : [...nodes.values(), context.document.body].flatMap(node => node.querySelectorAll(selector)), createElement: element,
-      hidden: false, body: element() },
+    document: { ...eventTarget(), querySelector: get, querySelectorAll: selector => selector === '#toolbox [data-item]' ? [...toolButtons.values()] : [...nodes.values(), context.document.body].flatMap(node => node.querySelectorAll(selector)), createElement: tag => { const node = element(tag); node.ownerDocument = context.document; return node; },
+      elementFromPoint(x, y) {
+        const grids = battleUI ? [get('.battle-side.local').querySelector('.battle-board'), get('.battle-side.opponent').querySelector('.battle-board')] : [get('#board')];
+        return grids.flatMap(grid => grid.children).find(cell => { const rect = cell.getBoundingClientRect(); return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom; }) || null;
+      }, hidden: false, body: element() },
     localStorage: storage(local), sessionStorage: storage(session),
     navigator: { clipboard: { writeText: async () => {} } },
     location: { href: 'https://example.test/game', search: '' },
@@ -178,8 +196,10 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
     Peer: class { on() {} destroy() {} },
     CatBattle: battle
   });
-  context.window = context;
-  for (const filename of ['region-palette.js', 'game-audio.js', 'cell-gestures.js']) {
+  context.window = context; documentOwner = context.document;
+  for (const node of nodes.values()) node.ownerDocument = context.document;
+  context.document.body.ownerDocument = context.document;
+  for (const filename of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   }
   const audio = { calls: [], options: [], controllers: [], getState: () => audio.controllers.at(-1)?.getState() };
@@ -260,7 +280,25 @@ function doubleClick(cell, { pointerType = 'mouse', dblclick = true } = {}) {
   }
   if (dblclick) cell.dispatchEvent({ type: 'dblclick', button: 0, detail: 2 });
 }
-function singleClick(h, cell) { cell.click(); h.tick(GESTURE_WAIT); }
+function singleClick(h, cell) {
+  pointerAt(cell, 'pointerdown'); pointerAt(cell, 'pointerup');
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+}
+function pointerAt(cell, type, target = cell, extra = {}) {
+  const rect = target.getBoundingClientRect();
+  const event = { type, pointerType: 'mouse', pointerId: 7, button: 0,
+    buttons: type === 'pointerup' ? 0 : 1, isPrimary: true,
+    clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, ...extra };
+  cell.dispatchEvent(event); return event;
+}
+function dragMarks(h, grid, { from = 0, to = 5, pointerType = 'mouse', hold = 250 } = {}) {
+  const cell = grid().children[from];
+  pointerAt(cell, 'pointerdown', cell, { pointerType }); h.tick(hold);
+  pointerAt(cell, 'pointermove', grid().children[to], { pointerType });
+  pointerAt(cell, 'pointerup', grid().children[to], { pointerType });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 });
+  return cell;
+}
 function stablePublic(h, game = h.state.game) { const value = json(h.publicGame(game)); delete value.serverTime; return value; }
 function sentActions(h) { return h.messages.filter(message => message.type === 'action' || message.type === 'state').length; }
 
@@ -637,7 +675,7 @@ for (const mode of ['items', 'coop']) test(`${mode} explicit scans can target ru
       const cell = guest.get('#board').children[index]; assertUnopenedCell(cell);
       const unchanged = json(guest.publicGame(guest.state.game)), sent = guest.messages.length;
       doubleClick(cell);
-      assert.deepEqual(json(guest.publicGame(guest.state.game)), unchanged); assert.equal(guest.messages.length, sent, 'off-turn guests cannot guess even though right-click notes remain reachable');
+      assert.deepEqual(json(guest.publicGame(guest.state.game)), unchanged); assert.equal(guest.messages.length, sent, 'off-turn guests cannot guess even though primary-click notes remain reachable');
       assert.equal(cell.classList.contains('probed'), mode === 'coop' && targets.includes(index), 'competitive scan intel stays private; cooperative intel stays shared');
     }
   }
@@ -896,10 +934,10 @@ test('battle UI renders opponent cells read-only and preserves manual notes duri
   assert.equal(own.children.length, 36); assert.equal(opponent.children.length, 36);
   assert.equal(own.children.every(cell => cell.tagName === 'BUTTON' && typeof cell.onclick === 'function'), true);
   assert.equal(opponent.children.every(cell => cell.tagName === 'SPAN' && cell.onclick === undefined && cell.getAttribute('aria-readonly') === 'true'), true);
-  game.boards[0].cooldownUntil = h.now() + 300; game.boards[0].cooldownKind = 'hit'; contextMenu(own.children[0]);
-  assert.equal(h.state.notes.has(0), true); assert.equal(h.messages.length, 0); assert.equal(game.boards[0].found.length, 0);
+  game.boards[0].cooldownUntil = h.now() + 1000; game.boards[0].cooldownKind = 'hit'; singleClick(h, own.children[0]);
+  assert.equal(h.state.notes.has(0), true); assert.equal(sentActions(h), 0); assert.equal(game.boards[0].found.length, 0);
   h.battleChoose(game.boards[0].puzzle.solution[0]);
-  assert.equal(h.messages.length, 0); assert.equal(game.boards[0].found.length, 0);
+  assert.equal(sentActions(h), 0); assert.equal(game.boards[0].found.length, 0);
 });
 
 test('battle guest UI sends a request without locally changing HP or revealing a cell, and blocks repeated clicks', () => {
@@ -929,7 +967,7 @@ test('battle rendered note markers appear only on the local board and hit cooldo
   const opponent = h.get('.battle-side.opponent').querySelector('.battle-board');
   assert.equal(own.children[0].classList.contains('note'), true);
   assert.equal(opponent.children.some(cell => cell.classList.contains('note')), false);
-  assert.equal(own.children.every(cell => !cell.disabled), true, 'right-click stays reachable during a hit cooldown');
+  assert.equal(own.children.every(cell => !cell.disabled), true, 'primary-click marking stays reachable during a hit cooldown');
   assertGuessBlocked(h, own.children[game.boards[0].puzzle.solution[0]], game);
   h.renderBattle(); own = h.get('.battle-side.local').querySelector('.battle-board');
   assert.equal(own.children.every(cell => !cell.disabled), true);
@@ -948,15 +986,16 @@ for (const practice of [false, true]) test(`${practice ? 'offline practice' : 'b
   h.renderBattle(); doubleClick(own().children[cat]);
   assert.deepEqual(json(board.found), [cat]); assert.equal(game.players[1].hp, 145);
   for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index]);
-  assertGuessBlocked(h, own().children[related[0]], game);
+  assertGuessBlocked(h, own().children[related[1]], game);
   const sent = h.messages.length;
-  contextMenu(own().children[related[0]]);
+  own().children[related[0]].click();
+  assertUnopenedCell(own().children[related[0]]);
+  assert.equal(h.messages.length, sent, 'a private single queues no authority action during the real hit cooldown');
+  h.tick(299); h.updateBattleTimers();
+  assert.equal(h.battleChoose(related[1]), undefined);
+  assert.equal(board.misses.length, 0, 'a 299 ms-old hit still blocks guesses');
+  h.tick(1); h.updateBattleTimers();
   assertUnopenedCell(own().children[related[0]], { note: true });
-  assert.equal(h.messages.length, sent, 'manual notes work privately during the real hit cooldown');
-  h.advance(299); h.updateBattleTimers();
-  assertUnopenedCell(own().children[related[0]], { note: true });
-  assertGuessBlocked(h, own().children[related[0]], game, 'a 299 ms-old hit still blocks guesses');
-  h.advance(1); h.updateBattleTimers();
   for (let index = 0; index < 36; index++) if (index !== cat) assertUnopenedCell(own().children[index], { note: index === related[0] });
   const hp = json(game.players.map(player => player.hp));
   h.advance(GESTURE_WAIT); // Begin a fresh gesture burst after the blocked double above.
@@ -1212,7 +1251,7 @@ test('battle guest never self-activates when its countdown clock reaches zero', 
   assert.equal(h.state.game.status, 'countdown'); assert.equal(h.state.game.startAt, startAt);
   const count = h.messages.filter(message => message.type === 'action').length;
   h.battleChoose(authority.boards[1].puzzle.solution[0]);
-  contextMenu(h.get('.battle-side.local').querySelector('.battle-board').children[authority.boards[1].puzzle.solution[0]]);
+  singleClick(h, h.get('.battle-side.local').querySelector('.battle-board').children[authority.boards[1].puzzle.solution[0]]);
   assert.equal(h.state.notes.size, 0); assert.equal(h.messages.filter(message => message.type === 'action').length, count);
   h.context.CatBattle.advance(authority, h.now());
   h.onMessage({ type: 'state', state: json(h.publicGame(authority)) });
@@ -1333,9 +1372,9 @@ test('battle miss lock shows local seconds and progress while the opponent remai
   assert.match(String(lock.querySelector('.lock-seconds').textContent), /1(?:\.0)?/);
   const progress = Number.parseFloat(lock.querySelector('.lock-progress > i').style.width);
   assert.equal(progress, 50);
-  const privateCell = game.boards[0].puzzle.solution[0], sent = h.messages.length;
-  contextMenu(own.querySelector('.battle-board').children[privateCell]); h.battleChoose(privateCell);
-  assert.equal(h.state.notes.has(privateCell), false); assert.equal(h.messages.length, sent);
+  const privateCell = game.boards[0].puzzle.solution[0], sent = sentActions(h);
+  singleClick(h, own.querySelector('.battle-board').children[privateCell]); h.battleChoose(privateCell);
+  assert.equal(h.state.notes.has(privateCell), false); assert.equal(sentActions(h), sent);
   own = h.get('.battle-side.local');
   assert.equal(own.querySelector('.battle-board').children[privateCell].disabled, true);
   assert.equal(own.querySelector('.battle-lock').classList.contains('notes-available'), false);
@@ -1719,7 +1758,7 @@ test('a 300 ms hit cooldown unlocks guesses in place without restarting avatars 
   const cell = before.local.cells[first], cat = cell.querySelector('.cat-art');
   const timers = [...h.state.battleFXTimers], meows = json(playedAudio(h).filter(sound => sound.kind === 'meow'));
   assert.equal(cell.classList.contains('found-glow'), true); assert.equal(before.local.combo.classList.contains('combo-glow'), true);
-  assert.equal(before.local.cells[next].disabled, false, 'the right-click shortcut remains reachable');
+  assert.equal(before.local.cells[next].disabled, false, 'primary-click marking remains reachable');
   assert.equal(h.state.battleCooldownActive, true); assertGuessBlocked(h, before.local.cells[next], game);
   h.context.cooldownRerenders = 0;
   vm.runInContext('render = () => { cooldownRerenders++; appTest.renderLegacy(); };', h.context);
@@ -1755,10 +1794,11 @@ test('opponent HP updates and private-note toggles preserve both cards, avatars 
   assert.equal(before.local.cells[first].classList.contains('found-glow'), true);
   assert.equal(before.local.combo.classList.contains('combo-glow'), true);
   const noteIndex = game.boards[0].puzzle.solution[1];
-  contextMenu(before.local.cells[noteIndex]);
+  game.boards[0].cooldownUntil = h.now() + 1000;
+  singleClick(h, before.local.cells[noteIndex]);
   assert.equal(h.state.notes.has(noteIndex), true); assert.equal(before.local.cells[noteIndex].classList.contains('note'), true);
   assertBattleNodesUnchanged(h, before, 'private-note edit');
-  assert.equal(before.local.cells[noteIndex].disabled, false, 'right-click remains reachable');
+  assert.equal(before.local.cells[noteIndex].disabled, false, 'primary-click marking remains reachable');
   assertGuessBlocked(h, before.local.cells[noteIndex], game, 'private marking preserves the active cooldown');
   assertBattleNodesUnchanged(h, before, 'private-note edit');
   assert.equal(before.local.cells[first].classList.contains('found-glow'), true);
@@ -1808,7 +1848,7 @@ const playedAudio = h => h.audio.calls.filter(call => call.method === 'play').ma
 
 test('HTML loads palette and audio modules before their adapters and omits redundant guess buttons', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  for (const module of ['region-palette.js', 'game-audio.js', 'cell-gestures.js']) {
+  for (const module of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js']) {
     assert.ok(html.indexOf(module) >= 0, `${module} must ship in the page`);
     assert.ok(html.indexOf(module) < html.indexOf('app.js'), `${module} must load before app.js`);
   }
@@ -1933,6 +1973,78 @@ for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice'])
   });
 }
 
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) for (const initiallyMarked of [false, true]) test(`${mode} native mouse double at 350 ms reveals an ${initiallyMarked ? 'already marked' : 'unmarked'} cell exactly once`, () => {
+  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
+  if (initiallyMarked) { h.state.notes.add(index); h.renderLegacy(); }
+  let cell = grid().children[index];
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 });
+  h.tick(350);
+  assert.equal(h.state.notes.has(index), !initiallyMarked, 'the expired first click has committed its private toggle');
+  cell = grid().children[index];
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 2 });
+  cell.dispatchEvent({ type: 'dblclick', button: 0, detail: 2 });
+  const after = stablePublic(h), sent = sentActions(h);
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 3 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual(json(board.found), [index]); assert.equal(h.state.notes.has(index), false);
+  assert.deepEqual(stablePublic(h), after); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} identical rendering between the second press and click preserves a marked cell and its reveal intent`, () => {
+  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
+  singleClick(h, grid().children[index]);
+  const cell = grid().children[index];
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(50);
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 0, pointerId: 1 });
+  h.renderLegacy();
+  assert.strictEqual(grid().children[index], cell, 'same-board snapshots cannot replace the pressed button');
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 2 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual(json(board.found), [index]); assert.equal(h.state.notes.has(index), false);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) test(`${mode} native mouse detail two without a predecessor cannot reveal or mark`, () => {
+  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
+  const before = stablePublic(h), sent = sentActions(h), cell = grid().children[index];
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 2 }); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.has(index), false); assert.equal(board.found.length, 0);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['basic', 'battle', 'practice']) for (const pointerType of ['touch', 'pen']) test(`${mode} ${pointerType} taps beyond the custom window stay independent despite detail two`, () => {
+  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
+  const before = stablePublic(h), sent = sentActions(h);
+  for (const detail of [1, 2]) {
+    const cell = grid().children[index];
+    cell.dispatchEvent({ type: 'pointerdown', pointerType, button: 0, pointerId: 1 });
+    cell.dispatchEvent({ type: 'pointerup', pointerType, button: 0, pointerId: 1 });
+    cell.dispatchEvent({ type: 'click', button: 0, detail }); h.tick(350);
+    assert.equal(h.state.notes.has(index), detail === 1);
+  }
+  assert.equal(board.found.length, 0); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['battle', 'practice']) for (const pointerType of ['mouse', 'touch']) test(`${mode} a reveal pair whose second press began during hit cooldown never queues a reveal after expiry`, () => {
+  const { h, board, grid } = gestureFixture(mode), [captured, index] = board.puzzle.solution;
+  singleClick(h, grid().children[index]); doubleClick(grid().children[captured]);
+  const cell = grid().children[index], before = stablePublic(h), sent = sentActions(h);
+  cell.dispatchEvent({ type: 'pointerdown', pointerType, button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'pointerup', pointerType, button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(200);
+  cell.dispatchEvent({ type: 'pointerdown', pointerType, button: 0, pointerId: 1 }); h.tick(120);
+  cell.dispatchEvent({ type: 'pointerup', pointerType, button: 0, pointerId: 1 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 2 }); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.has(index), true); assert.deepEqual(json(board.found), [captured]);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
 for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} single marks remain private off-turn and resolved cells stay protected`, () => {
   const { h, game, grid } = gestureFixture(mode), [cat, target] = game.puzzle.solution;
   const miss = ruleRelatedEmptyCells(game.puzzle, cat)[0];
@@ -2007,7 +2119,7 @@ for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle']) test(`${mod
 
 for (const mode of ['battle', 'practice']) test(`${mode} a double during hit cooldown leaves a private mark intact and applies no delayed reveal`, () => {
   const { h, game, board, grid } = gestureFixture(mode), [first, second] = board.puzzle.solution;
-  doubleClick(grid().children[first]); contextMenu(grid().children[second]);
+  singleClick(h, grid().children[second]); doubleClick(grid().children[first]);
   assert.equal(h.state.notes.has(second), true);
   const before = stablePublic(h), sent = sentActions(h);
   doubleClick(grid().children[second]); h.tick(GESTURE_WAIT);
@@ -2060,15 +2172,6 @@ for (const mode of ['basic', 'battle', 'practice']) for (const cancellation of [
   assert.equal(h.state.notes.has(index), true);
 });
 
-for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) test(`${mode} right-click cancels a pending single before its one private toggle`, () => {
-  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
-  const before = stablePublic(h), sent = sentActions(h);
-  grid().children[index].click(); h.tick(80); contextMenu(grid().children[index]);
-  assert.equal(h.state.notes.has(index), true); h.tick(GESTURE_WAIT);
-  assert.equal(h.state.notes.has(index), true, 'the cancelled single cannot undo the right-click mark');
-  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent); assert.equal(board.found.length, 0);
-});
-
 // Context-menu behavior here is simulated through VM DOM events. These assertions
 // verify handlers and state effects, not a physical mouse or browser's menu behavior.
 function contextMenu(cell, { press = true } = {}) {
@@ -2081,67 +2184,84 @@ function contextMenu(cell, { press = true } = {}) {
   return event;
 }
 
-for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) test(`${mode} right-click toggles only a private purple X`, () => {
-  const battle = mode === 'battle' || mode === 'practice';
-  const h = harness({ mode: battle ? 'battle' : mode, battle, battleUI: battle, fakeAudio: true });
-  h.enableRendering();
-  if (mode === 'practice') { h.startPractice(); h.advance(3000); h.updateBattleTimers(); }
-  else h.begin();
-  h.renderLegacy();
-  const game = h.state.game, board = battle ? game.boards[0] : game, index = board.puzzle.solution[0];
-  const grid = () => battle ? h.get('.battle-side.local').querySelector('.battle-board') : h.get('#board');
-  const snapshot = json(h.publicGame(game)), sent = h.messages.length;
-  vm.runInContext('globalThis.rightClickAuthorityCalls = 0; const noteTestAct = act; act = (...args) => { rightClickAuthorityCalls++; return noteTestAct(...args); };', h.context);
-  const sounds = json(playedAudio(h).filter(sound => sound.kind !== 'ui'));
-  for (const expected of [true, false, true]) {
-    const event = contextMenu(grid().children[index]);
-    assert.equal(event.defaultPrevented, true, 'only a handled own-cell shortcut suppresses its native menu');
-    assert.equal(h.state.notes.has(index), expected); assertUnopenedCell(grid().children[index], { note: expected });
-    assert.deepEqual(json(h.publicGame(game)), snapshot, 'a right-click never reveals, awards currency, changes turn, damages, or starts cooldown');
-    assert.equal(h.messages.length, sent, 'a right-click sends no host action or snapshot');
-    assert.equal(h.context.rightClickAuthorityCalls, 0, 'private marking never invokes the host action handler');
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) test(`${mode} right-button and keyboard-menu events are native no-ops`, () => {
+  const { h, board, grid, battle } = gestureFixture(mode), index = board.puzzle.solution[0];
+  const before = stablePublic(h), sent = sentActions(h), sounds = json(playedAudio(h));
+  for (const marked of [false, true]) {
+    if (marked) singleClick(h, grid().children[index]);
+    const cell = grid().children[index];
+    const events = [
+      { type: 'pointerdown', button: 2, buttons: 2, pointerType: 'mouse', pointerId: 22 },
+      { type: 'pointerup', button: 2, buttons: 0, pointerType: 'mouse', pointerId: 22 },
+      { type: 'click', button: 2, detail: 1 },
+      { type: 'auxclick', button: 2, detail: 1 },
+      { type: 'contextmenu', button: 2 },
+      { type: 'keydown', key: 'ContextMenu', repeat: false },
+      { type: 'keyup', key: 'ContextMenu' },
+      { type: 'contextmenu', button: 0 },
+      { type: 'keydown', key: 'F10', shiftKey: true, repeat: false },
+      { type: 'keyup', key: 'F10', shiftKey: true },
+      { type: 'contextmenu', button: 0 }
+    ];
+    for (const event of events) {
+      cell.dispatchEvent(event);
+      assert.notEqual(event.defaultPrevented, true, `${event.type} keeps browser behavior`);
+    }
+    h.tick(GESTURE_WAIT);
+    assertUnopenedCell(grid().children[index], { note: marked });
+    assert.equal(h.state.notes.has(index), marked);
+    assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
     assert.equal(h.state.pendingAction, null); assert.equal(h.state.selectedCell, null);
-    assertNoPrivateKeys(json(h.publicGame(game)));
-    assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), sounds, 'right-click does not play miss, capture or attack effects');
+    assertNoPrivateKeys(json(h.publicGame(h.state.game)));
     if (battle) assert.equal(h.get('.battle-side.opponent').querySelector('.battle-board').children.some(cell => cell.classList.contains('note')), false);
   }
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind !== 'ui'), sounds.filter(sound => sound.kind !== 'ui'));
 });
 
-test(`battle right-click stays private during hit cooldown`, () => {
-  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
-  const board = game.boards[0], [cat, index] = board.puzzle.solution;
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) test(`${mode} a native menu does not add or cancel a queued primary mark`, () => {
+  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
+  const before = stablePublic(h), sent = sentActions(h);
+  grid().children[index].click(); h.tick(80);
+  assert.notEqual(contextMenu(grid().children[index]).defaultPrevented, true);
+  assert.equal(h.state.notes.has(index), false);
+  h.tick(GESTURE_WAIT); assert.equal(h.state.notes.has(index), true);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent); assert.equal(board.found.length, 0);
+});
+
+test('battle primary marking starts during hit cooldown without an authority action', () => {
+  const { h, game, board, grid } = gestureFixture('battle'), [cat, index] = board.puzzle.solution;
   h.act(0, battleAction(h, 0, { index: cat }));
-  const before = json(h.publicGame(game)), sent = h.messages.length, cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
-  assert.equal(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), true);
-  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
-  assert.equal(board.cooldownUntil, h.now() + 300); assert.equal(board.found.includes(index), false);
+  const before = stablePublic(h), sent = sentActions(h), deadline = board.cooldownUntil;
+  grid().children[index].click(); h.tick(299);
+  assert.equal(h.state.notes.has(index), false); assert.equal(board.found.includes(index), false);
+  h.tick(1); assert.equal(h.state.notes.has(index), true);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  assert.equal(board.cooldownUntil, deadline); assert.equal(board.found.includes(index), false);
 });
 
-for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} right-click works off-turn and while a guess is pending without authorizing any left-click`, () => {
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} primary marks work off-turn and while a guess is pending without authorizing reveals`, () => {
   const h = harness({ mode }), game = h.begin(), index = game.puzzle.solution[0];
-  h.enableRendering(); h.renderLegacy();
-  h.act(0, h.action('pass'));
-  const before = json(h.publicGame(game)), sent = h.messages.length;
-  let cell = h.get('#board').children[index];
-  assert.equal(cell.disabled, false, 'own unresolved cells remain reachable for private right-click notes');
-  cell.click(); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
-  assert.equal(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), true);
-  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  h.enableRendering(); h.renderLegacy(); h.act(0, h.action('pass'));
+  const before = stablePublic(h), sent = sentActions(h);
+  assert.equal(h.get('#board').children[index].disabled, false);
+  singleClick(h, h.get('#board').children[index]); assert.equal(h.state.notes.has(index), true);
+  doubleClick(h.get('#board').children[index]); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.has(index), true); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
   h.act(1, h.action('pass')); h.state.pendingAction = { index: (index + 1) % 36, actionId: 'in-flight-guess', turnId: game.turnId }; h.renderLegacy();
-  const pending = json(h.state.pendingAction), pendingSnapshot = json(h.publicGame(game)), pendingSent = h.messages.length;
-  cell = h.get('#board').children[index]; cell.click();
-  assert.equal(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
-  assert.deepEqual(json(h.state.pendingAction), pending); assert.deepEqual(json(h.publicGame(game)), pendingSnapshot); assert.equal(h.messages.length, pendingSent);
+  const pending = json(h.state.pendingAction), pendingSnapshot = stablePublic(h), pendingSent = sentActions(h);
+  singleClick(h, h.get('#board').children[index]); assert.equal(h.state.notes.has(index), false);
+  doubleClick(h.get('#board').children[index]); h.tick(GESTURE_WAIT);
+  assert.deepEqual(json(h.state.pendingAction), pending); assert.deepEqual(stablePublic(h), pendingSnapshot); assert.equal(sentActions(h), pendingSent);
 });
 
-for (const mode of ['items', 'coop']) for (const item of ['magnifier', 'yarn']) test(`${mode} right-click remains free when ${item} is armed`, () => {
+for (const mode of ['items', 'coop']) for (const item of ['magnifier', 'yarn']) test(`${mode} right-click leaves armed ${item} and private notes unchanged`, () => {
   const h = harness({ mode }), game = h.begin(), index = game.puzzle.solution[0];
   game.players[0].fish = 4; game.sharedFish = 4; h.enableRendering(); h.renderLegacy();
   h.get(`#toolbox [data-item="${item}"]`).click();
-  const before = json(h.publicGame(game)), sent = h.messages.length;
-  assert.equal(contextMenu(h.get('#board').children[index]).defaultPrevented, true);
-  assert.equal(h.state.notes.has(index), true);
-  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  const before = stablePublic(h), sent = sentActions(h);
+  assert.notEqual(contextMenu(h.get('#board').children[index]).defaultPrevented, true); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.has(index), false); assert.equal(h.state.tool, item);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
   assert.deepEqual(json(h.state.yarnTargets), []); assert.equal(h.state.intel.length, 0);
 });
 
@@ -2209,10 +2329,11 @@ test('a right press on the lock modal cannot create a late private note on the n
   const root = h.get('.battle-side.local'), cell = root.querySelector('.battle-board').children[index];
   root.querySelector('.battle-lock').dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
   h.advance(2000); h.updateBattleTimers();
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 2, pointerId: 1 }); contextMenu(cell, { press: false });
-  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
-  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
+  assert.notEqual(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
+  singleClick(h, cell); assert.equal(h.state.notes.has(index), true);
 });
 
 for (const key of ['ContextMenu', 'F10']) test(`a ${key === 'F10' ? 'Shift+F10' : key} press begun locked cannot create a private note after expiry`, () => {
@@ -2222,39 +2343,42 @@ for (const key of ['ContextMenu', 'F10']) test(`a ${key === 'F10' ? 'Shift+F10' 
   const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
   cell.dispatchEvent({ type: 'keydown', key, shiftKey: key === 'F10', repeat: false });
   h.advance(2000); h.updateBattleTimers();
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   cell.dispatchEvent({ type: 'keyup', key, shiftKey: key === 'F10' }); cell.dispatchEvent({ type: 'contextmenu', button: 0 });
-  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
   cell.dispatchEvent({ type: 'keydown', key, shiftKey: key === 'F10', repeat: false });
-  cell.dispatchEvent({ type: 'contextmenu', button: 0 }); assert.equal(h.state.notes.has(index), true);
-  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  const menu = { type: 'contextmenu', button: 0 }; cell.dispatchEvent(menu);
+  assert.notEqual(menu.defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
+  singleClick(h, cell); assert.equal(h.state.notes.has(index), true);
+  assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
 });
 
-test('battle guest right-click marks only its own board and never sends an authority request', () => {
+test('battle guest primary marking affects only its own board and never sends an authority request', () => {
   const host = harness({ mode: 'battle', battle: true }), authority = host.begin();
   const guest = harness({ mode: 'battle', battle: true, battleUI: true }); guest.state.role = 'guest'; guest.state.you = 1; guest.enableRendering();
   guest.onMessage({ type: 'state', state: json(host.publicGame(authority)) });
   const root = guest.get('.battle-side.local'), opponent = guest.get('.battle-side.opponent'), index = authority.boards[1].puzzle.solution[0];
   assert.equal(+root.dataset.player, 1); assert.equal(+opponent.dataset.player, 0);
-  const before = json(guest.publicGame(guest.state.game)), sent = guest.messages.length;
-  assert.equal(contextMenu(root.querySelector('.battle-board').children[index]).defaultPrevented, true);
+  const before = stablePublic(guest), sent = sentActions(guest);
+  singleClick(guest, root.querySelector('.battle-board').children[index]);
   assert.equal(guest.state.notes.has(index), true); assertUnopenedCell(root.querySelector('.battle-board').children[index], { note: true });
   assert.equal(opponent.querySelector('.battle-board').children.some(cell => cell.classList.contains('note')), false);
-  assert.equal(guest.state.pendingAction, null); assert.equal(guest.messages.length, sent); assert.deepEqual(json(guest.publicGame(guest.state.game)), before);
-  assertNoPrivateKeys(json(guest.publicGame(guest.state.game)));
+  assert.equal(guest.state.pendingAction, null); assert.equal(sentActions(guest), sent); assert.deepEqual(stablePublic(guest), before);
+  assertNoPrivateKeys(stablePublic(guest));
 });
 
 for (const cancellation of ['pointercancel', 'blur']) test(`a ${cancellation} right-click on an unlocked battle cell cannot be replayed`, () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.enableRendering(); h.renderBattle();
   const index = game.boards[0].puzzle.solution[0], cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
   cell.dispatchEvent({ type: cancellation, pointerType: 'mouse', button: 2, pointerId: 1 });
   for (let repeat = 0; repeat < 2; repeat++) {
     contextMenu(cell, { press: false });
-    assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+    assert.equal(h.state.notes.has(index), false); assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
   }
-  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+  assert.notEqual(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
+  singleClick(h, cell); assert.equal(h.state.notes.has(index), true);
 });
 
 test(`a right mouse press begun locked cannot add a note after expiry`, () => {
@@ -2264,11 +2388,12 @@ test(`a right mouse press begun locked cannot add a note after expiry`, () => {
   const cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
   cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
   h.advance(2000); h.updateBattleTimers();
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   cell.dispatchEvent({ type: 'pointerup', pointerType: 'mouse', button: 2, pointerId: 1 }); contextMenu(cell, { press: false });
-  assert.equal(h.state.notes.has(index), false); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
-  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
-  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.equal(h.state.notes.has(index), false); assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
+  assert.notEqual(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
+  singleClick(h, cell); assert.equal(h.state.notes.has(index), true);
+  assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
 });
 
 for (const cancellation of ['pointercancel', 'blur']) test(`a ${cancellation} right-click intent has no late effect after miss-lock expiry`, () => {
@@ -2279,10 +2404,11 @@ for (const cancellation of ['pointercancel', 'blur']) test(`a ${cancellation} ri
   cell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
   cell.dispatchEvent({ type: cancellation, pointerType: 'mouse', button: 2, pointerId: 1 });
   h.advance(2000); h.updateBattleTimers();
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   contextMenu(cell, { press: false }); assert.equal(h.state.notes.has(index), false);
-  assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
-  contextMenu(cell); assert.equal(h.state.notes.has(index), true);
+  assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
+  assert.notEqual(contextMenu(cell).defaultPrevented, true); assert.equal(h.state.notes.has(index), false);
+  singleClick(h, cell); assert.equal(h.state.notes.has(index), true);
 });
 
 test('a right-click from a replaced battle puzzle is ignored while the current puzzle remains usable', () => {
@@ -2293,11 +2419,11 @@ test('a right-click from a replaced battle puzzle is ignored while the current p
   for (const index of cats) { h.act(0, battleAction(h, 0, { index })); h.advance(300); }
   h.updateBattleTimers();
   assert.notEqual(board.puzzle.id, game.boards[0].puzzle.id); assert.equal(oldCell.parentNode, null);
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   contextMenu(oldCell, { press: false }); contextMenu(oldCell);
-  assert.equal(h.state.notes.size, 0); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
-  contextMenu(h.get('.battle-side.local').querySelector('.battle-board').children[empty]);
-  assert.equal(h.state.notes.has(empty), true); assert.deepEqual(json(h.publicGame(game)), before);
+  assert.equal(h.state.notes.size, 0); assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
+  singleClick(h, h.get('.battle-side.local').querySelector('.battle-board').children[empty]);
+  assert.equal(h.state.notes.has(empty), true); assert.deepEqual(stablePublic(h, game), before);
 });
 
 for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} stale board context-menu events cannot mark a new game`, () => {
@@ -2306,9 +2432,9 @@ for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} stale b
   oldCell.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', button: 2, pointerId: 1 });
   const game = h.begin(); h.renderLegacy();
   assert.notEqual(first.puzzle.id, game.puzzle.id); assert.equal(oldCell.parentNode, null);
-  const before = json(h.publicGame(game)), sent = h.messages.length;
+  const before = stablePublic(h, game), sent = sentActions(h);
   contextMenu(oldCell, { press: false }); contextMenu(oldCell);
-  assert.equal(h.state.notes.size, 0); assert.deepEqual(json(h.publicGame(game)), before); assert.equal(h.messages.length, sent);
+  assert.equal(h.state.notes.size, 0); assert.deepEqual(stablePublic(h, game), before); assert.equal(sentActions(h), sent);
 });
 
 test('ordinary paused battle still allows private notes when there is no miss lock', () => {
@@ -2316,13 +2442,276 @@ test('ordinary paused battle still allows private notes when there is no miss lo
   h.onClose();
   const index = game.boards[0].puzzle.solution[0], cell = h.get('.battle-side.local').querySelector('.battle-board').children[index];
   const before = json(h.publicGame(game)), epoch = h.state.battleInputEpoch;
-  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', button: 0, pointerId: 1 }); h.tick(500);
+  cell.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', button: 0, pointerId: 1 }); h.tick(60);
   assert.equal(h.state.battleInputEpoch, epoch);
   const sent = h.messages.length; // Periodic transport pings during the wait are unrelated to note activation.
   cell.dispatchEvent({ type: 'pointerup', pointerType: 'touch', button: 0, pointerId: 1 }); cell.click(); h.tick(GESTURE_WAIT);
-  assert.equal(h.state.notes.has(index), true); contextMenu(cell); assert.equal(h.state.notes.has(index), false);
+  assert.equal(h.state.notes.has(index), true); singleClick(h, cell); assert.equal(h.state.notes.has(index), false);
   const after = json(h.publicGame(game)); delete before.serverTime; delete after.serverTime;
   assert.deepEqual(after, before); assert.equal(h.messages.length, sent); assert.equal(game.status, 'paused');
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) for (const pointerType of ['mouse', 'touch']) test(`${mode} ${pointerType} hold-and-drag fills crossed cells once with private ADD-only marks`, () => {
+  const { h, game, board, grid, battle } = gestureFixture(mode);
+  const resolved = [1, 2, 3, 4].filter(index => !board.puzzle.solution.includes(index)).slice(0, 2);
+  board.misses.push(...resolved); h.state.notes.add(0); h.state.notes.add(5); h.renderLegacy();
+  const before = stablePublic(h), sent = sentActions(h), sounds = json(playedAudio(h));
+  const cell = grid().children[0];
+  pointerAt(cell, 'pointerdown', cell, { pointerType }); h.tick(249);
+  assert.equal(h.state.notes.size, 2, 'a stationary hold never draws'); h.tick(1);
+  pointerAt(cell, 'pointermove', grid().children[5], { pointerType });
+  pointerAt(cell, 'pointermove', grid().children[0], { pointerType });
+  pointerAt(cell, 'pointermove', grid().children[5], { pointerType });
+  pointerAt(cell, 'pointerup', grid().children[5], { pointerType });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 });
+  cell.dispatchEvent({ type: 'dblclick', button: 0, detail: 2 }); h.tick(GESTURE_WAIT);
+  const expected = [0, 1, 2, 3, 4, 5].filter(index => !resolved.includes(index));
+  assert.deepEqual([...h.state.notes].sort((a, b) => a - b), expected);
+  for (const index of expected) assertUnopenedCell(grid().children[index], { note: true });
+  for (const index of resolved) assertConfirmedEmpty(grid().children[index]);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  assert.equal(h.state.pendingAction, null); assert.deepEqual(playedAudio(h), sounds);
+  if (mode !== 'practice') assert.deepEqual(JSON.parse(h.context.sessionStorage.getItem('p2pNotes-host')).sort((a, b) => a - b), expected);
+  assertNoPrivateKeys(json(h.publicGame(game)));
+  if (battle) assert.equal(h.get('.battle-side.opponent').querySelector('.battle-board').children.some(node => node.classList.contains('note')), false);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice']) for (const pointerType of ['mouse', 'touch']) for (const gesture of ['stationary hold', 'quick drag']) test(`${mode} ${pointerType} ${gesture} cannot become a private click or reveal`, () => {
+  const { h, board, grid } = gestureFixture(mode), index = board.puzzle.solution[0];
+  const before = stablePublic(h), sent = sentActions(h), cell = grid().children[index];
+  pointerAt(cell, 'pointerdown', cell, { pointerType }); h.tick(gesture === 'stationary hold' ? 250 : 30);
+  if (gesture === 'quick drag') pointerAt(cell, 'pointermove', cell, { pointerType, clientX: cell.getBoundingClientRect().left + 28 });
+  pointerAt(cell, 'pointerup', cell, { pointerType });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.size, 0); assert.equal(board.found.length, 0);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  doubleClick(grid().children[index], { pointerType });
+  assert.deepEqual(json(board.found), [index], 'a later fresh deliberate double remains available');
+});
+
+for (const mode of ['basic', 'battle', 'practice']) test(`${mode} native PointerEvent prototype properties survive the stroke adapter`, () => {
+  const { h, grid } = gestureFixture(mode), cell = grid().children[0];
+  const dispatch = (type, target = cell) => {
+    const rect = target.getBoundingClientRect();
+    const prototype = { type, pointerType: 'touch', pointerId: 19, button: 0, buttons: type === 'pointerup' ? 0 : 1,
+      isPrimary: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+      cancelable: true, timeStamp: h.now() };
+    const event = Object.create(prototype); cell.dispatchEvent(event); return event;
+  };
+  const before = stablePublic(h), sent = sentActions(h);
+  dispatch('pointerdown'); h.tick(250); const move = dispatch('pointermove', grid().children[5]);
+  assert.equal(move.defaultPrevented, true, 'a confirmed stroke may suppress browser scrolling');
+  dispatch('pointerup', grid().children[5]); cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['basic', 'battle']) test(`${mode} coalesced pointer samples paint their actual bend instead of only the endpoint chord`, () => {
+  const { h, grid } = gestureFixture(mode), cell = grid().children[0];
+  const before = stablePublic(h), sent = sentActions(h);
+  pointerAt(cell, 'pointerdown'); h.tick(250);
+  const bend = grid().children[6].getBoundingClientRect();
+  pointerAt(cell, 'pointermove', grid().children[11], { getCoalescedEvents: () => [Object.create({
+    clientX: bend.left + bend.width / 2, clientY: bend.top + bend.height / 2, timeStamp: h.now()
+  })] });
+  pointerAt(cell, 'pointerup', grid().children[11]); cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes].sort((a, b) => a - b), [0, 6, 7, 8, 9, 10, 11]);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+test('all native coalesced samples preserve a long stroke around three board edges', () => {
+  for (const mode of ['basic', 'battle']) {
+    const { h, grid } = gestureFixture(mode), cell = grid().children[0];
+    const before = stablePublic(h), sent = sentActions(h);
+    pointerAt(cell, 'pointerdown'); h.tick(250);
+    const samples = [30, 35, ...Array(12).fill(5)].map(index => {
+      const rect = grid().children[index].getBoundingClientRect();
+      return Object.create({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, buttons: 1, timeStamp: h.now() });
+    });
+    pointerAt(cell, 'pointermove', grid().children[5], { getCoalescedEvents: () => samples });
+    pointerAt(cell, 'pointerup', grid().children[5]); cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+    assert.deepEqual([...h.state.notes].sort((a, b) => a - b), [0, 5, 6, 11, 12, 17, 18, 23, 24, 29, 30, 31, 32, 33, 34, 35], mode);
+    assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  }
+});
+
+test('a mouse move with no held button recovers a missed release without eating the next primary click', () => {
+  for (const mode of ['basic', 'battle']) {
+    const { h, grid } = gestureFixture(mode), cell = grid().children[0];
+    const before = stablePublic(h), sent = sentActions(h);
+    pointerAt(cell, 'pointerdown'); h.tick(250); pointerAt(cell, 'pointermove', grid().children[1]);
+    assert.deepEqual([...h.state.notes], [0, 1]);
+    // The release occurred outside the window, so its pointerup was never delivered.
+    pointerAt(cell, 'pointermove', grid().children[5], { buttons: 0 });
+    assert.deepEqual([...h.state.notes], [0, 1]);
+    assert.equal(cell.hasPointerCapture(7), false); assert.equal(h.state.boardStrokes.state().pointerCount, 0);
+    singleClick(h, grid().children[2]);
+    assert.deepEqual([...h.state.notes], [0, 1, 2], `${mode} accepts the very next fresh click`);
+    assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  }
+});
+
+test('old-cell blur after a new pointerdown cannot cancel a reused pointer ID on the new cell', () => {
+  for (const mode of ['basic', 'battle']) {
+    const { h, grid } = gestureFixture(mode), previous = grid().children[0], next = grid().children[2];
+    const before = stablePublic(h), sent = sentActions(h);
+    pointerAt(previous, 'pointerdown'); h.tick(250); pointerAt(previous, 'pointermove', grid().children[1]);
+    pointerAt(previous, 'pointermove', grid().children[5], { buttons: 0 });
+    assert.deepEqual([...h.state.notes], [0, 1]);
+    pointerAt(next, 'pointerdown');
+    // Native focus changes blur the previous button after the next pointerdown.
+    previous.dispatchEvent({ type: 'blur' });
+    // A late click on A must not finish B's current pointer with the same ID.
+    previous.dispatchEvent({ type: 'click', button: 0, detail: 1 });
+    assert.equal(h.state.boardStrokes.state().pointerCount, 1);
+    pointerAt(next, 'pointerup'); next.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+    assert.deepEqual([...h.state.notes], [0, 1, 2], `${mode} keeps the new press with reused pointer ID 7`);
+    assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  }
+});
+
+test('cell blur cancels an active stroke before later movement and leaves fresh input usable', () => {
+  for (const mode of ['basic', 'battle']) {
+    const { h, grid } = gestureFixture(mode), cell = grid().children[0];
+    const before = stablePublic(h), sent = sentActions(h);
+    pointerAt(cell, 'pointerdown'); h.tick(250); pointerAt(cell, 'pointermove', grid().children[1]);
+    cell.dispatchEvent({ type: 'blur' });
+    assert.equal(cell.hasPointerCapture(7), false);
+    pointerAt(cell, 'pointermove', grid().children[5]); pointerAt(cell, 'pointerup', grid().children[5]);
+    cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+    assert.deepEqual([...h.state.notes], [0, 1], `${mode} stops drawing at cell blur`);
+    singleClick(h, grid().children[2]); assert.deepEqual([...h.state.notes], [0, 1, 2]);
+    assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  }
+});
+
+for (const mode of ['basic', 'battle']) test(`${mode} releasing an active stroke outside the board paints its last crossed cells and suppresses the click`, () => {
+  const { h, grid } = gestureFixture(mode), cell = grid().children[0];
+  const before = stablePublic(h), sent = sentActions(h);
+  pointerAt(cell, 'pointerdown'); h.tick(250); pointerAt(cell, 'pointermove', grid().children[1]);
+  const last = grid().children[5], edge = last.getBoundingClientRect();
+  pointerAt(cell, 'pointerup', last, { clientX: edge.right + 60 });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5]);
+  assert.equal(cell.hasPointerCapture(7), false);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['basic', 'items', 'treasure', 'coop']) test(`${mode} private strokes remain usable off-turn without spending currency or transmitting actions`, () => {
+  const { h, game, grid } = gestureFixture(mode); h.act(0, h.action('pass'));
+  const before = stablePublic(h), sent = sentActions(h);
+  dragMarks(h, grid, { pointerType: 'touch' }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent); assert.equal(game.turn, 1);
+});
+
+for (const mode of ['basic', 'battle']) test(`${mode} guest strokes never send an authority request or leak marks to snapshots`, () => {
+  const battle = mode === 'battle', host = harness({ mode, battle }), authority = host.begin();
+  const guest = harness({ mode, battle, battleUI: battle }); guest.state.role = 'guest'; guest.state.you = 1; guest.enableRendering();
+  guest.onMessage({ type: 'state', state: json(host.publicGame(authority)) }); guest.renderLegacy();
+  const grid = () => battle ? guest.get('.battle-side.local').querySelector('.battle-board') : guest.get('#board');
+  const before = stablePublic(guest), sent = sentActions(guest);
+  dragMarks(guest, grid, { pointerType: 'touch' }); guest.tick(GESTURE_WAIT);
+  assert.deepEqual([...guest.state.notes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(stablePublic(guest), before); assert.equal(sentActions(guest), sent); assert.equal(guest.state.pendingAction, null);
+  assert.deepEqual(JSON.parse(guest.context.sessionStorage.getItem('p2pNotes-guest')), [0, 1, 2, 3, 4, 5]);
+  assert.equal(guest.context.sessionStorage.getItem('p2pNotes-host'), null); assertNoPrivateKeys(json(guest.publicGame(guest.state.game)));
+});
+
+for (const mode of ['basic', 'battle']) for (const initiallyMarked of [false, true]) test(`${mode} guest native mouse double restores the exact private mark while waiting for authority`, () => {
+  const battle = mode === 'battle', host = harness({ mode, battle }), authority = host.begin();
+  if (!battle) host.act(0, host.action('pass'));
+  const guest = harness({ mode, battle, battleUI: battle }); guest.state.role = 'guest'; guest.state.you = 1; guest.enableRendering();
+  guest.onMessage({ type: 'state', state: json(host.publicGame(authority)) }); guest.renderLegacy();
+  const board = battle ? authority.boards[1] : authority, index = board.puzzle.solution[0];
+  const grid = () => battle ? guest.get('.battle-side.local').querySelector('.battle-board') : guest.get('#board');
+  if (initiallyMarked) { guest.state.notes.add(index); guest.renderLegacy(); }
+  const before = stablePublic(guest), sent = guest.messages.filter(message => message.type === 'action').length;
+  let cell = grid().children[index]; pointerAt(cell, 'pointerdown'); pointerAt(cell, 'pointerup');
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); guest.tick(350);
+  assert.equal(guest.state.notes.has(index), !initiallyMarked);
+  cell = grid().children[index]; pointerAt(cell, 'pointerdown'); pointerAt(cell, 'pointerup');
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 2 }); guest.tick(GESTURE_WAIT);
+  assert.equal(guest.state.notes.has(index), initiallyMarked, 'native promotion undoes only its own first-click toggle');
+  assert.deepEqual(stablePublic(guest), before); assert.ok(guest.state.pendingAction);
+  assert.equal(guest.messages.filter(message => message.type === 'action').length, sent + 1);
+});
+
+for (const mode of ['battle', 'practice']) test(`${mode} a stroke started during the real hit cooldown stays private and skips the captured cell`, () => {
+  const { h, board, grid } = gestureFixture(mode), cat = board.puzzle.solution[0];
+  h.act(0, battleAction(h, 0, { index: cat }));
+  const from = cat === 0 ? 1 : 0, before = stablePublic(h), sent = sentActions(h);
+  dragMarks(h, grid, { from, to: 5, pointerType: 'touch' });
+  assert.equal(board.cooldownUntil - h.now(), 50, 'drawing begins before the 300 ms hit cooldown expires');
+  const expected = Array.from({ length: 6 - from }, (_, offset) => from + offset).filter(index => index !== cat);
+  assert.deepEqual([...h.state.notes].sort((a, b) => a - b), expected);
+  h.tick(GESTURE_WAIT); assert.deepEqual(json(board.found), [cat]);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['battle', 'practice']) test(`${mode} an opponent-board drag never starts a local stroke`, () => {
+  const { h } = gestureFixture(mode), grid = () => h.get('.battle-side.opponent').querySelector('.battle-board');
+  const before = stablePublic(h), sent = sentActions(h);
+  dragMarks(h, grid, { pointerType: 'touch' }); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.size, 0); assert.equal(h.state.boardStrokes?.state().active || false, false);
+  assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+test('a 24 by 24 legacy board interpolates a complete row without action or per-cell timers', () => {
+  const h = harness({ size: 24 }); h.begin(); h.enableRendering(); h.renderLegacy();
+  const grid = () => h.get('#board'), before = stablePublic(h), sent = sentActions(h), timers = h.timers.size;
+  vm.runInContext('globalThis.strokeNoteSaves = 0; const strokeSave = saveLocal; saveLocal = (...args) => { strokeNoteSaves++; return strokeSave(...args); };', h.context);
+  dragMarks(h, grid, { to: 23, pointerType: 'touch' });
+  assert.deepEqual([...h.state.notes], Array.from({ length: 24 }, (_, index) => index));
+  assert.ok(h.timers.size <= timers, 'drawing adds no timer for traversed cells');
+  assert.equal(h.context.strokeNoteSaves, 1, 'one stroke persists its completed private notes in one write');
+  h.tick(GESTURE_WAIT); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['basic', 'battle', 'practice']) for (const cancellation of ['pointercancel', 'lostpointercapture', 'blur', 'background', 'disconnect', 'reconnect', 'finished', 'boardchange']) test(`${mode} ${cancellation} stops an active stroke and suppresses its late click`, () => {
+  const { h, game, grid } = gestureFixture(mode), cell = grid().children[0];
+  pointerAt(cell, 'pointerdown'); h.tick(250); pointerAt(cell, 'pointermove', grid().children[1]);
+  assert.deepEqual([...h.state.notes], [0, 1]);
+  if (cancellation === 'pointercancel' || cancellation === 'lostpointercapture') pointerAt(cell, cancellation);
+  if (cancellation === 'blur') h.dispatchWindow('blur');
+  if (cancellation === 'background') { h.context.document.hidden = true; h.dispatchDocument('visibilitychange'); }
+  if (cancellation === 'disconnect') h.onClose();
+  if (cancellation === 'reconnect') h.onOpen();
+  if (cancellation === 'finished') { game.status = 'finished'; h.renderLegacy(); }
+  if (cancellation === 'boardchange') { h.begin(); h.renderLegacy(); }
+  const notes = [...h.state.notes], before = stablePublic(h), sent = sentActions(h);
+  pointerAt(cell, 'pointermove', grid().children[5]); pointerAt(cell, 'pointerup', grid().children[5]);
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes], notes); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+});
+
+for (const mode of ['battle', 'practice']) test(`${mode} a strict miss lock ends an active stroke and a held press cannot resume at expiry`, () => {
+  const { h, board, grid } = gestureFixture(mode), cell = grid().children[0];
+  pointerAt(cell, 'pointerdown', cell, { pointerType: 'touch' }); h.tick(250);
+  pointerAt(cell, 'pointermove', grid().children[1], { pointerType: 'touch' });
+  const miss = board.puzzle.regions.findIndex((_, index) => index > 5 && !board.puzzle.solution.includes(index));
+  h.act(0, battleAction(h, 0, { index: miss }));
+  const notes = [...h.state.notes], before = stablePublic(h), sent = sentActions(h);
+  h.tick(2000); h.updateBattleTimers();
+  pointerAt(cell, 'pointermove', grid().children[5], { pointerType: 'touch' });
+  pointerAt(cell, 'pointerup', grid().children[5], { pointerType: 'touch' });
+  cell.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes], notes); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  dragMarks(h, grid, { from: 6, to: 11, pointerType: 'touch' }); h.tick(GESTURE_WAIT);
+  assert.equal(h.state.notes.has(11), !board.misses.includes(11), 'a fresh post-lock stroke works only on unresolved cells');
+});
+
+for (const mode of ['basic', 'battle', 'practice']) test(`${mode} a second touch cancels drawing and late releases cannot turn into taps`, () => {
+  const { h, grid } = gestureFixture(mode), first = grid().children[0], second = grid().children[5];
+  pointerAt(first, 'pointerdown', first, { pointerType: 'touch', pointerId: 1 }); h.tick(250);
+  pointerAt(first, 'pointermove', grid().children[1], { pointerType: 'touch', pointerId: 1 });
+  const before = stablePublic(h), sent = sentActions(h), notes = [...h.state.notes];
+  pointerAt(second, 'pointerdown', second, { pointerType: 'touch', pointerId: 2, isPrimary: false });
+  pointerAt(first, 'pointermove', grid().children[4], { pointerType: 'touch', pointerId: 1 });
+  pointerAt(second, 'pointerup', second, { pointerType: 'touch', pointerId: 2, isPrimary: false });
+  pointerAt(first, 'pointerup', grid().children[4], { pointerType: 'touch', pointerId: 1 });
+  first.dispatchEvent({ type: 'click', button: 0, detail: 1 }); second.dispatchEvent({ type: 'click', button: 0, detail: 1 }); h.tick(GESTURE_WAIT);
+  assert.deepEqual([...h.state.notes], notes); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
 });
 
 for (const mode of ['items', 'coop']) for (const item of ['magnifier', 'yarn']) test(`${mode} explicitly armed ${item} consumes deliberate single selection without accidental double guessing`, () => {
