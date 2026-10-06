@@ -790,26 +790,32 @@ body.is-battle #turnBanner { display: none; }
 
 /* Region color is persistent. Purple × is private; dark gray × is confirmed.
    The same single/double activation gesture is used on desktop and mobile. */
+/* A quiet, persistent reading line. It is text, not a control or card. */
 .gesture-hint {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
   min-width: 0;
   max-width: 100%;
   margin: 0;
-  color: #58306f;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #6b503c;
   font-size: 16px;
-  font-weight: 850;
-  line-height: 1.55;
+  font-weight: 650;
+  line-height: 1.5;
   text-align: center;
-  overflow-wrap: anywhere;
 }
-#game .center > .gesture-hint {
-  width: 100%;
-  margin: 0 0 8px;
-  padding: 9px 12px;
-  border: 1px solid #cfbada;
-  border-radius: 14px;
-  background: #f5edf9;
-}
+.gesture-action { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.gesture-mark { color: #58306f; font-size: 17px; font-weight: 850; line-height: 1; }
+.gesture-divider { color: #93775b; }
+.gesture-paw { flex: 0 0 18px; width: 18px; height: 18px; fill: currentColor; }
+#game .center > .gesture-hint { width: 100%; margin: 0 0 6px; }
 .battle-toolbar { flex-wrap: wrap; column-gap: 8px; row-gap: 5px; }
 .battle-toolbar > button { flex: 0 1 auto; min-width: 0; }
 .modes { width: 100%; }
@@ -1461,24 +1467,10 @@ body.is-battle #turnBanner { display: none; }
   .battle-paw-shot::after { display: none; }
 }
 
-/* Persistent gesture instructions belong to the local board, in normal flow.
-   Phone/tablet: above the grid. Desktop: a dedicated sidebar beside the grid. */
-#battleArena .primary-controls-slot { min-width: 0; }
-#battleArena .primary-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  gap: 8px;
-  min-width: 0;
-  margin: 0 0 10px;
-  padding: 10px;
-  border: 2px solid #b49bc8;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #fffaff, #f1e8f8);
-  box-shadow: inset 0 1px 0 #fff, 0 3px 0 #bd9ac332;
-}
-#battleArena .primary-controls .gesture-hint { text-align: left; }
-#battleArena .primary-controls:empty { display: none; }
+/* Own-board guidance lives between player status and the cream panel.
+   Its single compact line never takes a column away from the colored grid. */
+#battleArena .local > .combo-badge { margin-bottom: 0; }
+#battleArena .local > .gesture-hint { margin: 8px 0; }
 #battleArena .battle-board-stage {
   position: relative;
   isolation: isolate;
@@ -1542,23 +1534,25 @@ body.is-battle #turnBanner { display: none; }
 #battleArena .battle-status #battleHelp { background: #fff7e6; padding-inline: 12px; }
 
 /* Desktop height contract, at 100% browser zoom:
-   B = clamp(288px, H - 376px, 560px), constrained by each column's width.
-   Ordinary play chrome uses about 355px: arena padding 20 + header 92 +
-   notice 32 + player 64 + side gaps 12 + card chrome 52 + basket 44 + rules 39.
-   1280x720 -> B=344, 1366x768 -> B=392, 1920x1080 -> B=560.
-   This leaves ~21px headroom in short viewports, without clipping the page,
-   lowering interface type sizes, or putting essential controls behind menus.
-   Names/status may still grow naturally; these are source budgets, not a
-   browser-measured guarantee for arbitrary font substitution or long content. */
+   B = clamp(288px, H - 400px, 560px), constrained by the available width.
+   Both board panels hug their squares: B + 24px padding/border, no sidebar.
+   Status columns keep at least 368px each when the viewport permits, even
+   when emergency controls reduce the square; no narrow nickname sliver.
+   Modeled chrome: arena 20 + header 92 + notice 32 + status 64 + guidance 24
+   + side gaps 18 + card chrome 46 + basket 44 + rules 39 = 379px.
+   1280x720 -> B=320, 1366x768 -> B=368, 1920x1080 -> B=560.
+   The 21px short-screen headroom allows ordinary name wrapping. Long status
+   content grows naturally instead of clipping. These are source budgets,
+   not browser-measured guarantees for font substitution or arbitrary names. */
 @media (min-width: 1100px) {
   #battleArena {
-    --battle-board-size: clamp(288px, calc(100dvh - 376px), 560px);
+    --battle-board-size: clamp(288px, calc(100dvh - 400px), 560px);
     width: min(1460px, calc(100% - 48px));
     max-width: none;
     padding-top: 8px;
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
-  #battleArena:has(.battle-toolbar > button:not(.hidden)) { --battle-board-size: clamp(272px, calc(100dvh - 440px), 560px); }
+  #battleArena:has(.battle-toolbar > button:not(.hidden)) { --battle-board-size: clamp(256px, calc(100dvh - 464px), 560px); }
   #battleArena .battle-header { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; padding: 0; }
   #battleArena .battle-brand { min-width: 260px; padding: 6px 20px; gap: 1px; }
   #battleArena .battle-brand h1 { font-size: 32px; line-height: 1.2; }
@@ -1566,21 +1560,20 @@ body.is-battle #turnBanner { display: none; }
   #battleArena .battle-brand::before, #battleArena .battle-brand::after { height: 12px; top: -12px; }
   #battleArena .battle-status { justify-content: flex-end; gap: 6px; }
   #battleArena #battleNotice { margin: 6px auto; line-height: 20px; }
-  #battleArena .battle-layout { grid-template-columns: minmax(0, 1.3fr) 48px minmax(0, 1fr); gap: 16px; }
+  #battleArena .battle-layout { width: min(100%, max(816px, calc(2 * var(--battle-board-size) + 128px))); margin-inline: auto; grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr); gap: 16px; }
   #battleArena .battle-vs { width: 48px; height: 50px; margin-top: 9px; font-size: 21px; }
-  #battleArena .battle-side { display: grid; grid-template-columns: minmax(0, 1fr) 154px; grid-template-rows: repeat(3, max-content); align-content: start; gap: 6px 10px; }
+  #battleArena .battle-side { display: grid; grid-template-columns: minmax(0, 1fr) 128px; grid-auto-rows: max-content; align-content: start; gap: 6px 10px; }
   #battleArena .battle-player { grid-column: 1; grid-row: 1; grid-template-columns: 64px minmax(0, 1fr); min-height: 64px; margin: 0; padding: 0; gap: 4px 10px; }
   #battleArena .portrait { width: 64px; height: 64px; }
-  #battleArena .player-identity { padding-top: 0; gap: 4px 8px; }
+  #battleArena .player-identity { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; padding-top: 0; gap: 4px 8px; }
   #battleArena .combo-badge { grid-column: 2; grid-row: 1; flex-direction: column; align-self: center; min-width: 0; width: 100%; max-width: 100%; margin: 0; padding: 4px 8px; gap: 0; border-radius: 16px; }
-  #battleArena .board-card { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 6px; min-width: 0; padding: 8px 10px 10px; border-radius: 22px; }
+  #battleArena .board-card { grid-column: 1 / -1; grid-row: 2; width: min(100%, calc(var(--battle-board-size) + 24px)); justify-self: center; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; min-width: 0; padding: 6px 10px 8px; border-radius: 22px; }
   #battleArena .board-heading { grid-column: 1 / -1; min-height: 24px; margin: 0; padding: 0; }
-  #battleArena .local .board-card { grid-template-columns: minmax(0, 1fr) 160px; column-gap: 12px; }
-  #battleArena .local .primary-controls-slot { grid-column: 2; grid-row: 2; align-self: start; }
-  #battleArena .primary-controls { margin: 0; padding: 9px; }
+  #battleArena .local > .gesture-hint { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+  #battleArena .local > .board-card { grid-row: 3; }
   #battleArena .battle-board-stage { width: min(100%, var(--battle-board-size)); }
-  #battleArena .local .battle-board-stage { grid-column: 1; grid-row: 2; }
   #battleArena .cat-basket { grid-column: 1 / -1; grid-row: 3; width: fit-content; max-width: 100%; min-height: 44px; margin: 0 auto; padding: 4px 12px; gap: 5px; border-width: 5px; }
+  #battleArena .local > .cat-basket { grid-row: 4; }
   #battleArena .cat-basket::before { inset: -5px; border-width: 5px; }
   #battleArena .cat-basket .basket-cat { width: 24px; height: 24px; }
   #battleArena .battle-instructions { margin-top: 6px; padding: 4px 8px; line-height: 1.6; }
@@ -1628,7 +1621,6 @@ body.is-battle #turnBanner { display: none; }
 }
 @media (max-width: 700px) {
   #battleArena .battle-board-stage { border-radius: 12px; }
-  #battleArena .primary-controls { padding: 8px; gap: 6px; }
   #battleArena .opponent .battle-board-stage > .battle-lock { width: 100%; padding: 4px; gap: 3px; border-radius: 7px; grid-template-rows: repeat(2, max-content); }
   #battleArena .opponent .battle-board-stage .lock-copy { grid-row: 1; gap: 2px; }
   #battleArena .opponent .battle-board-stage .lock-copy > strong { font-size: 12px; line-height: 1.3; }

@@ -78,6 +78,15 @@ function element(tagName = 'div') {
     click() { if (!this.disabled) this.dispatchEvent({ type: 'click' }); },
     remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+    insertBefore(child, reference) {
+      if (reference && reference.parentNode !== this) throw new Error('reference is not a direct child');
+      child.remove();
+      // Query-backed fixture descendants are lazy; put that reference in the
+      // ordered children list before testing the actual insertion operation.
+      if (reference && !this.children.includes(reference)) this.children.push(reference);
+      const index = reference ? this.children.indexOf(reference) : this.children.length;
+      child.parentNode = this; this.children.splice(index, 0, child); return child;
+    },
     append(...children) { children.forEach(child => this.appendChild(child)); },
     cloneNode() { const clone = element(tagName); clone.className = this.className; clone.innerHTML = html; clone.textContent = this.textContent; return clone; },
     matches(selector) {
@@ -859,6 +868,34 @@ test('battle guest acknowledgements clear only the matching pending action and s
   assert.equal(h.context.CatBattle.act(h.state.game, 1, { type: 'guess', actionId: 'not-authority', boardId: next.boards[1].puzzle.id, index: 0 }, h.now()).reason, 'not-authority');
 });
 
+for (const you of [0, 1]) test(`own-board guidance is outside the panel and stays unique for player ${you}`, () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
+  h.state.you = you; h.renderBattle();
+  const hint = h.get('#battleGestureHint'), local = h.get('.battle-side.local'), opponent = h.get('.battle-side.opponent');
+  const assertPlacement = () => {
+    assert.strictEqual(hint.parentNode, local, 'guidance is a direct local-side child');
+    const card = local.querySelector('.board-card');
+    assert.equal(local.children.indexOf(hint) + 1, local.children.indexOf(card), 'line immediately precedes the cream panel');
+    assert.equal(local.children.filter(node => node === hint).length, 1);
+    assert.equal(opponent.children.includes(hint), false, 'no instruction is placed on the read-only board');
+    assert.doesNotMatch(local.innerHTML + opponent.innerHTML, /primary-controls|gesture-hint/, 'the board template contains no duplicate sidebar or hidden copy');
+  };
+  assertPlacement();
+  const before = battleNodeReferences(h);
+  for (let count = 0; count < 3; count++) { h.renderBattle(); assertPlacement(); }
+  assertBattleNodesUnchanged(h, before, 'guidance-only stable render');
+  for (const status of ['paused', 'playing', 'finished']) { game.status = status; h.renderBattle(); assertPlacement(); }
+  h.begin(); h.renderBattle(); assertPlacement();
+});
+
+test('offline practice uses the same single external guidance line', () => {
+  const h = harness({ mode: 'battle', battle: true, battleUI: true });
+  h.enableRendering(); h.startPractice();
+  assert.equal(h.state.practice, true);
+  assert.strictEqual(h.get('#battleGestureHint').parentNode, h.get('.battle-side.local'));
+  assert.equal(h.get('.battle-side.local').children.filter(node => node === h.get('#battleGestureHint')).length, 1);
+});
+
 test('battle UI renders opponent cells read-only and preserves manual notes during hit cooldown', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.renderBattle();
@@ -1324,7 +1361,7 @@ test('battle interval removes the miss lock at its exact deadline and never disp
   h.advance(1); for (const interval of h.intervals) interval();
   let own = h.get('.battle-side.local');
   assert.equal(own.querySelector('.battle-lock').classList.contains('hidden'), true, 'the centered lock leaves immediately at expiry');
-  assert.match(h.get('#battleNotice').textContent, /可以找貓了/);
+  assert.equal(h.get('#battleNotice').textContent, '可以找貓了！', 'unlock status does not duplicate the persistent gesture line');
   assert.equal(own.querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, false);
   h.advance(10000); h.updateBattleTimers(); own = h.get('.battle-side.local');
   const lock = own.querySelector('.battle-lock');
@@ -1427,7 +1464,7 @@ test('miss lock blocks every gesture and expiry restores private single marks an
   assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent); assert.equal(h.state.pendingAction, null);
   h.advance(2000 - GESTURE_WAIT); h.updateBattleTimers();
   assert.equal(board.found.includes(target), false, 'expiry cannot submit an earlier activation');
-  assert.equal(lock.classList.contains('hidden'), true); assert.match(h.get('#battleNotice').textContent, /可以找貓了/);
+  assert.equal(lock.classList.contains('hidden'), true); assert.equal(h.get('#battleNotice').textContent, '可以找貓了！', 'unlock status does not duplicate the persistent gesture line');
   singleClick(h, grid().children[target]);
   assert.equal(h.state.notes.has(target), true); assert.equal(board.found.includes(target), false); assert.equal(sentActions(h), sent);
   doubleClick(grid().children[target]);
@@ -1550,7 +1587,7 @@ test('a fresh miss pops once and shows one unlock notice without rerender replay
   h.tick(520); assert.equal(lock.classList.contains('lock-pop'), false);
   h.renderBattle(); assert.equal(lock.classList.contains('lock-pop'), false);
   h.tick(1480); assert.equal(lock.classList.contains('hidden'), true);
-  assert.match(h.get('#battleNotice').textContent, /可以找貓了/);
+  assert.equal(h.get('#battleNotice').textContent, '可以找貓了！', 'unlock status does not duplicate the persistent gesture line');
   assert.equal(playedAudio(h).filter(sound => sound.kind === 'unlock').length, 1);
   h.renderBattle(); h.updateBattleTimers(); assert.equal(playedAudio(h).filter(sound => sound.kind === 'unlock').length, 1);
   h.tick(1100); h.renderBattle();

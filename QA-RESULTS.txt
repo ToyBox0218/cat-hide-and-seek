@@ -1,9 +1,9 @@
-CAT HIDE & SEEK — APPROVED UNIFIED-GESTURES / COLOR-REGIONS RELEASE
+CAT HIDE & SEEK — APPROVED COMPACT OWN-BOARD GUIDANCE RELEASE
 Date: 2026-10-06
-Base repository commit: 7eb838f8a6cee927ce1d92d9918f04179c653ae4
-Status: User approved publication of the single-mark/double-reveal/color-region revision. 7eb838f is the preserved rollback parent. Exact deployment and HTTP checks are recorded separately after publication.
+Base repository commit: 7064a99b2267a94f2f1c15733ba2e7959cb00a41
+Status: User approved publication after the visual-QA blocker was disclosed. 7064a99 is the preserved rollback parent. Exact deployment and served-byte checks are recorded separately. The supplied screenshot was inspected as problem evidence, not as a new QA screenshot.
 
-PASS — 489 Node tests (node --test)
+PASS — 526 Node tests (node --test)
 
 31 shared gesture-controller tests:
 - One single-use press intent per pointer/keyboard activation; click is the only
@@ -15,7 +15,7 @@ PASS — 489 Node tests (node --test)
 - Context/eligibility checks at press, activation and dispatch; bounded pending timers.
 - cancel, cancelCell, aborted signals, stale/blocked presses and lifecycle cleanup.
 
-293 app/legacy integration and fake-DOM tests:
+296 app/legacy integration and fake-DOM tests:
 - All four legacy modes, battle and labeled offline practice share the gesture flow.
 - Single clicks/taps change only private purple X, never HP, score, fish, turns,
   cooldowns, host actions, combat sound or public snapshots.
@@ -33,7 +33,10 @@ PASS — 489 Node tests (node --test)
 - Optional right-click remains private and cancels the cell's pending single.
 - Armed magnifier/yarn clicks deliberately select tool targets, suppressing a rapid
   second same-cell click after completion; no unintended normal mark or reveal.
-- Note toggle removed. Persistent instructions are beside/above the own board.
+- Note toggle remains removed. One persistent, unboxed instruction line is mounted
+  as a direct sibling before the local cream board panel. Opponent gets no copy.
+- Repeated renders, both local player IDs, paused/finished states, replacement games
+  and offline practice preserve one external guidance node without rebuilding cells.
 - Existing countdown, audio/FX deduplication, reconnect, item, cooperative, treasure,
   private-intel, no-auto-deduction and confirmed-empty behavior remain covered.
 
@@ -55,22 +58,33 @@ PASS — 489 Node tests (node --test)
 - 24-color minimum OKLab distance 0.0762814; base ink contrast >=4.60777:1.
 - Palette depends only on public board geometry, not hidden answers.
 
-53 CSS/layout source contracts:
+87 CSS/layout source contracts:
 - No region-edge selectors/overrides or thick dark board outlines remain.
 - Existing region colors fill hidden, private-note and confirmed-empty cells; uniform
   subtle ordinary separators replace region-boundary lines.
 - Purple/private and gray/confirmed markers preserve calculated contrast on all colors.
-- Clear persistent '點一下做記號，快速點兩下翻格' guidance replaces toggle controls.
+- Compact '單點 ✕ 標記 ｜ 雙點 [paw SVG] 翻格' guidance is warm, 16px text.
+  Only the private X is purple; no box, background, shadow, or button styling.
+- Authored HTML/template trees verify guidance outside cream panels and exact matching
+  action groups in old modes. Named note text is associated with playable grids.
+- The 160px sidebar and its wrapper/CSS are removed, not merely hidden. Desktop
+  equal columns keep the cream panels sized to square + 24px, without a spare track.
+- Separate status width survives smaller emergency boards; local status/hint/card/
+  basket rows do not overlap. Mobile negative combo margins are reset.
 - Local touch-action: manipulation preserves pan/pinch and page zoom; no global zoom ban.
 - Centered strict lock remains a blocking overlay and reduced motion remains supported.
-- Responsive source budgets include 320/360/390/430/768 widths and desktop
+- Responsive source budgets include 320/360/390/430/700/701/768/1099/1100 widths and desktop
   1280x720, 1366x768, 1920x1080; content-sized baskets/cards and toolbar fit contracts.
 - These are authored CSS and arithmetic assertions, not rendered rectangles.
 
 PASS — Syntax, packaging and static checks
 - All 18 JavaScript files pass node --check.
 - git diff --check passes.
-- Single-file preview embeds cell-gestures.js, other scripts/styles, artwork and WAVs.
+- Existing preview-builder regression verifies embedded scripts/styles/art/audio.
+- The standalone preview and source ZIP were rebuilt from the frozen revision;
+  compact guidance/sibling mounting and absence of the old sidebar were verified.
+  All 35 source ZIP files match the source revision used for that artifact build.
+- No new browser screenshot or visual/device acceptance result is claimed.
 
 NOT VERIFIED — Browser/device acceptance
 - Actual mobile tap/double-tap, native click compatibility ordering, pinch zoom,
