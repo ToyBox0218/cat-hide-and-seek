@@ -1,9 +1,19 @@
-CAT HIDE & SEEK — APPROVED 2–4 PLAYER SURVIVAL RELEASE
+CAT HIDE & SEEK — APPROVED SURVIVAL ABORT-DISPLAY CORRECTION
 Date: 2026-10-06
-Base/public repository commit: 7b94c4a5f470e37ee7fd49cadeb7dd6441f85e43
-Status: User approved publication on2026-10-06. Exact-commit deployment and public-byte evidence are recorded separately.
+Base/public repository commit: 92b7cfc3dc3093dfb533a6a4b8b130768e0776ba
+Status: User approved publication and local browser recheck on2026-10-06. Exact-commit deployment evidence and the subsequent render recheck are recorded separately.
 
-PASS — 938 Node tests (node --test tests/*.test.js), 0 failed
+PASS — 946 Node tests (node --test tests/*.test.js), 0 failed
+
+8 focused abort-display regressions:
+- Actual engine host abort and app guest recovery timeout replace the live counter,
+  player rows, follow choices and quota/result labels with aborted/no-result copy.
+- Historical/reconnect aborted snapshots cannot display stale winner IDs or legacy
+  winner fields as crowns; normal single/shared champions still display correctly.
+- Player scores, errors, boards and earlier quota-elimination history are unchanged.
+- Aborted boards remain read-only; pending gestures, feedback and audio are cleaned.
+- Against release92b7cfc UI in an isolated VM,5 fail /3 pass; corrected UI passes8/8.
+  The production file was never reverted during the baseline comparison.
 
 66 survival authority tests:
 - Fixed two-to-four-human room, no AI and no manual-ready requirement.
@@ -63,16 +73,22 @@ PASS — 938 Node tests (node --test tests/*.test.js), 0 failed
  independent battle boards/HP/combo, items, treasure and coop remain covered.
 
 PASS — Syntax and packaging
-- All28 JavaScript files pass node --check; git diff --check passes.
+- All29 JavaScript files pass node --check; git diff --check passes.
 - Standalone preview and source ZIP are rebuilt from this frozen source.
 - The preview includes every local JS/CSS/image/audio asset. It opens in labeled
   duel practice; returning to the entry offers survival, which requires2–4 real
   humans and working networking. It does not simulate survival opponents.
 - Artifact hashes and file-byte verification are recorded beside the deliverables.
 
-NOT VERIFIED — Actual browser/device/network acceptance
-- Real2–4-device PeerJS/STUN/NAT connections, latency behavior or connectivity.
-- Rendered desktop100%-zoom fit, physical mobile gestures, accessibility or audio.
-- Source arithmetic/fake DOM are not browser screenshot or device evidence.
-- Existing browser URL/permission/DevTools restrictions were not retried or bypassed.
+PRIOR ACTUAL LOCAL IAB QA — Release92b7cfc
+- Same-computer2–4-player P2P, full five-minute match, score/error tie-break and
+  reconnect were verified. That run identified the misleading aborted-state copy.
+
+NOT YET VERIFIED — This correction and remaining device/network coverage
+- Corrected labels have not yet been visually rechecked in a deployed browser.
+- Separate-device/external-network PeerJS/STUN/NAT connectivity remains unverified.
+- Full rendered viewport fit, native mobile gestures, accessibility and audio
+  acceptance cannot be inferred from the prior same-computer session.
+- Source arithmetic/fake DOM are not screenshot or physical-device evidence.
+- Cloud browser URL/permission/DevTools restrictions were not retried or bypassed.
 - No new account, paid service, TURN relay or Library upload.
