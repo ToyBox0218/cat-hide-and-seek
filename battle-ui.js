@@ -275,6 +275,7 @@ function updateBattleTimers(){
 }
 
 function startPractice(){
+  if(state.survivalSession)disposeSurvivalRoom('practice');
   cancelBoardGestures();clearBattleFX();stopGameAudio();state.suppressBattleFX=false;state.battleOpeningBeat=null;
   state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.peer=null;state.transport=null;state.practice=true;state.role='host';state.you=0;state.room='本機練習';state.clockOffset=0;state.notes.clear();state.pendingAction=null;state.battleBoardId=null;state.battleObservedEvent=null;
   state.game=CatBattle.create({mode:'battle',maxHP:150},[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,connected:true},{nickname:'暖暖橘子',avatar:1,connected:true}]);CatBattle.start(state.game);render();

@@ -1,0 +1,285 @@
+/* A friends-only room. All selectors are scoped to the sixth mode. */
+body.is-survival #game { width: 100%; overflow: visible; }
+body.is-survival #game > .top,
+body.is-survival #game > .arena,
+body.is-survival #game > footer,
+body.is-survival #turnBanner,
+body.is-survival #battleArena,
+body.is-survival .help-fab { display: none !important; }
+#survivalArena { --survival-green: #3e806c; --survival-soft: #e4eee3; --survival-brown: #715139; --survival-board-size: clamp(288px, calc(100dvh - 340px), 560px); --survival-main-width: calc(var(--survival-board-size) + 24px); --survival-rail-width: 144px; --survival-friends-width: 380px; --survival-layout-gap: 18px; width: min(calc(var(--survival-main-width) + var(--survival-rail-width) + var(--survival-friends-width) + 2 * var(--survival-layout-gap)), calc(100% - 32px)); min-height: 100dvh; margin: 0 auto; padding: 12px 0 16px; color: #514335; font-size: 16px; line-height: 1.45; }
+#survivalArena *, #survivalArena *::before, #survivalArena *::after { box-sizing: border-box; }
+#survivalArena button:not(.cell), #survivalArena select { min-height: 44px; font-size: 16px; }
+#survivalArena button:disabled { cursor: not-allowed; opacity: .48; transform: none; box-shadow: none; }
+#survivalArena button:not(.cell):hover { transform: translateY(-1px); }
+#survivalArena button:focus-visible, #survivalArena select:focus-visible { outline: 3px solid #287a73; outline-offset: 3px; }
+.survival-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.survival-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.survival-brand-paw { display: grid; place-items: center; flex: 0 0 auto; width: 58px; height: 58px; border: 2px solid #fffaf0; border-radius: 20px; background: linear-gradient(145deg, #e8c69f, #d9ac7c); box-shadow: 0 3px 0 #b58c6255, inset 0 0 0 3px #efd7b9; font-size: 31px; transform: rotate(-7deg); }
+.survival-brand small { display: block; color: #94714d; font-size: 10px; line-height: 1.3; font-weight: 900; letter-spacing: .14em; }
+.survival-brand h1 { margin: 2px 0; color: #68492f; font-size: 32px; line-height: 1.15; letter-spacing: .03em; }
+.survival-brand p { margin: 0; color: #876749; font-size: 14px; }
+.survival-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.survival-toolbar button { padding: 8px 12px; border: 1px solid #ddc9af; border-radius: 13px; background: #fff8e9; color: #75553b; }
+#survivalCopy { background: #e5eee2; border-color: #b8cdb8; color: #3d715c; }
+#survivalMute { width: 44px; padding-inline: 5px; }
+.survival-connection-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-height: 24px; margin-bottom: 10px; color: #886b4f; font-size: 14px; }
+#survivalConnection { display: inline-flex; align-items: center; gap: 7px; }
+#survivalConnection::before { content: ''; display: block; width: 7px; height: 7px; border-radius: 50%; background: #5e9b79; box-shadow: 0 0 0 3px #5e9b7914; }
+#survivalConnection.is-offline::before { background: #c4884a; }
+#survivalRoom { border-left: 1px solid #d8c3a9; padding-left: 10px; font-weight: 800; letter-spacing: .04em; }
+#survivalRetry { margin-left: auto; padding: 4px 10px; }
+.survival-connection-notice, .survival-spectator-notice { margin: 0 0 14px; padding: 13px 16px; border: 1px solid #d5b888; border-radius: 15px; color: #785325; background: #fff0cd; font-size: 14px; line-height: 1.6; }
+.survival-spectator-notice { background: #edf1e7; border-color: #becdb7; color: #526d50; }
+.survival-paper { border: 2px solid #fffdf3; border-radius: 23px; background: #fffaf0eb; box-shadow: 0 3px 0 #c9af8b35, 0 10px 27px #7656370c; }
+.survival-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#survivalArena h2 { margin: 0; font-size: 21px; line-height: 1.4; }
+.survival-eyebrow { display: block; margin-bottom: 5px; color: #9b7958; font-size: 14px; font-weight: 800; letter-spacing: .1em; }
+.survival-pill { flex: 0 0 auto; padding: 5px 10px; border-radius: 50px; background: #eee2cc; color: #846444; font-size: 14px; font-weight: 850; white-space: nowrap; }
+.survival-soft { color: #8a725d; font-size: 16px; line-height: 1.7; }
+.survival-lobby { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 22px; align-items: start; }
+.survival-lobby-main { position: relative; padding: 27px; overflow: hidden; }
+.survival-seats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.survival-seat { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 15px 6px 12px; border: 1px solid #e7d7bd; border-radius: 17px; background: linear-gradient(#fffdf7, #f7eddd); text-align: center; }
+.survival-avatar { display: grid; place-items: center; flex: 0 0 auto; width: 63px; height: 63px; border: 2px solid #d0b58a; border-radius: 50%; background: #f9ecd3; box-shadow: inset 0 0 0 3px #fff9ed; overflow: hidden; }
+.survival-avatar > .avatar-art { width: 94%; height: 94%; }
+.survival-seat b { max-width: 100%; overflow-wrap: anywhere; font-size: 16px; line-height: 1.4; }
+.survival-seat b small, .survival-row-name b small { color: #3e806c; font-size: 14px; }
+.survival-seat-state { font-size: 14px; color: #947b61; }
+.survival-seat.is-connected { border-color: #afc6a9; background: linear-gradient(#fafff5, #eaf0df); }
+.survival-seat.is-connected .survival-seat-state { color: #42774c; font-weight: 800; }
+.survival-seat.is-connected .survival-avatar { border-color: #97b78f; }
+.survival-seat.is-disconnected { opacity: .6; }
+.survival-seat.is-empty { border-style: dashed; background: #f4ebdc6b; color: #b09a80; }
+.survival-seat.is-empty > span:last-child { font-size: 14px; }
+.survival-empty-paw { display: grid; place-items: center; width: 63px; height: 63px; opacity: .35; font-size: 30px; }
+.survival-lobby-waiting { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: center; gap: 16px; margin-top: 22px; padding: 16px; border: 1px solid #dfceb2; border-radius: 17px; background: #f6ecd9; }
+.survival-lobby-waiting > div { display: grid; gap: 5px; justify-items: center; }
+.survival-lobby-waiting span { color: #8f7250; font-size: 14px; font-weight: 800; }
+.survival-lobby-waiting strong { color: #8c6841; font-size: 34px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.survival-lobby-waiting p { margin: 0; color: #82684d; font-size: 16px; line-height: 1.6; }
+.survival-lobby-waiting.is-counting { border-color: #b7c9a8; background: #edf1df; }
+.survival-lobby-waiting.is-counting strong { color: #557a49; }
+.survival-lobby-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+#survivalArena .survival-primary { min-height: 48px; padding: 12px 23px; border: 1px solid #558b72; border-radius: 14px; background: #638f73; box-shadow: inset 0 1px 0 #ffffff40, 0 3px 0 #36583c2b; color: #fffdf2; }
+#survivalStartButton { background: #b87d49 !important; border-color: #986136 !important; }
+#survivalLobbyNotice { min-height: 22px; margin: 16px 0 0; font-size: 14px; line-height: 1.6; text-align: center; color: #927252; }
+.survival-rules { padding: 26px; }
+.survival-rules > p { font-size: 16px; line-height: 1.75; color: #8c735a; }
+.survival-checkpoints { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 23px 0 14px; padding: 0; list-style: none; }
+.survival-checkpoints li { padding: 12px 3px; border: 1px solid #e2c9a6; border-radius: 13px; background: #f6e8d0; text-align: center; }
+.survival-checkpoints li > span { display: block; color: #9a794f; font-size: 14px; font-weight: 800; }
+.survival-checkpoints strong { display: block; margin-top: 4px; color: #8b6139; font-size: 27px; }
+.survival-checkpoints strong small { font-size: 14px; }
+.survival-final-rule { margin-top: 20px; padding: 15px; border-radius: 15px; background: #e8eddf; color: #537146; }
+.survival-final-rule b { font-size: 16px; }
+.survival-final-rule p { margin: 7px 0 0; font-size: 16px; line-height: 1.7; }
+.survival-rules .survival-rule-small { font-size: 14px; }
+.survival-tabby-rule { padding-top: 15px; border-top: 1px dashed #dac6a9; }
+.survival-countdown { position: absolute; inset: 0; z-index: 20; display: grid; place-content: center; justify-items: center; gap: 8px; background: #fff8e7ed; backdrop-filter: blur(3px); text-align: center; color: #7d5732; }
+.survival-countdown > strong { font-size: clamp(80px, 10vw, 130px); line-height: 1.2; color: #be8050; text-shadow: 0 5px 0 #edd3b4; }
+.survival-countdown > span:first-child { font-size: 22px; font-weight: 900; }
+.survival-countdown > span:last-child { font-size: 16px; }
+.survival-match-layout { display: grid; grid-template-columns: var(--survival-main-width) var(--survival-rail-width) var(--survival-friends-width); align-items: start; justify-content: center; gap: var(--survival-layout-gap); }
+.survival-main-board { min-width: 0; width: var(--survival-main-width); max-width: 100%; }
+.survival-player-heading { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; min-height: 56px; margin: 0 0 8px; }
+.survival-player-heading .survival-avatar { width: 56px; height: 56px; border-color: #8bae8e; background: #e6eedb; }
+.survival-player-name { min-width: 0; }
+.survival-player-name small { display: block; color: #648565; font-size: 14px; line-height: 1.35; font-weight: 800; }
+#survivalArena .survival-player-name h2 { margin-top: 2px; font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.survival-total, .survival-errors { display: grid; justify-items: center; gap: 2px; }
+.survival-total strong { color: #3e806c; font-size: 32px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.survival-total span, .survival-errors span { color: #8a725d; font-size: 14px; white-space: nowrap; }
+.survival-errors { padding-left: 10px; border-left: 1px solid #d9c6a7; }
+.survival-errors b { color: #987859; font-size: 22px; line-height: 1.3; }
+.survival-board-card { position: relative; width: var(--survival-main-width); max-width: 100%; padding: 10px; border: 2px solid #c6ad8a; border-radius: 21px; background: linear-gradient(#fff9ea, #f5e7d0); box-shadow: inset 0 0 0 3px #fffdf3, 0 5px 0 #ac8b6230, 0 13px 23px #79583410; }
+.survival-board-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 6px; color: #846544; font-size: 14px; }
+.survival-board-heading b { color: #795737; font-size: 16px; }
+.survival-board-stage { position: relative; width: var(--survival-board-size); max-width: 100%; aspect-ratio: 1; border-radius: 14px; isolation: isolate; }
+#survivalBoard { width: 100%; height: 100%; max-width: none; }
+#survivalBoard .cell { min-height: 0; min-width: 0; border-radius: 5px; font-size: clamp(21px, 3vw, 38px); }
+#survivalBoard .cell.note { color: #58306f; }
+#survivalBoard .cell.opened { color: #493d35; }
+#survivalBoard .cell.cat > .cat-art { width: 92%; height: 92%; }
+#survivalBoard .cell:disabled { opacity: 1; cursor: default; }
+#survivalBoard[aria-readonly="true"] { touch-action: auto; }
+#survivalBoard[aria-readonly="true"] .cell { cursor: default; transform: none; }
+#survivalBoard[aria-readonly="true"] .cell:hover { filter: none; box-shadow: inset 0 2px 0 #ffffff4f, inset 0 -2px 0 #91795812; }
+#survivalBoard .cell.revealed-tabby::after { content: '✦' !important; position: absolute; right: 2px; top: 0; color: #a6632c; font-size: clamp(12px, 1.3vw, 19px); line-height: 1.3; animation: none; text-shadow: 0 1px #fff6d8; }
+#survivalBoard .cell.revealed-tabby { box-shadow: inset 0 0 0 2px #bd8b4b; }
+.survival-board-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; margin: 8px 0 0; color: #90775c; font-size: 14px; }
+.survival-board-foot > span:first-child { font-weight: 850; color: #6d8157; }
+.survival-board-notice { margin: 8px 2px 0; font-size: 14px; line-height: 1.45; color: #8c7054; }
+.survival-lock { position: absolute; inset: 0; z-index: 20; display: grid; align-content: center; justify-items: center; gap: 9px; padding: 22px; border: 2px solid #cba876; border-radius: inherit; background: #fff5e4ed; backdrop-filter: blur(2px); color: #885d37; text-align: center; pointer-events: auto; touch-action: none; }
+.survival-lock > span:first-child { font-size: 28px; }
+.survival-lock > strong { font-size: 19px; }
+.survival-lock > b { font-size: clamp(36px, 5vw, 60px); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.survival-lock > span { font-size: 14px; }
+.survival-lock-meter { display: block; width: min(190px, 70%); height: 7px; margin-top: 5px; border-radius: 20px; overflow: hidden; background: #e7d5b9; }
+.survival-lock-meter > i { display: block; height: 100%; background: #bf9366; border-radius: inherit; }
+.survival-center-rail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.survival-clock-card { display: grid; justify-items: center; gap: 4px; padding: 12px 5px; border: 2px solid #f9f0dd; border-radius: 20px; background: #e4dbc5; color: #765d3f; box-shadow: 0 3px 0 #b69c7524; }
+.survival-clock-card > span:first-child { font-size: 14px; font-weight: 850; letter-spacing: .06em; }
+.survival-clock-card > strong { font-size: 40px; line-height: 1.15; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.survival-clock-card > span:last-child { font-size: 14px; }
+.survival-quota-card { display: grid; justify-items: center; gap: 7px; padding: 14px 8px; border: 1px solid #d8c5a4; border-radius: 19px; background: #fff8e7; text-align: center; }
+.survival-quota-card > span:first-child { font-size: 14px; font-weight: 800; color: #9a764d; }
+.survival-quota-card > strong { font-size: 32px; line-height: 1.2; color: #966838; }
+.survival-quota-card > span { font-size: 14px; color: #967859; }
+.survival-quota-card > b { font-size: 14px; color: #8a623b; }
+.survival-quota-meter { width: 100%; height: 7px; margin-top: 3px; border-radius: 20px; overflow: hidden; background: #e9dfca; }
+.survival-quota-meter i { display: block; height: 100%; width: 0; background: #c39965; border-radius: inherit; transition: width .2s ease; }
+.survival-quota-card.is-complete, .survival-quota-card.is-final { background: #eef2e3; border-color: #bccdad; }
+.survival-quota-card.is-complete > b, .survival-quota-card.is-final > strong { color: #4d794c; }
+.survival-quota-card.is-complete .survival-quota-meter i { background: #78a472; }
+.survival-quota-card.is-urgent { border-color: #cd9157; background: #ffedca; }
+.survival-quota-warning { margin: -5px 0 0; padding: 9px 7px; border-radius: 11px; color: #a05f30; background: #fbe2bd; font-size: 14px; line-height: 1.6; text-align: center; font-weight: 850; }
+#survivalGestureHint { flex-direction: column; flex-wrap: nowrap; gap: 6px; padding-block: 6px; font-size: 16px; }
+#survivalGestureHint .gesture-drag { font-size: 14px; }
+.survival-key-hint { color: #a68c71; font-size: 14px; }
+.survival-legend { display: grid; justify-items: center; gap: 5px; margin: 0; font-size: 14px; color: #9d8266; }
+.survival-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.survival-legend i { color: #493d35; font-style: normal; font-size: 17px; font-weight: 850; }
+.survival-legend i.survival-note-dot { color: #58306f; }
+.survival-friends { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 120px; grid-template-rows: auto auto auto minmax(0, 1fr); column-gap: 12px; padding: 12px; }
+.survival-friends > .survival-section-heading, .survival-friends-caption { grid-column: 1 / -1; }
+#survivalArena .survival-friends h2 { font-size: 22px; }
+.survival-friends-caption { margin: 4px 0 10px; color: #927356; font-size: 14px; }
+.survival-score-list { display: grid; grid-column: 1; grid-row: 3 / 5; align-content: start; gap: 4px; min-width: 0; }
+#survivalArena .survival-score-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 5px; width: 100%; min-height: 52px; padding: 4px 5px; border: 1px solid transparent; border-radius: 11px; background: #f4ebdc; text-align: left; box-shadow: none; }
+#survivalArena .survival-score-row.is-selected { border-color: #9db795; background: #e9efdf; }
+.survival-small-avatar { width: 28px; height: 28px; border: 1px solid #dac5a5; border-radius: 50%; background: #fff8e8; overflow: hidden; }
+.survival-row-name { min-width: 0; display: grid; gap: 1px; line-height: 1.25; }
+.survival-row-name > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #775a3e; font-size: 16px; }
+.survival-row-name > small { color: #8d7355; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.survival-row-score { display: inline-flex; align-items: baseline; white-space: nowrap; }
+.survival-row-score b { color: #63815b; font-size: 22px; font-variant-numeric: tabular-nums; }
+.survival-row-score small { color: #a68a6c; font-size: 14px; }
+.survival-score-row.is-out .survival-small-avatar { filter: saturate(.45); }
+.survival-score-row.is-out .survival-row-name > small { color: #a08878; }
+.survival-crown { color: #b88d31; }
+.survival-follow-control { display: grid; grid-column: 2; grid-row: 3; align-self: start; gap: 6px; min-width: 0; margin: 0; }
+.survival-follow-control label { flex: 0 0 auto; color: #967658; font-size: 14px; font-weight: 800; }
+.survival-follow-control select { min-width: 0; width: 100%; padding: 7px 19px 7px 7px; border: 1px solid #d9c5a8; border-radius: 9px; color: #775b3e; background: #fffaf0; }
+.survival-preview { grid-column: 2; grid-row: 4; align-self: start; margin: 12px 0 0; width: 120px; max-width: 100%; }
+.survival-preview-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 3px 8px; margin-bottom: 7px; font-size: 14px; color: #84674a; }
+.survival-preview-heading b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.survival-preview-heading > span { flex: 0 0 auto; font-size: 14px; color: #ad9275; }
+.survival-mini { display: grid; grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr)); grid-template-rows: repeat(var(--n, 6), minmax(0, 1fr)); aspect-ratio: 1; gap: 1px; padding: 3px; border: 1px solid #e2d2b6; border-radius: 10px; overflow: hidden; background: #fffaf0; }
+.survival-mini-cell { display: grid; place-items: center; min-width: 0; min-height: 0; border-radius: 2px; background: var(--bg); color: #514335; font-size: 16px; line-height: 1; }
+.survival-mini-cell > i { font-size: 11px; line-height: 1; font-style: normal; color: #956239; text-shadow: 0 1px #fff9; }
+.survival-mini-cell.revealed-tabby > i { color: #ba772e; }
+.survival-mini-cell.opened { background-image: radial-gradient(#493d352c 1px, transparent 1px); background-size: 4px 4px; }
+.survival-preview > p { margin: 6px 0 0; color: #967958; font-size: 14px; line-height: 1.45; text-align: center; }
+.survival-result { display: flex; align-items: center; gap: 18px; padding: 20px 24px; margin: 0 0 20px; background: linear-gradient(100deg, #fff5d8, #fbf3e1); border-color: #fffdf0; }
+.survival-result-icon { display: grid; place-items: center; flex: 0 0 auto; width: 60px; height: 60px; border-radius: 50%; border: 2px solid #e5c485; background: #f6dfaa; color: #a77a2c; font-size: 42px; }
+#survivalArena .survival-result h2 { font-size: clamp(19px, 2.2vw, 26px); color: #8e642f; overflow-wrap: anywhere; }
+.survival-result p { margin: 6px 0 0; color: #9f7e53; font-size: 16px; line-height: 1.6; }
+.survival-winners { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-left: auto; }
+.survival-winner-avatar { position: relative; width: 47px; height: 47px; flex: 0 0 auto; }
+.survival-winner-avatar > span:first-child { position: absolute; z-index: 2; left: 50%; top: -13px; transform: translateX(-50%); color: #b88828; font-size: 24px; }
+.survival-fx { position: absolute; inset: 0; z-index: 15; overflow: hidden; border-radius: inherit; pointer-events: none; }
+.survival-tabby-burst { position: absolute; left: var(--x); top: var(--y); width: 0; height: 0; }
+.survival-burst-ring { position: absolute; left: -29px; top: -29px; width: 58px; height: 58px; border: 4px solid #dca858; border-radius: 50%; animation: survivalRing 850ms 220ms ease-out both; }
+.survival-tabby-burst > span { position: absolute; left: -13px; top: -13px; font-size: 25px; animation: survivalPaw 950ms 220ms ease-out both; --dx: -62px; --dy: -57px; }
+.survival-tabby-burst > span:nth-of-type(2) { --dx: 58px; --dy: -50px; animation-delay: 280ms; }
+.survival-tabby-burst > span:nth-of-type(3) { --dx: 15px; --dy: 60px; animation-delay: 320ms; }
+#survivalBoard .cell.survival-tabby-found { outline: 4px solid #e6b569; outline-offset: -4px; }
+#survivalBoard .cell.survival-blast-flash { animation: survivalCellGlow 900ms ease-out both; }
+.survival-capture-glow, .survival-board-clear { animation: survivalBoardGlow 900ms ease-out both; }
+.survival-cheer { animation: survivalFriendCheer 900ms ease-out both; }
+.survival-static-highlight { outline: 3px solid #bda16a; outline-offset: -3px; }
+@keyframes survivalRing { from { transform: scale(.25); opacity: .95; } to { transform: scale(3.3); opacity: 0; } }
+@keyframes survivalPaw { 0% { transform: scale(.45) rotate(-20deg); opacity: 0; } 20% { opacity: .9; } 100% { transform: translate(var(--dx), var(--dy)) scale(.65) rotate(25deg); opacity: 0; } }
+@keyframes survivalCellGlow { 0%, 30% { box-shadow: inset 0 0 0 3px #ffeeb7, inset 0 0 20px #fff8d5; filter: brightness(1.12); } 100% { filter: none; } }
+@keyframes survivalBoardGlow { 0%, 25% { box-shadow: 0 0 0 4px #d4b67666, 0 0 22px #e5c47733; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes survivalFriendCheer { 0%, 35% { background: #f5e2b8; } }
+/* At narrower widths, retain the square and reading size by moving friends
+   below the play area. A tall screen never forces a wider-than-viewport board. */
+@media (min-width: 1101px) and (max-width: 1230px) {
+  #survivalArena { --survival-board-size: min(clamp(288px, calc(100dvh - 340px), 560px), calc(100vw - 616px)); }
+}
+@media (max-width: 1100px) {
+  #survivalArena { width: min(calc(var(--survival-main-width) + 162px), calc(100% - 32px)); }
+  .survival-header { flex-wrap: wrap; }
+  .survival-toolbar { justify-content: flex-start; }
+  .survival-match-layout { grid-template-columns: minmax(0, 1fr) 144px; }
+  .survival-main-board, .survival-board-card { width: 100%; }
+  .survival-board-stage { width: 100%; }
+  .survival-friends { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) 128px; }
+  .survival-preview { width: 128px; }
+  .survival-score-row .survival-row-name > b { white-space: normal; overflow-wrap: anywhere; }
+  .survival-lobby { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .survival-lobby-main, .survival-rules { padding: 22px; }
+}
+@media (max-width: 700px) {
+  #survivalArena { --survival-board-size: min(560px, calc(100vw - 44px)); --survival-main-width: calc(var(--survival-board-size) + 24px); width: min(584px, calc(100% - 20px)); padding: 12px 0 24px; }
+  .survival-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+  .survival-brand h1 { font-size: 30px; }
+  .survival-brand p { font-size: 14px; }
+  .survival-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px minmax(0, 1fr); gap: 5px; width: 100%; }
+  .survival-toolbar button { padding: 8px 5px; white-space: normal; line-height: 1.3; }
+  .survival-connection-row { gap: 7px 10px; margin-bottom: 12px; }
+  .survival-match-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .survival-main-board { grid-row: 2; }
+  .survival-center-rail { grid-row: 1; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 8px; }
+  .survival-clock-card { padding: 10px 5px; gap: 4px; border-radius: 16px; }
+  .survival-clock-card > strong { font-size: 36px; }
+  .survival-quota-card { align-content: center; gap: 4px; padding: 10px 8px; border-radius: 16px; }
+  .survival-quota-card > strong { font-size: 28px; }
+  .survival-quota-meter { margin: 3px 0; height: 5px; }
+  .survival-quota-warning { grid-column: 1 / -1; margin: 0; padding: 7px 10px; }
+  #survivalGestureHint { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 4px 14px; padding: 3px 0; }
+  .survival-key-hint { display: none; }
+  .survival-legend { display: none; }
+  .survival-player-heading { grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 7px; min-height: 52px; }
+  .survival-player-heading .survival-avatar { width: 48px; height: 48px; }
+  #survivalArena .survival-player-name h2 { font-size: 20px; }
+  .survival-total strong { font-size: 30px; }
+  .survival-errors { padding-left: 7px; }
+  .survival-board-card { border-radius: 19px; }
+  .survival-board-heading { gap: 3px 8px; }
+  #survivalBoard .cell { font-size: clamp(24px, 6vw, 42px); }
+  #survivalBoard .cell.revealed-tabby::after { font-size: 17px; }
+  .survival-board-foot { justify-content: flex-start; gap: 3px 12px; }
+  .survival-friends { grid-column: 1; grid-row: 3; grid-template-columns: minmax(0, 1fr); padding: 14px; }
+  .survival-score-list { grid-column: 1; grid-row: 3; }
+  #survivalArena .survival-score-row { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 9px; min-height: 56px; padding: 5px 8px; }
+  .survival-small-avatar { width: 36px; height: 36px; }
+  .survival-row-name > b { white-space: normal; overflow-wrap: anywhere; }
+  .survival-row-score b { font-size: 24px; }
+  .survival-follow-control { grid-column: 1; grid-row: 4; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #dac8ae; }
+  .survival-preview { grid-column: 1; grid-row: 5; width: 168px; justify-self: center; margin: 12px 0 0; }
+  .survival-result { flex-wrap: wrap; gap: 12px; padding: 16px; margin-bottom: 14px; }
+  .survival-result-icon { width: 48px; height: 48px; font-size: 34px; }
+  .survival-result > div:nth-child(2) { flex: 1 1 190px; }
+  .survival-winners { margin: 6px 0 0; justify-content: flex-start; }
+  #survivalArena .survival-result h2 { font-size: 23px; }
+  .survival-seats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+  .survival-seat { padding: 13px 8px; }
+  .survival-lobby-waiting { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 18px; padding: 16px; text-align: center; }
+  .survival-lobby-actions { gap: 8px; margin-top: 18px; }
+  #survivalArena .survival-primary { flex: 1 1 180px; padding-inline: 12px; }
+}
+@media (max-width: 380px) {
+  .survival-brand-paw { width: 48px; height: 48px; border-radius: 16px; font-size: 27px; }
+  .survival-brand h1 { font-size: 28px; }
+  .survival-brand p { max-width: 225px; }
+  .survival-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }
+  #survivalExit { grid-column: 1 / -1; }
+  .survival-player-heading { grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 6px; }
+  .survival-player-heading .survival-avatar { width: 44px; height: 44px; }
+  #survivalArena .survival-player-name h2 { font-size: 20px; }
+  .survival-total strong { font-size: 28px; }
+  .survival-errors b { font-size: 22px; }
+  .survival-lobby-main, .survival-rules { padding: 18px 13px; }
+  .survival-seat .survival-avatar, .survival-empty-paw { width: 54px; height: 54px; }
+  .survival-checkpoints { gap: 5px; }
+  .survival-checkpoints strong { font-size: 25px; }
+  #survivalGestureHint { gap: 4px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #survivalArena *, #survivalArena *::before, #survivalArena *::after { animation: none !important; transition: none !important; }
+  .survival-tabby-burst { display: none; }
+  #survivalBoard .cell.survival-blast-flash { box-shadow: inset 0 0 0 3px #b9955e; }
+  .survival-cheer { outline: 2px solid #cfb47b; outline-offset: -2px; }
+}

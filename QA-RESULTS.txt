@@ -1,81 +1,78 @@
-CAT HIDE & SEEK — APPROVED PRIMARY INPUT / PRIVATE STROKES RELEASE
+CAT HIDE & SEEK — APPROVED 2–4 PLAYER SURVIVAL RELEASE
 Date: 2026-10-06
-Base repository commit: 01504a244d6d44ad14dd219e6a2e7cd41225adae
-Status: User approved publication after this round's fixes and tests complete. Exact-commit Pages and public-byte checks are recorded separately. Physical browser/device acceptance remains unverified.
+Base/public repository commit: 7b94c4a5f470e37ee7fd49cadeb7dd6441f85e43
+Status: User approved publication on2026-10-06. Exact-commit deployment and public-byte evidence are recorded separately.
 
-PASS — 745 Node tests (node --test), 0 failed
+PASS — 938 Node tests (node --test tests/*.test.js), 0 failed
 
-Confirmed defects reproduced in source/VM tests:
-- Native mouse click count 2 after 300 ms was treated as another single, even
-  though the browser recognized a double. Existing tests had encoded this limit.
-- Legacy rendering replaced buttons between pointerdown and click during a
-  harmless refresh, dropping the captured press.
-- A press begun during hit cooldown could reveal after expiry; reveal eligibility
-  was not separately captured when the press began.
-- A canceled tool-intent flag could swallow the next fresh primary click.
+66 survival authority tests:
+- Fixed two-to-four-human room, no AI and no manual-ready requirement.
+- Solo host waits indefinitely. Second connected protocol-confirmed seat starts
+  one 180-second host deadline; later joins do not reset it. Dropping below two
+  cancels; requalification starts a fresh complete countdown.
+- Automatic deadline and immediate host start resolve once. Late joins or
+  confirmation cannot enter an already-starting match. Ineligible lobby seats
+  are removed before the separate 3-second intro and 300-second match clock.
+- Cumulative quotas 6/12/20/30 at 60/120/180/240 seconds, with no fifth quota.
+- All checkpoint failures resolve together; no-survivor and sole-survivor cases.
+- At 300 seconds, all-match score then all-match errors, with exact shared ties.
+- Legal, unique independent 6x6 boards; six rescues advance only that board.
+- Miss locks 2/4/6/8 seconds, manual-hit reset, no HP or damage-combo scoring.
+- One secret, nonbanking tabby opportunity per minute, including final minute.
+- Uniform rejection-sampled 36-cell landing, clipped full3x3, no bad reroll,
+  no chain, no duplicated cats/errors, atomic old-board resolution before advance.
+- Every quota deadline, same-time retirement, late ticks, replay and stale boards.
+- Public nested whitelist excludes answers, private marks, targets and RNG state.
 
-81 click-controller tests:
-- Primary singles retain the 300 ms private-mark delay. Mouse native doubles
-  with a proven same-cell predecessor can complete beyond that window.
-- Guarded exact-state undo restores a committed first-click mark before one
-  reveal, including initially marked cells and declined/blocked reveals.
-- Pointer source, comparable event timestamps, held second press, delayed input,
-  native orphan/double/triple tails, duplicate tokens and deadline task ordering.
-- Mark and reveal eligibility are distinct; both presses and final dispatch
-  enforce reveal restrictions. Stale contexts/cancellation never resume a guess.
-- Pending work and retained records remain bounded by board cell count.
+37 survival session simulations:
+- Two, three and four injected in-process clients; these are not real WebRTC.
+- Joined snapshot -> explicit guest receipt confirmation -> bound host eligibility.
+- Half-connected clients cannot trigger the timer or play; fifth-seat rejection.
+- Host immediate/automatic race, third/fourth non-reset, cancellation and rejoin.
+- IDs are connection-bound, credentials generated securely, no nickname takeover.
+- Fifteen-second rejoin grace, deadline handling, readonly retired spectators.
+- Removed lobby credentials cannot restore an omitted seat; stable player IDs
+  survive numeric-seat remapping. Pending handshakes/timers/listeners are bounded.
+- Eliminated host continues serving; lost host aborts without a new champion.
+- Public snapshots and credentials remain separate; updates coalesce to100ms.
 
-40 private stroke-controller tests:
-- Hold >=250 ms and movement >=8 px activates ADD-only marking; up never starts it.
-- Existing notes are not toggled off; opened/resolved cells are skipped; each cell
-  is processed once per stroke, including fast paths and outside-release segments.
-- Stationary holds, early drags, cancel/lost capture, lock/end/context changes,
-  multi-touch and missed mouse/pen release suppress trailing clicks safely.
-- No DOM, reveal, audio, network or per-cell timer in the stroke controller.
+68 survival app/VM integration tests:
+- Mode selection, shared generic join discovery, four-seat lobby and readable state.
+- Three distinct time phases: unlimited solo/180s waiting,3s intro,5min match.
+- All shared single/double/long-drag input routes, mouse/touch/pen/keyboard.
+- Private purple X stays local; right click is a no-op; lock blocks every input.
+- Board rollover and harmless snapshots preserve or invalidate gestures correctly.
+- Readonly spectators, quota/final-minute/tie/no-champion displays.
+- Room/game-scoped credentials, private note restore, bounded reconnect attempts,
+  expired-seat explicit re-entry, host failure/collision/stale-callback cleanup.
 
-419 app/legacy integration and fake-DOM tests:
-- All four legacy modes, battle and labeled offline practice share the input rules.
-- Right button, contextmenu, auxclick, ContextMenu and Shift+F10 cause no game
-  mutation and do not prevent the native menu or cancel an unrelated primary mark.
-- 350 ms native mouse doubles work for marked/unmarked cells and guests; one
-  authority request, no speculative damage or leaked notes.
-- Same-board legacy nodes survive snapshots/renders between press and click.
-- Genuine cooldown/turn/lock/tool/pending/end restrictions remain enforced and
-  blocked double attempts can display a readable reason.
-- Mouse/touch strokes add private X across six modes; off-turn notes, guest
-  privacy, resolved/previously marked cells and full 24x24 paths are covered.
-- All coalesced samples, including a 14-sample curved perimeter, preserve the
-  path instead of truncating it to an unintended straight line.
-- Native PointerEvent properties are read explicitly, including prototype getters.
-- Outside release, cell/window blur, visibility, resize/state changes, lock expiry,
-  missed release with buttons=0, multi-touch and reused-pointer-ID focus ordering.
-- A stale old-cell blur/click cannot cancel or finish a new cell's pointer.
-- Stroke persistence is batched once at completion, without actions, damage,
-  attack audio or per-cell timers. No future gesture is queued during lockout.
-- Existing countdown, board advance/cross-board combo, reconnect, items, coop,
-  treasure, manual marks, no-auto-X, audio and animation regressions remain covered.
+22 survival layout/effect checks (source arithmetic and fake DOM, not pixels):
+- Desktop1280x720,1366x768,1920x1080 active-game width/height budgets.
+- Mobile320/360/390/430 with normal scrolling, readable16/14px text,
+  44px controls, one main grid and one selected public preview.
+- Stable board nodes; effects do not block input; reduced-motion alternative.
+- Muted/history/reconnect/background events do not replay; audio is bounded.
+- Fixed lingering effect timers/bursts on hide/disconnect/end/leave.
+- Fixed an earlier capture timer truncating a newer capture glow.
 
-40 battle-engine tests: rules unchanged, including unique legal boards, independent
-6x6 boards, 150 HP default, 5/10/15... damage, six-cat advance with HP/combo carry,
-miss locks 2/4/6/8 capped at8, success resets next miss to2, action IDs and privacy.
-52 audio tests: three CC0 recordings, bounded playback, mute, dedupe and cleanup.
-20 palette tests: unique stable colors for 6/12/20/24, distance and contrast checks.
-93 source layout tests: shared center rail/row alignment, readable text, private X,
-lock containment, scoped pinch-zoom policy, no page-wide zoom restriction, and the
-small drag instruction fitting the existing 96px rail. These do not render pixels.
+745 existing regressions retained:
+-40 battle-engine,81 cell-gesture,40 drag-stroke,419 legacy/app,
+ 52 audio,20 palette and93 source-layout tests.
+- Existing five modes and labeled offline practice retain their rules/input.
+- Real meow assets/license, private purpleX/actual darkgrayX, no automatic hints,
+ independent battle boards/HP/combo, items, treasure and coop remain covered.
 
-PASS — Final checks and artifacts
-- All 20 JavaScript files pass node --check; git diff --check passes.
-- The current standalone HTML and source ZIP are rebuilt from the final source.
-- Preview embeds both cell-gestures.js and board-strokes.js with art/audio.
-- Source ZIP includes both new stroke files and matches all 37 source file bytes.
+PASS — Syntax and packaging
+- All28 JavaScript files pass node --check; git diff --check passes.
+- Standalone preview and source ZIP are rebuilt from this frozen source.
+- The preview includes every local JS/CSS/image/audio asset. It opens in labeled
+  duel practice; returning to the entry offers survival, which requires2–4 real
+  humans and working networking. It does not simulate survival opponents.
+- Artifact hashes and file-byte verification are recorded beside the deliverables.
 
-NOT VERIFIED — Actual browser/device acceptance
-- Physical mouse/touch click sequencing, double-click/long-press feel, pointer
-  capture/zoom behavior, accessibility, exact rendered alignment or PC viewport fit.
-- Real audio listening, two-browser WebRTC/P2P, or external-network connectivity.
-- Browser permissions/URL/DevTools restrictions were not retried or bypassed.
-
-Native event semantics referenced during implementation:
-https://developer.mozilla.org/en-US/docs/Web/API/UIEvent/detail
-https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/touch-action
+NOT VERIFIED — Actual browser/device/network acceptance
+- Real2–4-device PeerJS/STUN/NAT connections, latency behavior or connectivity.
+- Rendered desktop100%-zoom fit, physical mobile gestures, accessibility or audio.
+- Source arithmetic/fake DOM are not browser screenshot or device evidence.
+- Existing browser URL/permission/DevTools restrictions were not retried or bypassed.
+- No new account, paid service, TURN relay or Library upload.

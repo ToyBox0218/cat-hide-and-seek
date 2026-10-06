@@ -26,6 +26,7 @@ function playerAvatar(variant,extra=''){const selected=Number.isInteger(+variant
 function stableHash(value){let hash=2166136261;for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
 const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
+  survival:{label:'🐈 貓咪大逃殺',description:'2–4 位好友各找自己的貓，第二人進房開始 180 秒等候，也可由房主立即開賽。'},
   battle:{label:'🐾 貓咪大對決',description:'同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。'},
   basic:{label:'🔎 基本對戰',description:'猜空會公開空格並換手；找到最多貓獲勝。'},
   items:{label:'🐟 魚乾道具戰',description:'翻空格集魚乾；每輪最多用一個道具。'},
@@ -98,20 +99,22 @@ function makePuzzle(size) {
 }
 
 const cleanSettings = input => ({
-  size:input.mode==='battle'?6:([6,12,20,24].includes(+input.size)?+input.size:20),
+  size:['battle','survival'].includes(input.mode)?6:([6,12,20,24].includes(+input.size)?+input.size:20),
   maxHP:Math.max(50,Math.min(500,+input.maxHP||150)),
-  mode:['basic','items','treasure','coop','battle'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
+  mode:['basic','items','treasure','coop','battle','survival'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
+  ...(input.mode==='survival'?{capacity:4,tabbyEnabled:input.tabbyEnabled!==false}:{}),
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),
   turnSecondsB:Math.max(10,Math.min(180,+input.turnSecondsB||45)),
   streakLimitEnabled:input.streakLimitEnabled===true,
   streakLimit:Math.max(1,Math.min(24,+input.streakLimit||3))
 });
 const settingsFromUI = () => cleanSettings({
-  size:+$('#size').value, mode:$('#gameMode').value, maxHP:+$('#battleHP').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
+  size:+$('#size').value, mode:$('#gameMode').value, capacity:4,tabbyEnabled:$('#survivalTabby')?.checked!==false, maxHP:+$('#battleHP').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
   streakLimitEnabled:$('#capEnabled').checked, streakLimit:+$('#cap').value
 });
 
 function newGame(size) {
+  if(settingsFromUI().mode==='survival')return CatSurvival.create(settingsFromUI(),[{id:crypto.randomUUID(),nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar}],{now:Date.now()});
   if(settingsFromUI().mode==='battle')return CatBattle.create(settingsFromUI(),[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,connected:true},{nickname:'等待貓友',avatar:1,connected:false}]);
   const puzzle=makePuzzle(size),settings=settingsFromUI(),treasureCount=size<=12?2:3;
   return {
@@ -124,7 +127,7 @@ function newGame(size) {
   };
 }
 
-const publicGame = game => game.settings.mode==='battle'?CatBattle.publicGame(game):({
+const publicGame = game => game.settings.mode==='survival'?CatSurvival.publicGame(game):game.settings.mode==='battle'?CatBattle.publicGame(game):({
   ...game,
   puzzle:{id:game.puzzle.id,size:game.puzzle.size,regions:game.puzzle.regions},
   players:game.players.map(player=>({...player})),
@@ -133,6 +136,7 @@ const publicGame = game => game.settings.mode==='battle'?CatBattle.publicGame(ga
 });
 function saveLocal() {
   if (!state.game||state.practice) return;
+  if(state.game.settings.mode==='survival'){saveSurvivalNotes();return;}
   const key=state.role==='host'?'p2pHost':'p2pGuest';
   sessionStorage.setItem(key,JSON.stringify({room:state.room,game:state.game}));
   sessionStorage.setItem(`p2pNotes-${state.role}`,JSON.stringify([...state.notes]));
@@ -160,23 +164,25 @@ const fishBalance=(game,who)=>game.settings.mode==='coop'?game.sharedFish:game.p
 function changeFish(game,who,delta){if(game.settings.mode==='coop')game.sharedFish=Math.max(0,Math.min(4,game.sharedFish+delta));else game.players[who].fish=Math.max(0,Math.min(4,game.players[who].fish+delta))}
 function unresolved(game,index){return Number.isInteger(index)&&index>=0&&index<game.puzzle.size**2&&!game.found.includes(index)&&!game.misses.includes(index)}
 const BOARD_DOUBLE_MS=300;
-function localGestureBoard(){const game=state.game;return game?.settings.mode==='battle'?game.boards?.[state.you]:game;}
+const hasIndependentBoards=game=>['battle','survival'].includes(game?.settings?.mode);
+function localGestureBoard(){const game=state.game;return hasIndependentBoards(game)?game.boards?.[state.you]:game;}
 function boardGestureContext(){
   const game=state.game,board=localGestureBoard();if(!game||!board?.puzzle)return `none:${state.gestureEpoch||0}`;
-  const battle=game.settings.mode==='battle',locked=battle&&typeof battleMissLocked==='function'&&battleMissLocked(game);
+  const battle=hasIndependentBoards(game),survival=game.settings.mode==='survival',locked=survival?survivalMissLocked(game):battle&&typeof battleMissLocked==='function'&&battleMissLocked(game);
   return [state.role,state.you,game.id||game.puzzle.id,board.puzzle.id,game.status,game.pausedFrom||game._pausedFrom||'',
     battle?'':game.turnId,battle?'':game.turn,board.cooldownUntil||0,locked?'locked':'ready',
-    (board.found||[]).join('.'),(board.misses||[]).join('.'),state.pendingAction?.actionId||'',state.tool||'',state.gestureEpoch||0].join('|');
+    (board.found||[]).join('.'),(board.misses||[]).join('.'),state.pendingAction?.actionId||'',state.tool||'',survival?`${game.players[state.you]?.id}:${game.players[state.you]?.status}:${game.players[state.you]?.connected}:${state.survivalLinkStatus}`:'',state.gestureEpoch||0].join('|');
 }
 function canMarkBoardCell(index,context=boardGestureContext()){
   const game=state.game,board=localGestureBoard();
   if(document.hidden||!game||!board?.puzzle||context!==boardGestureContext()||!Number.isInteger(index)||index<0||index>=board.puzzle.size**2||board.found.includes(index)||board.misses.includes(index))return false;
+  if(game.settings.mode==='survival')return survivalCanMark(game);
   if(game.settings.mode==='battle')return (game.status==='playing'||(game.status==='paused'&&(game.pausedFrom||game._pausedFrom)!=='countdown'))&&!battleMissLocked(game);
   return game.status==='playing';
 }
 function canRevealBoardCell(index){
   const game=state.game,board=localGestureBoard();if(!canMarkBoardCell(index)||game.status!=='playing'||state.pendingAction||state.tool)return false;
-  return game.settings.mode==='battle'?board.cooldownUntil<=Date.now()+(state.clockOffset||0):game.turn===state.you;
+  return hasIndependentBoards(game)?board.cooldownUntil<=Date.now()+(state.clockOffset||0):game.turn===state.you;
 }
 function cancelBoardGestures(reason='state-change'){
   state.cellGestures?.cancel();state.boardStrokes?.cancel(reason);state.gestureEpoch=(state.gestureEpoch||0)+1;state.boardGestureKey=boardGestureContext();state.lastToolCellGesture=null;state.revealClickGuard=null;
@@ -191,7 +197,7 @@ function setPrivateCell(index,marked,context=boardGestureContext(),persist=true)
   if(!canMarkBoardCell(index,context)||state.notes.has(index)===marked)return false;
   marked?state.notes.add(index):state.notes.delete(index);state.selectedCell=null;
   state.noteVersions??=new Map();state.noteVersions.set(index,(state.noteVersions.get(index)||0)+1);if(persist)saveLocal();else state.strokeNotesDirty=true;
-  const board=localGestureBoard(),cell=state.game.settings.mode==='battle'?$('.battle-side.local .battle-board')?.querySelector(`.cell[data-index="${index}"]`):boardCell(index);
+  const board=localGestureBoard(),cell=state.game.settings.mode==='survival'?$('#survivalBoard')?.querySelector(`.cell[data-index="${index}"]`):state.game.settings.mode==='battle'?$('.battle-side.local .battle-board')?.querySelector(`.cell[data-index="${index}"]`):boardCell(index);
   if(cell){const size=board.puzzle.size;cell.classList.toggle('note',marked);cell.classList.remove('selected-cell');cell.textContent=marked?'×':'';cell.dataset.renderState=marked?'note':'hidden';cell.setAttribute('aria-label',`第 ${Math.floor(index/size)+1} 行，第 ${index%size+1} 列，區域 ${board.puzzle.regions[index]+1}${marked?'，私人筆記，尚未確認':''}`);}
   return true;
 }
@@ -207,17 +213,19 @@ function explainRevealBlock(index,{pressedBlocked=false}={}){
   if(game.status==='countdown'||game.status==='lobby')message='讀秒結束後才能翻格';
   else if(game.status==='paused')message='對局暫停中，現在只能做私人記號';
   else if(game.status!=='playing')message='這局已結束，請開始新的一局';
-  else if(game.settings.mode==='battle'&&battleMissLocked(game))message='鎖定倒數中，翻格與標記都暫停';
+  else if(game.settings.mode==='survival'&&survivalMissLocked(game)||game.settings.mode==='battle'&&battleMissLocked(game))message='鎖定倒數中，翻格與標記都暫停';
+  else if(game.settings.mode==='survival'&&!survivalCanMark(game))message=game.players[state.you]?.status!=='active'?'你已離場，可以切換觀戰盤面':'連線中斷，正在嘗試回座';
   else if(state.pendingAction)message='正在等待翻格結果，請稍候';
   else if(state.tool)message='正在選擇道具目標，取消道具後可翻格';
-  else if(game.settings.mode!=='battle'&&game.turn!==state.you)message='還沒輪到你，可以先單點做私人記號';
-  else if(game.settings.mode==='battle'&&board.cooldownUntil>Date.now()+(state.clockOffset||0))message='剛找到貓，稍等一下再雙點翻格';
+  else if(!hasIndependentBoards(game)&&game.turn!==state.you)message='還沒輪到你，可以先單點做私人記號';
+  else if(hasIndependentBoards(game)&&board.cooldownUntil>Date.now()+(state.clockOffset||0))message='剛找到貓，稍等一下再雙點翻格';
   else if(pressedBlocked)message='剛才按下時還不能翻格，請放開後重新雙點';
   if(message&&(state.lastInputNotice!==message||Date.now()-(state.lastInputNoticeAt||0)>900)){state.lastInputNotice=message;state.lastInputNoticeAt=Date.now();toast(message);}
 }
 function revealGestureCell(index,context){
   if(context!==boardGestureContext()||!canRevealBoardCell(index)){explainRevealBlock(index);return false;}
   state.revealClickGuard={index,boardId:localGestureBoard().puzzle.id,until:Date.now()+BOARD_DOUBLE_MS};
+  if(state.game.settings.mode==='survival')return survivalChoose(index);
   if(state.game.settings.mode==='battle'){battleChoose(index);return true;}
   const game=state.game,action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};
   state.selectedCell=null;state.pendingAction={index,turnId:game.turnId,actionId:action.actionId};render();
@@ -241,7 +249,7 @@ function captureBoardPress(cell,event){
   cell.boardCancelled=false;cell.boardToolIntent=null;
   if(event?.key)cell.boardPointerState=null;
   if(cell.boardPressIntent)state.cellGestures?.cancelPress(cell.boardPressIntent);cell.boardPressIntent=null;
-  if(state.tool&&state.game?.settings.mode!=='battle'){
+  if(state.tool&&!hasIndependentBoards(state.game)){
     cell.boardToolIntent={context,epoch:state.gestureEpoch||0,tool:state.tool,allowed:cellMatchesCurrentBoard(cell)&&canMarkBoardCell(index,context)&&state.game.turn===state.you&&!state.pendingAction&&!toolGestureSuppressed(index)};return;
   }
   const gestures=getBoardGestures(),intent=gestures.press(index,{pointerType:event?.pointerType||(event?.key?'keyboard':'mouse'),timeStamp:event?.timeStamp});
@@ -273,7 +281,7 @@ function activateBoardCell(cell,event={}){
 }
 function boardCellKeydown(event){
   if(['Enter',' ','Spacebar'].includes(event.key)){if(event.repeat){event.preventDefault();return;}event.currentTarget.boardCancelled=false;captureBoardPress(event.currentTarget,event);return;}
-  if(state.game?.settings.mode==='battle')battleKeydown(event);
+  if(state.game?.settings.mode==='survival')survivalKeydown(event);else if(state.game?.settings.mode==='battle')battleKeydown(event);
 }
 function wireBoardCell(cell,index){
   const game=state.game,board=localGestureBoard();cell.dataset.gameId=game.id||game.puzzle.id;cell.dataset.boardId=board.puzzle.id;
@@ -285,9 +293,10 @@ function wireBoardCell(cell,index){
 const boardInputNow=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
 function boardAllowsStroke(context){
   const game=state.game;if(!game||document.hidden||context!==boardGestureContext())return false;
+  if(game.settings.mode==='survival')return survivalCanMark(game);
   return game.settings.mode==='battle'?battlePhaseAllowsNotes(game)&&!battleMissLocked(game):game.status==='playing';
 }
-function playableGrid(){return state.game?.settings.mode==='battle'?$('.battle-side.local .battle-board'):$('#board');}
+function playableGrid(){return state.game?.settings.mode==='survival'?$('#survivalBoard'):state.game?.settings.mode==='battle'?$('.battle-side.local .battle-board'):$('#board');}
 function strokeGeometry(){
   const grid=playableGrid();if(!grid)return null;
   const bounds=grid.getBoundingClientRect(),key=boardGestureContext(),old=state.strokeGeometry;
@@ -468,6 +477,7 @@ function rememberAction(game,id) {
 }
 function act(who,action) {
   const game=state.game;
+  if(game?.settings.mode==='survival')return state.survivalSession?.submit(action);
   if(game?.settings.mode==='battle'){if(!action||typeof action!=='object')return;const result=CatBattle.act(game,who,action,Date.now());if(who===1)send({type:'battleAck',actionId:action.actionId,accepted:result.accepted,reason:result.reason});else state.pendingAction=null;broadcast();return result;}
   if (!game||game.status!=='playing'||rememberAction(game,action.actionId)) return;
   if (action.type==='emote') { game.lastEmote={from:who,value:String(action.value).slice(0,20)}; broadcast(); return; }
@@ -598,8 +608,10 @@ function onClose() {
 }
 function attachPeerConnection(connection) {
   state.transport={open:()=>connection.open,send:value=>connection.send(value),close:()=>connection.close()};
-  const generation=state.transportGeneration=(state.transportGeneration||0)+1;const current=callback=>(...args)=>{if(generation===state.transportGeneration)callback(...args)};
-  connection.on('open',current(onOpen)); connection.on('data',current(onMessage)); connection.on('close',current(onClose));
+  const generation=state.transportGeneration=(state.transportGeneration||0)+1;let survivalRouted=false;const current=callback=>(...args)=>{if(generation===state.transportGeneration)callback(...args)};
+  connection.on('open',current(()=>{if(!survivalRouted)onOpen();}));
+  connection.on('data',current(message=>{if(survivalRouted)return;if(message?.protocol==='cat-survival-v1'&&message.type==='offer'&&state.role==='guest'){survivalRouted=true;adoptSurvivalGuest(connection,message);return;}onMessage(message);}));
+  connection.on('close',current(()=>{if(!survivalRouted)onClose();}));
   connection.on('error',error=>toast(`連線錯誤：${error.type||error.message}`));
 }
 function attachDataChannel(channel) {
@@ -616,6 +628,7 @@ const randomRoom=()=>`CAT-${String(randomInt(10000)).padStart(4,'0')}`;
 const peerIdForRoom=room=>SHORT_ROOM_RE.test(room)?`cat-hide-seek-v1-${room.toLowerCase()}`:room;
 function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`房號 ${room}`}
 function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
+  if(settingsFromUI().mode==='survival')return startSurvivalHost({room:forcedRoom});
   state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=false;
   if (!restored) { state.room=forcedRoom||randomRoom(); state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
   $('#roomInput').value='';
@@ -630,6 +643,7 @@ function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
   });
 }
 function startPeerGuest() {
+  if(state.survivalSession){disposeSurvivalRoom('join-room');state.game=null;$('#game').classList.add('hidden');$('#setup').classList.remove('hidden');}
   const room=normalizeRoom($('#roomInput').value);
   const saved=JSON.parse(sessionStorage.p2pGuest||'null');
   if(saved?.room!==room){state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]}
@@ -637,7 +651,7 @@ function startPeerGuest() {
   state.practice=false;state.role='guest'; state.you=1; state.room=room; state.manual=false;
   $('#setupStatus').textContent='正在透過 PeerJS Cloud 尋找房主…';
   const peer=new Peer(undefined,peerOptions()); state.peer=peer;
-  peer.on('open',()=>attachPeerConnection(peer.connect(peerIdForRoom(room),{reliable:true,serialization:'json'})));
+  peer.on('open',()=>{if(state.game?.settings.mode==='survival')return;attachPeerConnection(peer.connect(peerIdForRoom(room),{reliable:true,serialization:'json'}));});
   peer.on('error',error=>{toast(`PeerJS：${error.type||error.message}`); $('#setupStatus').textContent='房主不存在、尚未就緒或網路無法 P2P 連線';});
 }
 
@@ -661,6 +675,7 @@ async function useOffer(code) { const pc=rtcPeer('guest'); await pc.setRemoteDes
 async function useAnswer(code) { await state.rtc.setRemoteDescription(decode(code)); }
 function showManual(title) { $('#manual').classList.remove('hidden'); $('#manualTitle').textContent=title; }
 async function manualHost(restored=false) {
+  if(settingsFromUI().mode==='survival')throw Error('大逃殺請使用好友房號建立房間');
   state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=true;
   if (!restored) { state.room='手動連線'; state.game=newGame(+$('#size').value); }
   $('#outCode').value=await makeOffer(); showManual('步驟 1：把邀請碼傳給對方，再貼回覆碼');
@@ -759,6 +774,8 @@ function showTurnBanner(isMine){
 }
 function renderV2() {
   const game=state.game;if(!game)return;
+  if(game.settings.mode==='survival'){renderSurvival();return;}
+  document.body.classList.remove('is-survival');$('#survivalArena')?.classList.add('hidden');
   if(game.settings.mode==='battle'){renderBattle();return}document.body.classList.remove('is-battle');$('#battleArena').classList.add('hidden');
   game.clues=game.clues||{};game.foundBy=game.foundBy||{};game.settings=cleanSettings(game.settings||{});game.sharedIntel=game.sharedIntel||[];game.sharedFish=game.sharedFish||0;
   game.players.forEach((player,index)=>{player.cats??=player.score||0;player.fish??=0;player.avatar??=index});
@@ -833,7 +850,7 @@ function renderV2() {
 render=renderV2;
 
 setInterval(()=>{
-  const game=state.game; if (!game||game.settings.mode==='battle') return;
+  const game=state.game; if (!game||hasIndependentBoards(game)) return;
   if (game.deadline) $('#timer').textContent=Math.max(0,Math.ceil((game.deadline-Date.now())/1000));
   if (state.role==='host'&&game.status==='playing'&&Date.now()>=game.deadline) { switchTurn(); broadcast(); }
 },250);
@@ -848,11 +865,12 @@ function setEntryFlow(kind){
   $('#setup').dataset.flow=kind;$('#entryChoice').classList.add('hidden');$('#entryFlow').classList.remove('hidden');$('#flowTitle').textContent=kind==='host'?'建立房間':'加入房間';
   const roomReady=kind==='join'||Boolean(state.room&&state.peer?.open);$('#roomField').classList.toggle('room-ready',roomReady);
   $('#host').disabled=Boolean(kind==='host'&&state.peer?.open);$('#host').textContent=state.peer?.open&&state.role==='host'?'房間已建立':'🐾 建立房間';
+  updateModeDescription();
 }
 function showEntryChoice(){
   $('#entryChoice').classList.remove('hidden');$('#entryFlow').classList.add('hidden');delete $('#setup').dataset.flow;
 }
-function updateModeDescription(){const info=MODE_INFO[$('#gameMode').value],battle=$('#gameMode').value==='battle';$('#modeDescription').textContent=info.description;$('#battleSettings').classList.toggle('hidden',!battle);$('.turn-settings').classList.toggle('hidden',battle);$('#size').disabled=battle;if(battle)$('#size').value='6';}
+function updateModeDescription(){const mode=$('#gameMode').value,info=MODE_INFO[mode],battle=mode==='battle',survival=mode==='survival';$('#modeDescription').textContent=info.description;$('#battleSettings').classList.toggle('hidden',!battle);$('#survivalSettings')?.classList.toggle('hidden',!survival);$('.turn-settings').classList.toggle('hidden',battle||survival);$('#size').disabled=battle||survival;if(battle||survival)$('#size').value='6';$('#manualControls')?.classList.toggle('hidden',survival&&$('#setup').dataset.flow!=='join');}
 function updateCapUI(){const enabled=$('#capEnabled').checked;$('#cap').disabled=!enabled;$('#capField').classList.toggle('locked',!enabled);$('#capField').setAttribute('aria-disabled',String(!enabled))}
 function syncSettingsUI(settings){const clean=cleanSettings(settings);$('#battleHP').value=String(clean.maxHP);$('#size').value=String(clean.size);$('#gameMode').value=clean.mode;$('#secondsA').value=String(clean.turnSecondsA);$('#secondsB').value=String(clean.turnSecondsB);$('#capEnabled').checked=clean.streakLimitEnabled;$('#cap').value=String(clean.streakLimit);updateCapUI();updateModeDescription()}
 function randomNickname(){

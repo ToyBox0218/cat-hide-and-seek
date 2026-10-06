@@ -88,6 +88,7 @@ function element(tagName = 'div') {
     remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
     append(...children) { children.forEach(child => this.appendChild(child)); },
+    replaceChildren(...children) { this.innerHTML = ''; this.append(...children); },
     cloneNode() { const clone = element(tagName); clone.className = this.className; clone.innerHTML = html; clone.textContent = this.textContent; return clone; },
     matches(selector) {
       return selector.split(',').some(value => {
@@ -110,7 +111,7 @@ function element(tagName = 'div') {
     querySelector(selector) {
       selector = selector.replace(/\s*>\s*/g, ' ');
       if (selector.startsWith('.battle-board ')) return this.querySelector('.battle-board').querySelector(selector.slice(14));
-      const cell = /^\.cell\[data-index="(\d+)"\]$/.exec(selector);
+      const cell = /^(?:\.cell)?\[data-index="(\d+)"\]$/.exec(selector);
       if (cell) return (classes.has('battle-board') ? this : this.querySelector('.battle-board')).children.find(child => +child.dataset.index === +cell[1]) || null;
       if (!descendants.has(selector)) {
         const child = element(); child.parentNode = this;
@@ -134,12 +135,13 @@ function element(tagName = 'div') {
     } },
     innerHTML: { get: () => html, set: value => { html = String(value); node.children.forEach(child => { child.parentNode = null; }); node.children = []; descendants.clear(); } },
     isConnected: { get: () => !!node.parentNode },
+    firstElementChild: { get: () => node.children[0] || null },
     offsetWidth: { get: () => 600 }
   });
   return node;
 }
 
-function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle, battleUI = false, local = {}, session = {}, fakeAudio = false, AudioContext, matchEnabled, meowSamples = ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav'] } = {}) {
+function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle, battleUI = false, survival = false, survivalUI = false, local = {}, session = {}, fakeAudio = false, AudioContext, matchEnabled, meowSamples = ['./assets/audio/cat-meow-soft.wav', './assets/audio/cat-meow-food.wav', './assets/audio/cat-meow-purr.wav'] } = {}) {
   const nodes = new Map(), messages = [], intervals = [], timers = new Map(), frames = new Map(), toolButtons = new Map();
   let documentOwner = null;
   const get = selector => {
@@ -159,6 +161,11 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
   };
   // Static page chrome is mounted once; renderBattle must never move it into a player section.
   get('.battle-center').appendChild(get('#battleGestureHint'));
+  if (survivalUI) {
+    get('#survivalBoard').className = 'battle-board survival-board';
+    get('.survival-main-board').className = 'survival-main-board local';
+    get('.survival-main-board').appendChild(get('#survivalBoard'));
+  }
   Object.entries({ '#size': size, '#gameMode': mode, '#secondsA': 45, '#secondsB': 60,
     '#cap': 3, '#battleHP': 150, '#nick': 'Test Cat' }).forEach(([key, value]) => get(key).value = String(value));
   for (const item of ['magnifier', 'yarn', 'shield', 'hourglass']) {
@@ -177,7 +184,7 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
     },
     document: { ...eventTarget(), querySelector: get, querySelectorAll: selector => selector === '#toolbox [data-item]' ? [...toolButtons.values()] : [...nodes.values(), context.document.body].flatMap(node => node.querySelectorAll(selector)), createElement: tag => { const node = element(tag); node.ownerDocument = context.document; return node; },
       elementFromPoint(x, y) {
-        const grids = battleUI ? [get('.battle-side.local').querySelector('.battle-board'), get('.battle-side.opponent').querySelector('.battle-board')] : [get('#board')];
+        const grids = survivalUI ? [get('#survivalBoard')] : battleUI ? [get('.battle-side.local').querySelector('.battle-board'), get('.battle-side.opponent').querySelector('.battle-board')] : [get('#board')];
         return grids.flatMap(grid => grid.children).find(cell => { const rect = cell.getBoundingClientRect(); return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom; }) || null;
       }, hidden: false, body: element() },
     localStorage: storage(local), sessionStorage: storage(session),
@@ -214,9 +221,12 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
       } : value]));
     } };
   }
-  if (battle === true) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-engine.js'), 'utf8'), context, { filename: 'battle-engine.js' });
+  if (battle === true || survival) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-engine.js'), 'utf8'), context, { filename: 'battle-engine.js' });
+  if (survival) for (const filename of ['survival-engine.js', 'survival-session.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   vm.runInContext(fs.readFileSync(APP_PATH, 'utf8'), context, { filename: APP_PATH });
-  if (battleUI) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-ui.js'), 'utf8'), context, { filename: 'battle-ui.js' });
+  if (battleUI || survivalUI) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-ui.js'), 'utf8'), context, { filename: 'battle-ui.js' });
+  if (survival) vm.runInContext(fs.readFileSync(path.join(ROOT, 'survival-app.js'), 'utf8'), context, { filename: 'survival-app.js' });
+  if (survivalUI) vm.runInContext(fs.readFileSync(path.join(ROOT, 'survival-ui.js'), 'utf8'), context, { filename: 'survival-ui.js' });
   vm.runInContext(`
     globalThis.appTest = { state, makePuzzle, cleanSettings, newGame, publicGame, act,
       applyItem, saveLocal, broadcast, onMessage, onOpen, onClose, renderLegacy: render,
@@ -226,6 +236,8 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
     render = () => {};
   `, context);
   if (battleUI) vm.runInContext('Object.assign(appTest, { battleChoose, renderBattle, battleMessage, startPractice, updateBattleTimers, clearBattleFX, observeBattleEvent });', context);
+  if (survival) vm.runInContext('Object.assign(appTest, { startSurvivalHost, adoptSurvivalGuest, applySurvivalSnapshot, survivalStart, survivalChoose, survivalReconnect, survivalLeave, survivalCanMark, survivalMissLocked, disposeSurvivalRoom });', context);
+  if (survivalUI) vm.runInContext('Object.assign(appTest, { renderSurvival, updateSurvivalTimers, clearSurvivalUI });', context);
   const api = context.appTest;
   api.state.transport = { open: () => true, send: message => messages.push(json(message)), close() {} };
   api.state.role = 'host'; api.state.you = 0; api.state.room = 'CAT-1234';
@@ -1117,7 +1129,7 @@ test('public entry defaults to battle while every legacy mode and generic create
   const picker = html.match(/<select id="gameMode">([\s\S]*?)<\/select>/)[1];
   const options = [...picker.matchAll(/<option value="([^"]+)"([^>]*)>/g)];
   assert.deepEqual(options.filter(([, , attributes]) => /\bselected\b/.test(attributes)).map(([, mode]) => mode), ['battle']);
-  assert.deepEqual(options.map(([, mode]) => mode).sort(), ['basic', 'battle', 'coop', 'items', 'treasure']);
+  assert.deepEqual(options.map(([, mode]) => mode).sort(), ['basic', 'battle', 'coop', 'items', 'survival', 'treasure']);
   const sizes = html.match(/<select id="size">([\s\S]*?)<\/select>/)[1];
   assert.match(sizes, /<option value="6" selected>/);
   assert.equal((sizes.match(/ selected/g) || []).length, 1);
