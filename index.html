@@ -14,17 +14,17 @@
     <div id="entryFlow" class="hidden"><div class="flow-heading"><button id="backToEntry" type="button" aria-label="返回入口選擇">← 返回</button><h2 id="flowTitle"></h2></div>
     <div class="setup-grid">
       <label>暱稱<span class="nick-row"><input id="nick" maxlength="16" value="奶油虎斑" autocomplete="off"><button id="randomNick" type="button" title="隨機產生暱稱" aria-label="隨機產生暱稱">🎲</button></span></label>
-      <label class="host-only">棋盤<select id="size"><option value="6">6×6 小盤</option><option value="12">12×12 入門</option><option value="20" selected>20×20 標準</option><option value="24">24×24 大盤</option></select></label>
+      <label class="host-only">棋盤<select id="size"><option value="6" selected>6×6 小盤</option><option value="12">12×12 入門</option><option value="20">20×20 標準</option><option value="24">24×24 大盤</option></select></label>
       <label class="wide host-only">遊戲模式<select id="gameMode">
-        <option value="basic" selected>🔎 基本對戰｜找到最多貓獲勝</option>
+        <option value="basic">🔎 基本對戰｜找到最多貓獲勝</option>
         <option value="items">🐟 魚乾道具戰｜翻空格集魚乾</option>
         <option value="treasure">🔔 寶藏派對｜鈴鐺貓值 2 分</option>
         <option value="coop">🤝 默契合作｜共享魚乾與道具</option>
-        <option value="battle">🐾 貓咪大對決｜即時連鎖攻防</option>
-      </select><small id="modeDescription">猜空會公開空格並換手；不顯示周圍貓數。</small></label>
+        <option value="battle" selected>🐾 貓咪大對決｜即時連鎖攻防</option>
+      </select><small id="modeDescription">同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>
-    <div class="settings turn-settings host-only">
+    <div class="settings turn-settings host-only hidden">
       <label>玩家 1 秒數<input id="secondsA" type="number" min="10" max="180" value="45"></label>
       <label>玩家 2 秒數<input id="secondsB" type="number" min="10" max="180" value="45"></label>
       <label><input id="capEnabled" type="checkbox"> 連抓上限</label>
@@ -61,7 +61,7 @@
     <footer><button id="pass">↪ 手動交棒</button><button class="emote">ฅ^•ﻌ•^ฅ</button><button class="emote">好眼力！</button><button class="emote">一起加油</button></footer>
   </section>
 
-  <dialog id="helpDialog" class="help-dialog"><button id="closeHelp" class="dialog-close" aria-label="關閉">×</button><h2>玩法與音效</h2><p class="timer-warning">⏱ 打開說明不會暫停對局計時。</p><div class="help-rules"><article><b>1｜每行一隻</b><p>每一橫行剛好有一隻貓。</p></article><article><b>2｜每列一隻</b><p>每一直列剛好有一隻貓。</p></article><article><b>3｜每區一隻</b><p>粗線圍住的每個區域剛好一隻。</p></article><article><b>4｜不能貼貼</b><p>兩隻貓不能在八方向相鄰。</p></article></div><h3>共同基礎</h3><p>找中貓後續手；猜空、交棒、超時或到達連抓上限就換人。猜空只會公開該空格，不顯示周圍貓數。只有實際翻開並確認沒有貓的格子會顯示深灰 ×；手動私人記號是紫色 ×。系統不會自動標記或禁止點選同行、同列、同區及八方向相鄰的未翻格；請自行依規則推理。</p><h3>五種模式</h3><p><b>貓咪大對決：</b>雙方連線與時鐘同步後讀秒 3、2、1，再同時解自己的 6×6。猜錯時盤面會顯示剩餘鎖定秒數，私人筆記仍可使用。每人預設 150 HP，可由房主調整。連續命中傷害為 5、10、15…；找錯只重設連鎖並冷卻 2 秒，命中冷卻 0.3 秒。找齊六隻立即換新盤，血量與連鎖接續。先把對方 HP 打至 0 獲勝。對手盤面只可觀看，沒有道具或共同倒數；私人筆記可自由修改。斷線會暫停，重新連線可恢復；60 秒未恢復則結束、不判勝負。</p><p><b>基本對戰：</b>找到最多貓獲勝。<br><b>魚乾道具戰：</b>首次正常翻空格得 1 魚乾（餘額最多 4），每個自己的回合最多用一個道具。<br><b>寶藏派對：</b>少數鈴鐺貓值 2 分，普通貓 1 分；帶有少量運氣，以總分決勝。<br><b>默契合作：</b>共享魚乾、道具與偵查結果，找完全部貓共同成功，沒有隱藏失敗條件。</p><h3>四個道具</h3><p>🔍 放大鏡（2）：私人查看中心八鄰貓數，中心不翻；這是道具專屬偵查，不會把數字印在普通空格。🧶 毛線（2）：選同區 2–3 個相連未解格，只得知其中有沒有貓。🐾 護墊（3）：本輪下一次正常翻空格仍可繼續，不得魚乾且不重設時間。⏳ 沙漏（2）：本輪加 10 秒，不增加連抓上限。合作模式的偵查會共享給雙方。</p><section class="sound-settings" aria-label="音效設定"><h3>音效與音量</h3><label for="soundVolume">音量 <output id="soundVolumeValue">45%</output></label><input id="soundVolume" type="range" min="0" max="100" step="5" value="45"><p>右上角喇叭可靜音。音量會保存在這個瀏覽器，首次點擊後才會啟用音效。</p><p id="meowLoadStatus" role="status">首次操作後載入貓叫錄音。</p><small>貓叫錄音：<a href="https://opengameart.org/content/cat-purr-meow" target="_blank" rel="noopener">Kerzoven，CC0 1.0</a>（剪輯與淡入淡出）</small></section><h3>操作與圖例</h3><p>平常直接點格子就會找貓。需要記錄推理時，開啟「記號模式」再點格子；再次按同一按鈕關閉，就會恢復找貓。深灰 × 代表已確認的空格；紫色 × 是自己手動加上的私人筆記，尚未確認。正式猜測不能撤回，私人筆記可改且對手看不到。方向鍵移動，Enter／Space 操作。</p><div class="legend help-legend"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample">×</i>已翻開的空格</span><span><i class="sample note-sample">×</i>私人筆記</span></div></dialog>
+  <dialog id="helpDialog" class="help-dialog"><button id="closeHelp" class="dialog-close" aria-label="關閉">×</button><h2>玩法與音效</h2><p class="timer-warning">⏱ 打開說明不會暫停對局計時。</p><div class="help-rules"><article><b>1｜每行一隻</b><p>每一橫行剛好有一隻貓。</p></article><article><b>2｜每列一隻</b><p>每一直列剛好有一隻貓。</p></article><article><b>3｜每區一隻</b><p>粗線圍住的每個區域剛好一隻。</p></article><article><b>4｜不能貼貼</b><p>兩隻貓不能在八方向相鄰。</p></article></div><h3>共同基礎</h3><p>找中貓後續手；猜空、交棒、超時或到達連抓上限就換人。猜空只會公開該空格，不顯示周圍貓數。只有實際翻開並確認沒有貓的格子會顯示深灰 ×；手動私人記號是紫色 ×。系統不會自動標記或禁止點選同行、同列、同區及八方向相鄰的未翻格；請自行依規則推理。</p><h3>五種模式</h3><p><b>貓咪大對決：</b>雙方連線與時鐘同步後讀秒 3、2、1，再同時解自己的 6×6。猜錯時盤面會顯示剩餘鎖定秒數，私人筆記仍可使用。每人預設 150 HP，可由房主調整。連續命中傷害為 5、10、15…；猜錯會重設連鎖，連續猜錯依序鎖定 2、4、6、8 秒，最多 8 秒；找到貓後，下一次猜錯恢復 2 秒。猜錯不扣血，鎖定期間直接點未翻格即可做紫色私人記號；提示移到盤面上方。解鎖後恢復原本的記號模式設定。命中冷卻 0.3 秒。找齊六隻立即換新盤，血量與連鎖接續。先把對方 HP 打至 0 獲勝。對手盤面只可觀看，沒有道具或共同倒數；私人筆記可自由修改。斷線會暫停，重新連線可恢復；60 秒未恢復則結束、不判勝負。</p><p><b>基本對戰：</b>找到最多貓獲勝。<br><b>魚乾道具戰：</b>首次正常翻空格得 1 魚乾（餘額最多 4），每個自己的回合最多用一個道具。<br><b>寶藏派對：</b>少數鈴鐺貓值 2 分，普通貓 1 分；帶有少量運氣，以總分決勝。<br><b>默契合作：</b>共享魚乾、道具與偵查結果，找完全部貓共同成功，沒有隱藏失敗條件。</p><h3>四個道具</h3><p>🔍 放大鏡（2）：私人查看中心八鄰貓數，中心不翻；這是道具專屬偵查，不會把數字印在普通空格。🧶 毛線（2）：選同區 2–3 個相連未解格，只得知其中有沒有貓。🐾 護墊（3）：本輪下一次正常翻空格仍可繼續，不得魚乾且不重設時間。⏳ 沙漏（2）：本輪加 10 秒，不增加連抓上限。合作模式的偵查會共享給雙方。</p><section class="sound-settings" aria-label="音效設定"><h3>音效與音量</h3><label for="soundVolume">音量 <output id="soundVolumeValue">45%</output></label><input id="soundVolume" type="range" min="0" max="100" step="5" value="45"><p>右上角喇叭可靜音。音量會保存在這個瀏覽器，首次點擊後才會啟用音效。</p><p id="meowLoadStatus" role="status">首次操作後載入貓叫錄音。</p><small>貓叫錄音：<a href="https://opengameart.org/content/cat-purr-meow" target="_blank" rel="noopener">Kerzoven，CC0 1.0</a>（剪輯與淡入淡出）</small></section><h3>操作與圖例</h3><p>平常直接點格子就會找貓。需要記錄推理時，開啟「記號模式」再點格子；再次按同一按鈕關閉，就會恢復找貓。深灰 × 代表已確認的空格；紫色 × 是自己手動加上的私人筆記，尚未確認。正式猜測不能撤回，私人筆記可改且對手看不到。方向鍵移動，Enter／Space 操作。</p><div class="legend help-legend"><span><i class="sample cat-sample">🐱</i>找到貓</span><span><i class="sample opened-sample">×</i>已翻開的空格</span><span><i class="sample note-sample">×</i>私人筆記</span></div></dialog>
   <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
   <div id="toast"></div>
 </main>

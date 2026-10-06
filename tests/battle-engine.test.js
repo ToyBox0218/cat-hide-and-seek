@@ -211,6 +211,7 @@ test('damage progresses 5, 10, 15 … 35, 40 and combo/HP persist into next boar
       assert.notEqual(value.boards[0].puzzle.id,original); assert.deepEqual(value.boards[0].found,[]);
       assert.deepEqual(value.boards[0].misses,[]); assert.equal(value.boards[0].cooldownUntil,PLAY_AT+2100);
       assert.equal(value.boards[0].cooldownKind,'hit'); assert.equal(value.boards[0].cooldownStartedAt,PLAY_AT+1800);
+      assert.equal(value.boards[0].missStreak,0); assert.equal(value.boards[0].cooldownDuration,300);
     }
   }
   assert.equal(value.players[1].hp,320); assert.equal(value.boards[0].found.length,2);
@@ -226,7 +227,7 @@ test('players act simultaneously with separate boards and cooldowns', () => {
   assert.equal(guess(value,0,cat(value,0),PLAY_AT+1300).accepted,true);
 });
 
-test('a miss marks its cell, resets only that player combo and applies exactly two seconds', () => {
+test('a first miss marks its cell, resets only that player combo and applies exactly two seconds', () => {
   const value = game(); guess(value,0,cat(value),PLAY_AT+1000); guess(value,1,cat(value,1),PLAY_AT+1000);
   const health = value.players.map(p => p.hp), missed = empty(value);
   const result = guess(value,0,missed,PLAY_AT+1300);
@@ -235,14 +236,104 @@ test('a miss marks its cell, resets only that player combo and applies exactly t
   assert.deepEqual(value.boards.map(b => b.combo),[0,1]);
   assert.deepEqual(value.boards[0].misses,[missed]); assert.equal(value.boards[0].cooldownUntil,PLAY_AT+3300);
   assert.equal(value.boards[0].cooldownKind,'miss'); assert.equal(value.boards[0].cooldownStartedAt,PLAY_AT+1300);
+  assert.equal(value.boards[0].missStreak,1); assert.equal(value.boards[0].cooldownDuration,2000);
   assert.equal(guess(value,0,cat(value),PLAY_AT+3299).reason,'cooldown');
   assert.equal(guess(value,0,cat(value),PLAY_AT+3300).event.damage,5);
+});
+
+test('consecutive misses apply 2, 4, 6, 8, 8 seconds with a visible streak and no HP loss', () => {
+  const value = game(), board = value.boards[0]; let at = PLAY_AT;
+  assert.equal(Battle.constants.MISS_COOLDOWN,2000); assert.equal(Battle.constants.MAX_MISS_COOLDOWN,8000);
+  assert.deepEqual(value.boards.map(current => [current.missStreak,current.cooldownDuration]),[[0,0],[0,0]]);
+  for (const [miss,duration] of [2000,4000,6000,8000,8000].entries()) {
+    const result = guess(value,0,empty(value),at), streak = miss+1;
+    assert.equal(result.accepted,true); assert.equal(result.event.type,'miss');
+    assert.equal(result.event.missStreak,streak); assert.equal(result.event.cooldownDuration,duration);
+    assert.equal(result.event.damage,0); assert.equal(result.event.combo,0);
+    assert.equal(board.combo,0); assert.equal(board.missStreak,streak);
+    assert.equal(board.cooldownDuration,duration); assert.equal(board.cooldownStartedAt,at);
+    assert.equal(board.cooldownUntil,at+duration); assert.equal(board.cooldownKind,'miss');
+    assert.deepEqual(value.players.map(player => player.hp),[500,500]);
+    const snapshot = Battle.publicGame(value,at), state = JSON.stringify(value);
+    assert.equal(snapshot.boards[0].missStreak,streak); assert.equal(snapshot.boards[0].cooldownDuration,duration);
+    assert.equal(snapshot.lastEvent.missStreak,streak); assert.equal(snapshot.lastEvent.cooldownDuration,duration);
+    assert.equal(guess(value,0,empty(value),at+duration-1).reason,'cooldown');
+    assert.equal(JSON.stringify(value),state);
+    at += duration;
+  }
+});
+
+test('a cat resets the next miss to two seconds and keeps the 300ms hit cooldown', () => {
+  const value = game(); let at = PLAY_AT;
+  for (const duration of [2000,4000,6000,8000]) {
+    assert.equal(guess(value,0,empty(value),at).event.cooldownDuration,duration); at += duration;
+  }
+  const hit = guess(value,0,cat(value),at);
+  assert.equal(hit.event.damage,5); assert.equal(hit.event.missStreak,0); assert.equal(hit.event.cooldownDuration,300);
+  assert.equal(value.boards[0].missStreak,0); assert.equal(value.boards[0].cooldownUntil,at+300);
+  assert.equal(guess(value,0,empty(value),at+299).reason,'cooldown');
+  const health = value.players.map(player => player.hp), miss = guess(value,0,empty(value),at+300);
+  assert.equal(miss.event.cooldownDuration,2000); assert.equal(miss.event.missStreak,1);
+  assert.equal(value.boards[0].combo,0); assert.deepEqual(value.players.map(player => player.hp),health);
+});
+
+test('penalty streaks belong to each player and opponent hits cannot reset them', () => {
+  const value = game();
+  guess(value,0,empty(value),PLAY_AT); guess(value,1,empty(value,1),PLAY_AT);
+  guess(value,0,empty(value),PLAY_AT+2000);
+  assert.equal(guess(value,1,cat(value,1),PLAY_AT+2000).event.damage,5);
+  assert.deepEqual(value.boards.map(board => board.missStreak),[2,0]);
+  assert.deepEqual(value.boards.map(board => board.cooldownDuration),[4000,300]);
+  assert.equal(guess(value,1,empty(value,1),PLAY_AT+2300).event.cooldownDuration,2000);
+  assert.equal(guess(value,0,empty(value),PLAY_AT+6000).event.cooldownDuration,6000);
+  assert.deepEqual(value.boards.map(board => board.missStreak),[3,1]);
+  assert.deepEqual(value.players.map(player => player.hp),[495,500]);
+});
+
+test('duplicate, resolved, stale, invalid and rejected actions never change a penalty streak', () => {
+  const value = game(), missed = empty(value), boardId = value.boards[0].puzzle.id;
+  const action = {type:'guess',actionId:'miss-once',boardId,index:missed};
+  assert.equal(Battle.act(value,0,action,PLAY_AT).accepted,true);
+  const state = JSON.stringify(value);
+  const rejectedActions = [
+    [action,PLAY_AT+2000,'duplicate'],
+    [{...action,index:empty(value)},PLAY_AT+2000,'duplicate'],
+    [{...action,actionId:'resolved'},PLAY_AT+2000,'resolved-cell'],
+    [{...action,actionId:'stale',boardId:'old-board'},PLAY_AT+2000,'stale-board'],
+    [{...action,actionId:'bad-cell',index:36},PLAY_AT+2000,'invalid-cell'],
+    [{...action,actionId:'bad-time',index:empty(value)},NaN,'invalid-time'],
+    [{...action,actionId:'too-early',index:empty(value)},PLAY_AT+1999,'cooldown']
+  ];
+  for (const [attempt,at,reason] of rejectedActions) {
+    assert.equal(Battle.act(value,0,attempt,at).reason,reason); assert.equal(JSON.stringify(value),state);
+  }
+  const result = Battle.act(value,0,{...action,actionId:'next',index:empty(value),
+    missStreak:999,cooldownDuration:0,combo:999},PLAY_AT+2000);
+  assert.equal(result.event.missStreak,2); assert.equal(result.event.cooldownDuration,4000);
+});
+
+test('the clearing hit resets penalty streak while combo, HP and hit lock cross boards', () => {
+  const value = game(), originalBoard = value.boards[0].puzzle.id;
+  let at = PLAY_AT;
+  for (let i = 0; i < 5; i++) { guess(value,0,cat(value),at); at += 300; }
+  assert.equal(guess(value,0,empty(value),at).event.cooldownDuration,2000); at += 2000;
+  assert.equal(guess(value,0,empty(value),at).event.cooldownDuration,4000); at += 4000;
+  const health = value.players[1].hp, hit = guess(value,0,cat(value),at);
+  assert.equal(hit.event.advanced,true); assert.equal(hit.event.damage,5); assert.equal(hit.event.missStreak,0);
+  assert.notEqual(value.boards[0].puzzle.id,originalBoard); assert.equal(value.boards[0].combo,1);
+  assert.equal(value.boards[0].missStreak,0); assert.equal(value.boards[0].cooldownDuration,300);
+  assert.equal(value.boards[0].cooldownUntil,at+300); assert.equal(value.players[1].hp,health-5);
+  assert.equal(guess(value,0,empty(value),at+299).reason,'cooldown');
+  assert.equal(guess(value,0,empty(value),at+300).event.cooldownDuration,2000);
 });
 
 test('clearing all empty cells does not replace a board or award a victory', () => {
   const value = game(), original = value.boards[0].puzzle.id;
   const empties = Array.from({length:36},(_,i) => i).filter(i => !value.boards[0].puzzle.solution.includes(i));
-  empties.forEach((index,i) => assert.equal(guess(value,0,index,PLAY_AT+i*2000).accepted,true));
+  let at = PLAY_AT;
+  empties.forEach(index => {
+    assert.equal(guess(value,0,index,at).accepted,true); at = value.boards[0].cooldownUntil;
+  });
   assert.equal(value.boards[0].puzzle.id,original); assert.equal(value.boards[0].number,1);
   assert.equal(value.boards[0].found.length,0); assert.equal(value.boards[0].misses.length,30);
   assert.equal(value.status,'playing'); assert.equal(value.players[1].hp,500);
@@ -307,7 +398,7 @@ test('replay defense remains bounded and safe after recent action ID eviction', 
     while (value.boards[0].puzzle.id === targetId) {
       let miss = empty(value);
       if (miss !== undefined) {
-        assert.equal(guess(value,0,miss,at).accepted,true); at += 2000;
+        assert.equal(guess(value,0,miss,at).accepted,true); at = value.boards[0].cooldownUntil;
         if (empty(value) !== undefined) continue;
       }
       assert.equal(guess(value,0,cat(value),at).accepted,true); at += 300;
@@ -337,6 +428,36 @@ test('pause freezes both cooldowns and all progress; reconnect restores remainin
   assert.equal(JSON.stringify(value.boards.map(({puzzle,found,misses,number,combo}) => ({puzzle,found,misses,number,combo}))),snapshot);
   assert.equal(guess(value,0,cat(value),20199).reason,'cooldown');
   assert.equal(guess(value,0,cat(value),20200).event.damage,10);
+});
+
+test('every penalty tier survives repeated pause, JSON persistence and reconnect without shortening', () => {
+  let value = game(), at = PLAY_AT;
+  for (const [index,duration] of [2000,4000,6000,8000,8000].entries()) {
+    const streak = index+1;
+    assert.equal(guess(value,0,empty(value),at).event.cooldownDuration,duration);
+    assert.equal(Battle.pause(value,at+123),true);
+    const publicPaused = Battle.publicGame(value,at+100000);
+    assert.equal(publicPaused.boards[0].missStreak,streak);
+    assert.equal(publicPaused.boards[0].cooldownDuration,duration);
+    assert.equal(publicPaused.boards[0].cooldownUntil-publicPaused.pausedAt,duration-123);
+    value = JSON.parse(JSON.stringify(value));
+    const firstResume = at+duration+10000;
+    assert.equal(Battle.reconnect(value,firstResume),true);
+    assert.equal(value.boards[0].cooldownUntil,firstResume+duration-123);
+    assert.equal(value.boards[0].cooldownStartedAt,firstResume-123);
+    assert.equal(value.boards[0].cooldownDuration,duration); assert.equal(value.boards[0].missStreak,streak);
+    assert.equal(Battle.pause(value,firstResume+77),true);
+    value = JSON.parse(JSON.stringify(value));
+    const secondResume = firstResume+20000;
+    assert.equal(Battle.reconnect(value,secondResume),true);
+    assert.equal(value.boards[0].cooldownStartedAt,secondResume-200);
+    assert.equal(value.boards[0].cooldownUntil,secondResume+duration-200);
+    const publicResumed = Battle.publicGame(value,secondResume), state = JSON.stringify(value);
+    assert.equal(publicResumed.boards[0].cooldownDuration,duration); assert.equal(publicResumed.boards[0].missStreak,streak);
+    at = value.boards[0].cooldownUntil;
+    assert.equal(guess(value,0,empty(value),at-1).reason,'cooldown'); assert.equal(JSON.stringify(value),state);
+    assert.deepEqual(value.players.map(player => player.hp),[500,500]);
+  }
 });
 
 test('authority can resume after JSON persistence without dropping replay protection', () => {
@@ -378,12 +499,16 @@ test('event IDs stay unique, ordered and stable through same-time actions and JS
 test('legacy saved playing and paused games remain usable with optional new fields absent', () => {
   let value = game(); guess(value,0,cat(value),PLAY_AT+1000,'legacy'); Battle.pause(value,PLAY_AT+1100);
   for (const key of ['startAt','countdownStartedAt','_pausedFrom','_pausedCountdown']) delete value[key];
-  for (const board of value.boards) { delete board.cooldownStartedAt; delete board.cooldownKind; }
+  for (const board of value.boards) {
+    delete board.cooldownStartedAt; delete board.cooldownKind;
+    delete board.missStreak; delete board.cooldownDuration;
+  }
   delete value.lastEvent.id; delete value.lastEvent.sequence;
   value = JSON.parse(JSON.stringify(value));
   const pub = Battle.publicGame(value,9000);
   assert.equal(pub.startAt,null); assert.equal(pub.countdownStartedAt,null); assert.equal(pub.pausedFrom,'playing');
   assert.equal(pub.boards[0].cooldownStartedAt,null); assert.equal(pub.boards[0].cooldownKind,null);
+  assert.equal(pub.boards[0].missStreak,0); assert.equal(pub.boards[0].cooldownDuration,0);
   assert.equal(Battle.reconnect(value,10000),true); assert.equal(value.status,'playing');
   assert.equal(value.boards[0].cooldownUntil,10200);
   assert.equal(guess(value,0,cat(value),10199).reason,'cooldown');
@@ -391,6 +516,26 @@ test('legacy saved playing and paused games remain usable with optional new fiel
   const result = guess(value,0,cat(value),10200);
   assert.equal(result.event.damage,10); assert.equal(result.event.id,`${value.id}:${value.revision}`);
   assert.equal(value.boards[0].cooldownStartedAt,10200); assert.equal(value.boards[0].cooldownKind,'hit');
+  assert.equal(value.boards[0].missStreak,0); assert.equal(value.boards[0].cooldownDuration,300);
+});
+
+test('old snapshots infer duration without inventing a miss streak or changing remaining lock time', () => {
+  let value = game(); guess(value,0,empty(value),PLAY_AT); Battle.pause(value,PLAY_AT+500);
+  for (const board of value.boards) { delete board.missStreak; delete board.cooldownDuration; }
+  delete value.lastEvent.missStreak; delete value.lastEvent.cooldownDuration;
+  value = JSON.parse(JSON.stringify(value));
+  const before = JSON.stringify(value), publicPaused = Battle.publicGame(value,20000);
+  assert.equal(JSON.stringify(value),before,'public projection does not rewrite legacy authority state');
+  assert.equal(publicPaused.boards[0].missStreak,0); assert.equal(publicPaused.boards[0].cooldownDuration,2000);
+  assert.equal(publicPaused.boards[1].cooldownDuration,0);
+  assert.equal(Battle.reconnect(value,20000),true);
+  assert.equal(value.boards[0].cooldownUntil,21500);
+  assert.equal(Battle.publicGame(value,20000).boards[0].cooldownDuration,2000);
+  assert.equal(guess(value,0,empty(value),21499).reason,'cooldown');
+  const first = guess(value,0,empty(value),21500);
+  assert.equal(first.event.missStreak,1); assert.equal(first.event.cooldownDuration,2000);
+  const second = guess(value,0,empty(value),23500);
+  assert.equal(second.event.missStreak,2); assert.equal(second.event.cooldownDuration,4000);
 });
 
 test('abort is terminal, preserves progress and does not award either player a win', () => {
@@ -511,9 +656,11 @@ test('a deterministic RNG still cannot repeat recent geometry after exhausting 9
 
 test('rematches can inherit puzzle history without inheriting progress or private action data', () => {
   const previous = game(); guess(previous,0,cat(previous),PLAY_AT,'old-action');
+  guess(previous,1,empty(previous,1),PLAY_AT);
   const previousPatterns = previous._history.patterns.slice(), next = Battle.create(previous.settings,previous.players,previous);
   assert.equal(next.status,'lobby'); assert.deepEqual(next.players.map(p => p.hp),[500,500]);
   assert.deepEqual(next.boards.map(b => b.combo),[0,0]); assert.deepEqual(next.actionIds,[]);
+  assert.deepEqual(next.boards.map(b => [b.missStreak,b.cooldownDuration]),[[0,0],[0,0]]);
   assert.ok(next.boards.every(b => !previousPatterns.includes(Battle.solutionPattern(b.puzzle.solution))));
   assert.equal(next._history.patterns.length,previousPatterns.length+2);
   assert.equal(previous._history.patterns.length,previousPatterns.length);

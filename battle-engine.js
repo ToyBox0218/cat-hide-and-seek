@@ -7,6 +7,7 @@
   'use strict';
 
   const SIZE = 6, CELLS = SIZE * SIZE, HIT_COOLDOWN = 300, MISS_COOLDOWN = 2000, OPENING_COUNTDOWN = 3000;
+  const MISS_COOLDOWN_STEP = 2000, MAX_MISS_COOLDOWN = 8000;
   const HISTORY_LIMIT = 90, ACTION_HISTORY_LIMIT = 256;
   // These are 73 separate random connected-region constructions, each exhaustively
   // checked against all 90 non-touching row/column permutations. Their transforms
@@ -277,7 +278,8 @@
     game._history.boards.push(boardKey(puzzle.regions));
     if (game._history.patterns.length > HISTORY_LIMIT) game._history.patterns.shift();
     if (game._history.boards.length > HISTORY_LIMIT) game._history.boards.shift();
-    return {puzzle, found:[], misses:[], number, combo, cooldownUntil:0, cooldownStartedAt:null, cooldownKind:null};
+    return {puzzle, found:[], misses:[], number, combo, missStreak:0,
+      cooldownUntil:0, cooldownStartedAt:null, cooldownKind:null, cooldownDuration:0};
   }
   function create(input, players, previousGame) {
     const clean = settings(input), game = {
@@ -369,6 +371,18 @@
     return true;
   }
   const rejected = reason => ({accepted:false, reason});
+  function missStreak(board) {
+    // Missing fields in saved games mean no known consecutive misses. Do not
+    // reconstruct a streak from all missed cells, which may predate a hit.
+    return Number.isSafeInteger(board.missStreak) && board.missStreak >= 0 ? board.missStreak : 0;
+  }
+  function cooldownDuration(board) {
+    if (Number.isFinite(board.cooldownDuration) && board.cooldownDuration >= 0) return board.cooldownDuration;
+    // Preserve an older save's actual lock length, including pre-change 2s
+    // penalties. Reconnect shifts both timestamps, so their difference is stable.
+    return Number.isFinite(board.cooldownStartedAt) && Number.isFinite(board.cooldownUntil) ?
+      Math.max(0,board.cooldownUntil-board.cooldownStartedAt) : 0;
+  }
   function act(game, who, action, now) {
     if (!game || !['playing','countdown'].includes(game.status)) return rejected('not-playing');
     if (who !== 0 && who !== 1) return rejected('invalid-player');
@@ -395,10 +409,13 @@
     const event = {...eventIdentity(game), who, index:action.index, boardId:board.puzzle.id, boardNumber:board.number, at};
     board.cooldownStartedAt = at;
     if (!board.puzzle.solution.includes(action.index)) {
-      board.misses.push(action.index); board.combo = 0; board.cooldownUntil = at+MISS_COOLDOWN;
+      board.missStreak = Math.min(Number.MAX_SAFE_INTEGER,missStreak(board)+1);
+      board.cooldownDuration = Math.min(MAX_MISS_COOLDOWN,MISS_COOLDOWN+(board.missStreak-1)*MISS_COOLDOWN_STEP);
+      board.misses.push(action.index); board.combo = 0; board.cooldownUntil = at+board.cooldownDuration;
       board.cooldownKind = 'miss';
       event.type = 'miss'; event.combo = 0; event.damage = 0;
     } else {
+      board.missStreak = 0; board.cooldownDuration = HIT_COOLDOWN;
       board.found.push(action.index); board.combo++; board.cooldownUntil = at+HIT_COOLDOWN;
       board.cooldownKind = 'hit';
       const damage = board.combo * 5, opponent = game.players[1-who];
@@ -409,17 +426,19 @@
       } else if (board.found.length === SIZE) {
         const next = makeBoard(game,board.number+1,board.combo);
         next.cooldownUntil = board.cooldownUntil; next.cooldownStartedAt = board.cooldownStartedAt;
-        next.cooldownKind = board.cooldownKind; game.boards[who] = next;
+        next.cooldownKind = board.cooldownKind; next.cooldownDuration = board.cooldownDuration;
+        game.boards[who] = next;
         game._boardActions[who] = []; event.advanced = true;
       }
     }
+    event.missStreak = board.missStreak; event.cooldownDuration = board.cooldownDuration;
     game.lastEvent = event;
     return {accepted:true, event:{...event}};
   }
   function publicEvent(event) {
     if (!event || typeof event !== 'object') return null;
     const result = {};
-    for (const key of ['id','sequence','type','who','index','boardId','boardNumber','at','damage','combo','advanced','winner','reason']) {
+    for (const key of ['id','sequence','type','who','index','boardId','boardNumber','at','damage','combo','advanced','winner','reason','missStreak','cooldownDuration']) {
       if (Object.prototype.hasOwnProperty.call(event,key) && ['string','number','boolean'].includes(typeof event[key])) result[key] = event[key];
     }
     return result;
@@ -443,7 +462,8 @@
       boards:game.boards.map(board => ({
         puzzle:{id:board.puzzle.id, size:SIZE, regions:board.puzzle.regions.slice()},
         found:board.found.slice(), misses:board.misses.slice(), number:board.number,
-        combo:board.combo, cooldownUntil:board.cooldownUntil,
+        combo:board.combo, missStreak:missStreak(board), cooldownUntil:board.cooldownUntil,
+        cooldownDuration:cooldownDuration(board),
         cooldownStartedAt:Number.isFinite(board.cooldownStartedAt) ? board.cooldownStartedAt : null,
         cooldownKind:['hit','miss'].includes(board.cooldownKind) ? board.cooldownKind : null
       })),
@@ -452,5 +472,5 @@
   }
   return Object.freeze({create, start, advance, pause, reconnect, abort, act, publicGame, generatePuzzle, validatePuzzle,
     settings, solutionPattern:pattern, boardKey,
-    constants:Object.freeze({SIZE,HIT_COOLDOWN,MISS_COOLDOWN,OPENING_COUNTDOWN,HISTORY_LIMIT,ACTION_HISTORY_LIMIT,ANSWER_PATTERNS:ANSWERS.length})});
+    constants:Object.freeze({SIZE,HIT_COOLDOWN,MISS_COOLDOWN,MISS_COOLDOWN_STEP,MAX_MISS_COOLDOWN,OPENING_COUNTDOWN,HISTORY_LIMIT,ACTION_HISTORY_LIMIT,ANSWER_PATTERNS:ANSWERS.length})});
 });

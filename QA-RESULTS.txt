@@ -1,16 +1,16 @@
-CAT HIDE & SEEK — APPROVED PURPLE-X CORRECTION
-Date: 2026-10-05
-Base repository commit: 7c201ca8f8b125664143b7a0f7c357e744e613b1
-Status: User approved publication of the private-marker purple-X correction. 7c201ca is the preserved rollback parent. Exact deployment and HTTP verification are recorded separately after publication.
+CAT HIDE & SEEK — APPROVED PENALTY / READABILITY RELEASE
+Date: 2026-10-06
+Base repository commit: 66504df659066ca508a7a7b2870c23798b243b5c
+Status: User approved publication of consecutive-miss penalties, default battle selection and readability fixes. 66504df is the preserved rollback parent. Exact deployment and HTTP verification are recorded separately after publication.
 
-PASS — 226 Node tests (node --test)
-33 battle engine tests:
+PASS — 294 Node tests (node --test)
+40 battle engine tests:
 - 1,080 generated puzzles checked with an independent exact solver.
 - 270 additional constant-RNG stress puzzles.
 - All 90 valid 6x6 answer patterns; diverse region layouts.
 - Every puzzle: one cat per row/column/region, no 8-neighbor touching,
   connected regions, minimum three cells per region, exactly one solution.
-- Independent boards; hit cooldown 300 ms, miss cooldown 2 seconds.
+- Independent boards; hit cooldown 300 ms, consecutive misses 2/4/6/8 seconds capped at 8; hit resets next miss to 2.
 - Hits deal 5, 10, 15 ... 35, 40. Six cats advance only that player's board.
 - HP and combo carry over; miss resets only that player's combo.
 - Duplicate IDs, repeated cells, stale boards and bounded-history replays.
@@ -21,7 +21,7 @@ PASS — 226 Node tests (node --test)
 - Explicit public snapshot whitelist excludes solutions and private histories.
 - Rematch avoids recent puzzle repeats.
 
-121 app/legacy integration and fake-DOM tests:
+161 app/legacy integration and fake-DOM tests:
 - All four original modes, default streak cap off, no ordinary clue numbers.
 - Fish limit, magnifier/private intel, yarn, shield and hourglass.
 - Treasure scoring, cooperative shared progress and completion.
@@ -69,7 +69,7 @@ Use the source build in two Chrome profiles for a real P2P acceptance pass:
 8. Check sound toggle after gesture, keyboard focus, and reduced motion.
 
 USER-REPORTED UI FIX (2026-10-05)
-- Public entry remains generic create/join; basic mode is selected by default.
+- Public entry remains generic create/join; battle mode is now selected by default, with all four legacy modes available.
 - Battle is one of the five options in the host mode picker.
 - One six-character portrait atlas maps consistently across lobby, classic and battle.
 - Gentle portrait bob/sway; reduced-motion disables it.
@@ -140,3 +140,19 @@ MANUAL MARKS / EXPLICIT NOTE-MODE ROUND
   confirmed #493d35 = 4.96631606:1. Both use ×; note/opened classes, accessible labels and legend retain their distinct meanings.
 - 226 total tests pass: 33 battle engine, 121 app/legacy integration,
   52 audio and 20 palette. No browser or physical-device pass is implied.
+
+CONSECUTIVE MISS / READABILITY / LOCK MARKING ROUND
+- 2/4/6/8-second consecutive misses, capped8; capture resets next miss to2.
+- Public missStreak/cooldownDuration, backward-compatible snapshots, frozen pause.
+- Battle is the selected default; all four legacy choices remain available.
+- Content-sized legacy cards, wrapping 24-cat baskets, names and intel.
+- In-flow battle bottom panel; readable14–16px core typography and larger headings.
+- Above-board reserved lock slots; fresh-only520ms arrival and1000ms unlock text.
+- Locked cell taps temporarily make private purple X, preserving manual preference.
+- Pointer/Enter/Space intent stays consistent across expiry; stale/cancelled presses
+  cannot guess or carry into a new board. New paused note presses remain usable.
+- Historical reconnect/background/end do not replay lock/unlock cues.
+- 294 tests pass:40 engine,161 integration,52 audio,20 palette,21 CSS contracts.
+- CSS contracts enumerate320/360/390/430/768/1280 widths. Legacy fake DOM checks
+  cover all four modes at320/360/390/430/1280 with long names and populated baskets.
+  These are source/state checks, not rendered box geometry or physical touch QA.

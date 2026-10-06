@@ -454,7 +454,7 @@ function unlockAudio(){
 }
 function soundCue(kind,options={}){return getGameAudio().play(kind,options);}
 function tone(kind,options={}){return soundCue(({cat:'found',finish:'win',turn:'start'})[kind]||kind,options);}
-function stopGameAudio(){state.sound?.stopAll();state.pendingUnlockCue=null;}
+function stopGameAudio(){state.sound?.stopAll();state.pendingUnlockCue=null;state.battleUnlockNoticeUntil=0;}
 function prepareGameAudio(matchId,status){
   if(state.audioMatchId!==matchId){getGameAudio().resetMatch();state.audioMatchId=matchId;state.captureSoundEvents=new Set();state.audioGameStatus=null;state.battleTerminalCue=null;state.pendingUnlockCue=null;}
   if(state.audioGameStatus!==status){if(['paused','finished','aborted'].includes(status))stopGameAudio();state.audioGameStatus=status;}
@@ -469,14 +469,15 @@ function syncAudioControls(){
   const sampleStatus=$('#meowLoadStatus'),audioState=state.sound?.getState();if(sampleStatus){sampleStatus.textContent=audioState?.loadedSamples?`已載入 ${audioState.loadedSamples} 組貓叫，隨機播放且不連續重複。`:audioState?.samplesStatus==='failed'?'貓叫錄音載入失敗，目前使用合成備用音效；請重新整理再試。':audioState?.samplesStatus==='loading'?'貓叫錄音載入中…':'首次操作後載入貓叫錄音；載入前會使用合成備用音效。';}
 }
 function setNoteMode(enabled){
+  if(typeof battleMissLocked==='function'&&battleMissLocked())return;
   state.mode=enabled?'note':'guess';state.tool=null;state.yarnTargets=[];syncNoteModeUI();playUICue();render();
 }
 function syncNoteModeUI(){
-  const active=state.mode==='note';document.body.classList.toggle('note-mode-active',active);
+  const temporary=typeof battleMissLocked==='function'&&battleMissLocked(),active=state.mode==='note'||temporary;document.body.classList.toggle('note-mode-active',active);
   for(const [buttonId,statusId] of [['#noteMode','#noteModeStatus'],['#battleNote','#battleNoteStatus']]){
     const button=$(buttonId),status=$(statusId);
-    if(button){button.textContent=`× 記號模式：${active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=active?'關閉記號模式，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
-    if(status)status.textContent=active?'記號模式已開：點格子加／取消紫色 ×，不會猜測；關閉即可找貓':'直接點格子找貓；深灰 × 表示已確認的空格';
+    if(button){button.disabled=Boolean(temporary);button.dataset.temporary=String(Boolean(temporary));button.textContent=`× 記號模式：${temporary?'暫用':active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=temporary?'暫停翻格期間，直接點格子做私人記號':active?'關閉記號模式，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
+    if(status)status.textContent=temporary?'現在可以做記號；解鎖後恢復原本的操作模式':active?'記號模式已開：點格子加／取消紫色 ×，不會猜測；關閉即可找貓':'直接點格子找貓；深灰 × 表示已確認的空格';
   }
 }
 function observeLegacyAudio(game){
