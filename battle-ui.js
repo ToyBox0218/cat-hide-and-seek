@@ -12,28 +12,7 @@ function battleMissRemaining(game=state.game,who=state.you){
 }
 function battleMissLocked(game=state.game){return isBattle()&&battleMissRemaining(game)>0;}
 const battleNotesAllowed=game=>battlePhaseAllowsNotes(game)&&!battleMissLocked(game);
-const battleInputMode=()=>state.mode==='note'?'note':'guess';
-function syncBattleLockInput(){
-  const game=state.game;if(!isBattle())return;
-  const board=game.boards[state.you],key=battleMissLocked(game)?`${game.id}:${board.puzzle.id}:${board.cooldownUntil}`:'';
-  if(state.battleInputLockKey!==key){state.battleInputLockKey=key;state.battleInputEpoch=(state.battleInputEpoch||0)+1;}
-}
-function captureBattlePress(cell,event){
-  const game=state.game,board=game?.boards?.[state.you];if(!board)return;
-  const context=event?.button===2;
-  const intent={mode:context?'note':battleInputMode(game),gameId:game.id,boardId:board.puzzle.id,
-    epoch:state.battleInputEpoch||0,blocked:battleMissLocked(game)||!battlePhaseAllowsNotes(game)||board.found.includes(+cell.dataset.index)||board.misses.includes(+cell.dataset.index)||(!context&&battleInputMode(game)==='guess'&&(game.status!=='playing'||!!state.pendingAction||board.cooldownUntil>battleNow())),source:context?'context':'primary'};
-  if(context)cell.battleContextIntent=intent;else if(!event?.button)cell.battlePressIntent=intent;
-}
-function cancelBattlePress(cell){cell.battlePressIntent={cancelled:true};cell.battleContextIntent={cancelled:true};}
-function battleContextMark(index,event,cell){
-  const game=state.game,board=game?.boards?.[state.you],intent=cell.battleContextIntent;cell.battleContextIntent=null;
-  if(!board||!battleNotesAllowed(game)||cell.dataset.gameId!==game.id||cell.dataset.boardId!==board.puzzle.id||board.found.includes(index)||board.misses.includes(index))return;
-  if(intent&&(intent.blocked||intent.cancelled||intent.gameId!==game.id||intent.boardId!==board.puzzle.id||intent.epoch!==(state.battleInputEpoch||0)))return;
-  if(event.button===2&&!intent)return;
-  event.preventDefault();
-  battleChoose(index,intent||{mode:'note',source:'context',gameId:game.id,boardId:board.puzzle.id,epoch:state.battleInputEpoch||0});
-}
+function syncBattleLockInput(){syncBoardGestures();}
 
 const battleCat=(variant,extra='')=>`<span class="cat-art ${variant%2?'orange':'gray'} ${extra}" aria-hidden="true"></span>`;
 function battleMessage(){
@@ -45,8 +24,7 @@ function battleMessage(){
   if(game.status==='finished')return game.winner===state.you?'漂亮！所有連鎖都算數。':'這次讓貓友搶先了，再來一局吧！';
   if(state.pendingAction)return '等待房主確認…';
   if(battleMissLocked(game))return `鎖定 ${(Math.ceil(battleMissRemaining(game)/100)/10).toFixed(1)} 秒，翻格與標記都暫停。`;
-  if(state.battleUnlockNoticeUntil>battleNow())return '可以找貓了！已恢復原本的操作模式。';
-  if(state.mode==='note')return '記號模式已開：點格子切換紫色 ×；只有你看得到。';
+  if(state.battleUnlockNoticeUntil>battleNow())return '可以找貓了！點一下做記號，快速點兩下翻格。';
   return board.combo?`連鎖 ${board.combo}！下一隻造成 ${(board.combo+1)*5} 傷害，換盤也不中斷。`:'請找出貓咪！先找到一隻，開始你的連鎖。';
 }
 function renderBattle(){
@@ -62,7 +40,7 @@ function renderBattle(){
   if(state.pendingAction&&(state.pendingAction.boardId!==own.puzzle.id||own.found.includes(state.pendingAction.index)||own.misses.includes(state.pendingAction.index)||game.status!=='playing'))state.pendingAction=null;
   $('#battleConnection').textContent=state.practice?'本機練習 · 對手不會行動':game.status==='paused'?'已暫停 · 等待重連':game.status==='aborted'?'本局已中止':`${state.room} · ${game.status==='lobby'?'同步就緒中':game.status==='countdown'?'開賽讀秒':'P2P 連線'}`;
   $('#leavePractice').classList.toggle('hidden',!state.practice);$('#battleCopyRoom').classList.toggle('hidden',!!state.practice);
-  syncAudioControls();syncNoteModeUI();
+  syncAudioControls();
   $('#battleReconnect').classList.toggle('hidden',game.status!=='paused'||state.manual||state.role!=='guest');
   $('#battleAbort').classList.toggle('hidden',game.status!=='paused');$('#battleReturn').classList.toggle('hidden',game.status!=='aborted');
 
@@ -81,7 +59,7 @@ function renderBattle(){
         const cell=document.createElement(local?'button':'span'),region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
         cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.dataset.gameId=game.id;cell.dataset.boardId=board.puzzle.id;cell.setAttribute('role','gridcell');cell.style.setProperty('--bg',palette[region]);
         if(col===5||board.puzzle.regions[index+1]!==region)cell.classList.add('er');if(row===5||board.puzzle.regions[index+6]!==region)cell.classList.add('eb');
-        if(local){cell.type='button';cell.onpointerdown=event=>captureBattlePress(cell,event);cell.onpointercancel=()=>cancelBattlePress(cell);cell.onblur=()=>cancelBattlePress(cell);cell.onclick=event=>{const intent=cell.battlePressIntent;cell.battlePressIntent=null;if(event?.button>0||(event?.detail>0&&!intent))return;battleChoose(index,intent);};cell.oncontextmenu=event=>battleContextMark(index,event,cell);cell.onkeydown=battleKeydown;}
+        if(local){cell.type='button';wireBoardCell(cell,index);}
         else{cell.setAttribute('aria-readonly','true');cell.setAttribute('aria-disabled','true');}
         grid.appendChild(cell);
       }
@@ -144,24 +122,16 @@ function refreshBattleInputState(){
     const index=+cell.dataset.index;
     cell.disabled=board.found.includes(index)||board.misses.includes(index)||battleMissLocked(game)||!battlePhaseAllowsNotes(game);
   }
-  state.battleCooldownActive=board.cooldownUntil>battleNow();syncNoteModeUI();
+  state.battleCooldownActive=board.cooldownUntil>battleNow();syncBoardGestures();
 }
 
-function battleChoose(index,intent){
+function battleChoose(index){
   const game=state.game,board=game?.boards?.[state.you];
-  if(!board||!Number.isInteger(index)||index<0||index>=36||!battleNotesAllowed(game))return;
-  if(intent&&(intent.blocked||intent.cancelled||intent.gameId!==game.id||intent.boardId!==board.puzzle.id||intent.epoch!==(state.battleInputEpoch||0)))return;
-  const mode=intent?.mode||battleInputMode(game);
-  if(mode==='guess'&&battleInputMode(game)!=='guess')return;
-  if(board.found.includes(index)||board.misses.includes(index))return;
-  if(mode==='note'){state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();return}
-  if(game.status!=='playing'||state.pendingAction||board.cooldownUntil>battleNow())return;
+  if(!board||!Number.isInteger(index)||index<0||index>=36||!battleNotesAllowed(game)||board.found.includes(index)||board.misses.includes(index)||game.status!=='playing'||state.pendingAction||board.cooldownUntil>battleNow())return;
   const action={type:'guess',index,boardId:board.puzzle.id,actionId:crypto.randomUUID()};state.pendingAction=action;render();
   if(state.role==='host')act(0,action);else{send({type:'action',action});setTimeout(()=>{if(state.pendingAction?.actionId===action.actionId){state.pendingAction=null;toast('尚未收到確認，請檢查連線');render()}},4000)}
 }
 function battleKeydown(event){
-  if(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey)){captureBattlePress(event.currentTarget,{button:2});return;}
-  if(['Enter',' ','Spacebar'].includes(event.key)){if(event.repeat){event.preventDefault();return;}captureBattlePress(event.currentTarget,event);return;}
   if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();
   const index=+event.currentTarget.dataset.index,delta={ArrowUp:-6,ArrowDown:6,ArrowLeft:-1,ArrowRight:1}[event.key];let next=index+delta;
   if((event.key==='ArrowLeft'&&index%6===0)||(event.key==='ArrowRight'&&index%6===5))return;
@@ -176,7 +146,7 @@ function battleEventCellRect(event){
 }
 function clearBattleFX(){
   const inputBoundary=`${state.game?.id||''}:${state.game?.status||''}:${document.hidden?'hidden':'visible'}`;
-  if(state.battleInputBoundary!==inputBoundary){state.battleInputBoundary=inputBoundary;state.battleInputEpoch=(state.battleInputEpoch||0)+1;}
+  if(state.battleInputBoundary!==inputBoundary){state.battleInputBoundary=inputBoundary;state.battleInputEpoch=(state.battleInputEpoch||0)+1;cancelBoardGestures();}
   state.battleUnlockNoticeUntil=0;
   state.battleLagNeedsSync=true;
   for(const frame of state.battleFXFrames||[])cancelAnimationFrame(frame);state.battleFXFrames=new Set();
@@ -282,7 +252,7 @@ function refreshBattleOverlays({silent=false}={}){
     lock.classList.toggle('hidden',remaining<=0);
     lock.classList.remove('notes-available','is-unlocked');
     const stage=root.querySelector('.battle-board-stage');if(stage)stage.classList.toggle('is-locked',remaining>0);
-    if(side==='local'){lock.onpointerdown=()=>{state.battleInputEpoch=(state.battleInputEpoch||0)+1;};}
+    if(side==='local'){lock.onpointerdown=()=>{state.battleInputEpoch=(state.battleInputEpoch||0)+1;cancelBoardGestures();};}
     const secondsNode=lock.querySelector('.lock-seconds'),progress=lock.querySelector('.lock-progress > i'),note=lock.querySelector('.lock-note'),label=lock.querySelector('.lock-copy > strong');
     const streak=Math.max(0,Math.trunc(Number(board.missStreak)||0));
     if(label)label.textContent=game.status==='paused'?(side==='local'?'連線暫停':'暫停'):side==='opponent'?'鎖定中':streak>1?`連錯 ${streak} 次・暫時鎖定`:'猜錯了・暫時鎖定';
@@ -307,14 +277,14 @@ function updateBattleTimers(){
 }
 
 function startPractice(){
-  clearBattleFX();stopGameAudio();state.suppressBattleFX=false;state.battleOpeningBeat=null;
-  state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.peer=null;state.transport=null;state.practice=true;state.role='host';state.you=0;state.room='本機練習';state.clockOffset=0;state.notes.clear();state.pendingAction=null;state.battleBoardId=null;state.battleObservedEvent=null;state.mode='guess';
+  cancelBoardGestures();clearBattleFX();stopGameAudio();state.suppressBattleFX=false;state.battleOpeningBeat=null;
+  state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.peer=null;state.transport=null;state.practice=true;state.role='host';state.you=0;state.room='本機練習';state.clockOffset=0;state.notes.clear();state.pendingAction=null;state.battleBoardId=null;state.battleObservedEvent=null;
   state.game=CatBattle.create({mode:'battle',maxHP:150},[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,connected:true},{nickname:'暖暖橘子',avatar:1,connected:true}]);CatBattle.start(state.game);render();
 }
 $('#previewBattle').onclick=startPractice;
-$('#leavePractice').onclick=()=>{clearBattleFX();stopGameAudio();state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.transport=null;state.peer=null;state.practice=false;state.game=null;state.notes.clear();state.battleBoardId=null;document.body.classList.remove('is-battle');$('#game').classList.add('hidden');$('#setup').classList.remove('hidden');showEntryChoice();};
+$('#leavePractice').onclick=()=>{cancelBoardGestures();clearBattleFX();stopGameAudio();state.transportGeneration=(state.transportGeneration||0)+1;state.transport?.close();state.peer?.destroy();state.transport=null;state.peer=null;state.practice=false;state.game=null;state.notes.clear();state.battleBoardId=null;document.body.classList.remove('is-battle');$('#game').classList.add('hidden');$('#setup').classList.remove('hidden');showEntryChoice();};
 $('#battleReturn').onclick=()=>$('#leavePractice').onclick();
-$('#battleNote').onclick=()=>setNoteMode(state.mode!=='note');$('#battleHelp').onclick=()=>$('#helpDialog').showModal();$('#battleMute').onclick=()=>{$('#mute').click();render()};$('#battleCopyRoom').onclick=event=>copyRoomCode(event.currentTarget);
+$('#battleHelp').onclick=()=>$('#helpDialog').showModal();$('#battleMute').onclick=()=>{$('#mute').click();render()};$('#battleCopyRoom').onclick=event=>copyRoomCode(event.currentTarget);
 $('#battleAbort').onclick=()=>{if(state.role==='host'){CatBattle.abort(state.game);broadcast()}else send({type:'battleAbort'});};
 $('#battleReconnect').onclick=()=>{state.peer?.destroy();state.transport=null;$('#roomInput').value=state.room;startPeerGuest();toast('正在重新尋找房主…')};
 const priorRematch=$('#rematch').onclick;$('#rematch').onclick=()=>{if(state.practice){$('#result').close();startPractice()}else priorRematch()};

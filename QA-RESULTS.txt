@@ -1,80 +1,83 @@
-CAT HIDE & SEEK — APPROVED PRIMARY-CONTROLS / STRICT-LOCK RELEASE
+CAT HIDE & SEEK — APPROVED UNIFIED-GESTURES / COLOR-REGIONS RELEASE
 Date: 2026-10-06
-Base repository commit: 5246551dd107c29060990495bbc120bee39bdf3a
-Status: User approved publication of the primary-control/right-click/centered-lock revision. 5246551 is the preserved rollback parent. Exact deployment and HTTP checks are recorded separately after publication.
+Base repository commit: 7eb838f8a6cee927ce1d92d9918f04179c653ae4
+Status: User approved publication of the single-mark/double-reveal/color-region revision. 7eb838f is the preserved rollback parent. Exact deployment and HTTP checks are recorded separately after publication.
 
-PASS — 368 Node tests (node --test)
-40 battle-engine tests:
-- Independent legal, connected, minimum-three-cell, uniquely solvable 6x6 puzzles.
-- Generated-board validation and all 90 valid answer patterns remain covered.
-- Hit cooldown 300 ms; consecutive misses 2/4/6/8 seconds, capped at 8.
-- Every miss resets only that player's damage combo; a cat resets next miss to 2.
-- Hits deal 5/10/15/...; sixth cat advances only that player's board.
-- HP and damage combo carry across boards, with no miss HP penalty.
-- Authoritative action IDs, board IDs, cooldowns, stale/replay/duplicate rejection.
-- First lethal arrival wins; paused deadlines, JSON state, legacy saves and reconnect.
-- Explicit answer-free public snapshots include safe penalty duration/streak only.
+PASS — 489 Node tests (node --test)
 
-214 app/legacy integration and fake-DOM tests:
-- All four legacy modes, item/treasure/cooperative rules and battle/practice.
-- Battle selected by default while generic create/join and all modes remain available.
-- No automatic deduction X, dimming or implicit rejection; actual misses are gray X.
-- Private purple X and note controls stay private through snapshots/reconnect.
-- Right-click toggles private notes independent of manual mode in every mode/practice.
-- Right-click remains available off-turn, while pending and during hit cooldown;
-  left-click guessing remains blocked whenever game rules require it.
-- No guesses, score, damage, fish, combat audio or host actions from right-click notes.
-- Native context menu is consumed only for actionable own unresolved cells.
-- Resolved cells, opponent board and unrelated page menus are not intercepted.
-- Own miss lock blocks notes AND guesses through mouse, touch, keyboard, direct
-  callbacks, context-menu keys and toggle attempts; previous manual mode is preserved.
-- Presses started before/during lock, cancelled or blurred presses, modal fall-through,
-  detached old cells and delayed releases cannot trigger an action after unlock.
-- Countdown 2/4/6/8 progress uses authoritative durations; pause/reconnect stays frozen.
-- Lock modal disappears at expiry; unlock feedback remains fresh-only and bounded.
-- Primary controls keep the same node in the own-board slot through rerenders.
-- Countdown, event/sound deduplication, six-cat advance, cross-board combo and audio
-  cleanup remain covered. Legacy dense boards/long names/intel fixtures remain covered.
+31 shared gesture-controller tests:
+- One single-use press intent per pointer/keyboard activation; click is the only
+  activation event, with no separate touchend or native dblclick action.
+- Single marks wait 300 ms. A second same-cell click strictly before the deadline
+  cancels that mark and requests exactly one reveal.
+- Independent cells retain independent singles; slow taps and exact deadline behavior.
+- Third taps/native triple tails, duplicate press tokens, marked-cell double behavior.
+- Context/eligibility checks at press, activation and dispatch; bounded pending timers.
+- cancel, cancelCell, aborted signals, stale/blocked presses and lifecycle cleanup.
+
+293 app/legacy integration and fake-DOM tests:
+- All four legacy modes, battle and labeled offline practice share the gesture flow.
+- Single clicks/taps change only private purple X, never HP, score, fish, turns,
+  cooldowns, host actions, combat sound or public snapshots.
+- Double same-cell reveals; marked-cell notes persist while awaiting authority and
+  are removed after confirmed reveal. No speculative guest reveal or duplicate action.
+- Different-cell quick singles, slow clicks, native dblclick/triple events, keyboard
+  Enter/Space timing and key-repeat suppression.
+- Non-turn or hit-cooldown double attempts do not guess or fall back to a mark.
+- Strict miss lock still blocks guesses AND notes, including delayed/held input.
+- Disconnect, reconnect, end, board replacement, background, window blur and cancelled
+  presses invalidate inapplicable pending input. Private independent completed singles
+  survive unrelated cell focus changes.
+- Sixth-cat rollover retains HP/combo and cannot turn a rapid third touch into a mark
+  on the replacement board.
+- Optional right-click remains private and cancels the cell's pending single.
+- Armed magnifier/yarn clicks deliberately select tool targets, suppressing a rapid
+  second same-cell click after completion; no unintended normal mark or reveal.
+- Note toggle removed. Persistent instructions are beside/above the own board.
+- Existing countdown, audio/FX deduplication, reconnect, item, cooperative, treasure,
+  private-intel, no-auto-deduction and confirmed-empty behavior remain covered.
+
+40 battle-engine tests (engine rules unchanged):
+- Legal connected uniquely solvable boards, minimum region size, all 90 valid answers.
+- Hit cooldown 300 ms; consecutive misses 2/4/6/8 seconds capped at 8; a cat resets
+  the next miss to 2 seconds. Misses reset only damage combo, without HP penalty.
+- Independent boards, six-cat advance, HP/combo carry, first lethal winner.
+- Action/board IDs, replay/duplicate rejection, paused deadlines, old saves and snapshots.
+- Explicit answer-free public state whitelist.
 
 52 audio tests:
-- Gesture-only context/sample loading, three actual CC0 recordings and shuffle bags.
+- Gesture-only audio context/loading, three distinct CC0 recordings and shuffled bags.
 - No immediate repeat, bounded voices/fades, mute/volume, event deduplication.
-- Pause/end/background cleanup and synthetic fallback without late sound replay.
+- Pause/end/background cleanup and disclosed synthetic fallback without late replay.
 
 20 region-palette tests:
-- Every 6/12/20/24-region board has unique deterministic colors, no cycling duplicates.
-- Full 24-color minimum OKLab distance 0.0762814; base ink contrast >=4.60777:1.
-- Public-only data; colors do not read private answers.
+- Unique deterministic colors for every 6/12/20/24-region board, without recycling.
+- 24-color minimum OKLab distance 0.0762814; base ink contrast >=4.60777:1.
+- Palette depends only on public board geometry, not hidden answers.
 
-42 CSS/layout source contracts:
-- Primary marking button beside own board on desktop, above it on phone/tablet.
-- Button text 16 px/status 14 px; heading hierarchy and 44 px+ core controls retained.
-- Centered board-bounds lock overlay intercepts pointer input; no reserved top strip.
-- Shared-mode cards, baskets and intel keep real content-sized rows without overlap
-  caused by the retired absolute decorative plate/fixed card height.
-- Battle board height budgets: 344/392/560 px at 1280x720/1366x768/1920x1080.
-- Visible recovery actions reserve extra 64 px; corresponding boards 280/328/560 px.
-- Legacy board dimensions include the outer 8 px border; desktop cells use floor-based
-  available-height/width sizing. Dense 24x24 can use 14 px cells in a small PC viewport.
-- Explicit in-game board zoom may use the board's local scroll surface.
-- Mobile 320/360/390/430 retains primary controls and full-width local battle board.
-- No page clipping/overflow-hidden workaround, no tiny overall interface scaling.
-- Reduced-motion rules remove animation while retaining status/damage feedback.
+53 CSS/layout source contracts:
+- No region-edge selectors/overrides or thick dark board outlines remain.
+- Existing region colors fill hidden, private-note and confirmed-empty cells; uniform
+  subtle ordinary separators replace region-boundary lines.
+- Purple/private and gray/confirmed markers preserve calculated contrast on all colors.
+- Clear persistent '點一下做記號，快速點兩下翻格' guidance replaces toggle controls.
+- Local touch-action: manipulation preserves pan/pinch and page zoom; no global zoom ban.
+- Centered strict lock remains a blocking overlay and reduced motion remains supported.
+- Responsive source budgets include 320/360/390/430/768 widths and desktop
+  1280x720, 1366x768, 1920x1080; content-sized baskets/cards and toolbar fit contracts.
+- These are authored CSS and arithmetic assertions, not rendered rectangles.
 
 PASS — Syntax, packaging and static checks
-- All 16 JavaScript files pass node --check.
+- All 18 JavaScript files pass node --check.
 - git diff --check passes.
-- Generated local/opponent battle-card HTML has balanced nested tags.
-- Single-file preview embeds scripts, styles, artwork and the three WAV recordings.
+- Single-file preview embeds cell-gestures.js, other scripts/styles, artwork and WAVs.
 
 NOT VERIFIED — Browser/device acceptance
-- Rendered fit at 100% browser zoom, exact element rectangles, font substitution,
-  real desktop/mobile appearance and screenshots.
-- Physical right mouse, touch, keyboard focus and context-menu ordering in browsers.
-- Actual audio playback/subjective listening quality on devices.
-- Real two-browser WebRTC, reconnect, external NAT/firewall/service availability.
+- Actual mobile tap/double-tap, native click compatibility ordering, pinch zoom,
+  physical keyboard/mouse, assistive technology and browser focus behavior.
+- Rendered PC fit at 100% browser zoom, exact layout/typography and device screenshots.
+- Actual audio playback/subjective listening quality and real two-browser WebRTC/P2P.
 
-The existing browser permission/URL/DevTools restrictions remain unresolved and
-were not retried or bypassed. VM and source-level CSS contracts do not render pixels
-and are not proof that every interface fits every real device. No new screenshot
-or physical-device/P2P pass is claimed. Visual and network acceptance is still needed.
+Existing browser permission/URL/DevTools restrictions remain unresolved and were not
+retried or bypassed. VM and source-level CSS contracts do not render pixels and are
+not device acceptance. No new screenshot, physical-input or P2P pass is claimed.

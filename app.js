@@ -7,7 +7,7 @@ const ICE = { iceServers: [
 ] };
 const state = {
   role: null, you: 0, peer: null, transport: null, rtc: null, game: null,
-  notes: new Set(), intel: [], tool: null, yarnTargets: [], mode: 'guess', room: '', manual: false, matchAbort: null,
+  notes: new Set(), intel: [], tool: null, yarnTargets: [], room: '', manual: false, matchAbort: null,
   pendingAction: null, selectedCell: null, zoom: +(localStorage.catBoardZoom||1), turnBannerTimer: null,
   muted: localStorage.p2pMuted === '1', volume: Number.isFinite(+localStorage.catAudioVolume)?Math.max(0,Math.min(1,+localStorage.catAudioVolume)):.45, sound:null, audio:null, audioUnlocked:false, uiSoundSequence:0,
   avatar:+localStorage.catAvatar||0,
@@ -159,11 +159,107 @@ const itemMode=game=>['items','coop'].includes(game.settings.mode);
 const fishBalance=(game,who)=>game.settings.mode==='coop'?game.sharedFish:game.players[who].fish;
 function changeFish(game,who,delta){if(game.settings.mode==='coop')game.sharedFish=Math.max(0,Math.min(4,game.sharedFish+delta));else game.players[who].fish=Math.max(0,Math.min(4,game.players[who].fish+delta))}
 function unresolved(game,index){return Number.isInteger(index)&&index>=0&&index<game.puzzle.size**2&&!game.found.includes(index)&&!game.misses.includes(index)}
-function legacyContextMark(index,event,puzzleId){
-  const game=state.game;
-  if(!game||game.settings.mode==='battle'||game.status!=='playing'||game.puzzle.id!==puzzleId||!unresolved(game,index))return;
-  event.preventDefault();state.selectedCell=null;
-  state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();
+const BOARD_DOUBLE_MS=300;
+function localGestureBoard(){const game=state.game;return game?.settings.mode==='battle'?game.boards?.[state.you]:game;}
+function boardGestureContext(){
+  const game=state.game,board=localGestureBoard();if(!game||!board?.puzzle)return `none:${state.gestureEpoch||0}`;
+  const battle=game.settings.mode==='battle',locked=battle&&typeof battleMissLocked==='function'&&battleMissLocked(game);
+  return [state.role,state.you,game.id||game.puzzle.id,board.puzzle.id,game.status,game.pausedFrom||game._pausedFrom||'',
+    battle?'':game.turnId,battle?'':game.turn,board.cooldownUntil||0,locked?'locked':'ready',
+    (board.found||[]).join('.'),(board.misses||[]).join('.'),state.pendingAction?.actionId||'',state.tool||'',state.gestureEpoch||0].join('|');
+}
+function canMarkBoardCell(index,context=boardGestureContext()){
+  const game=state.game,board=localGestureBoard();
+  if(document.hidden||!game||!board?.puzzle||context!==boardGestureContext()||!Number.isInteger(index)||index<0||index>=board.puzzle.size**2||board.found.includes(index)||board.misses.includes(index))return false;
+  if(game.settings.mode==='battle')return (game.status==='playing'||(game.status==='paused'&&(game.pausedFrom||game._pausedFrom)!=='countdown'))&&!battleMissLocked(game);
+  return game.status==='playing';
+}
+function canRevealBoardCell(index){
+  const game=state.game,board=localGestureBoard();if(!canMarkBoardCell(index)||game.status!=='playing'||state.pendingAction||state.tool)return false;
+  return game.settings.mode==='battle'?board.cooldownUntil<=Date.now()+(state.clockOffset||0):game.turn===state.you;
+}
+function cancelBoardGestures(){
+  state.cellGestures?.cancel();state.gestureEpoch=(state.gestureEpoch||0)+1;state.boardGestureKey=boardGestureContext();state.lastToolCellGesture=null;state.revealClickGuard=null;
+}
+function syncBoardGestures(){
+  const key=boardGestureContext();if(state.boardGestureKey!==key){state.cellGestures?.cancel();state.boardGestureKey=key;}
+  const board=localGestureBoard();let changed=false;
+  if(board)for(const index of [...state.notes])if(board.found.includes(index)||board.misses.includes(index)){state.notes.delete(index);changed=true;}
+  if(changed&&state.role)saveLocal();
+}
+function togglePrivateCell(index,context=boardGestureContext()){
+  if(!canMarkBoardCell(index,context))return false;
+  state.notes.has(index)?state.notes.delete(index):state.notes.add(index);state.selectedCell=null;saveLocal();
+  const board=localGestureBoard(),cell=state.game.settings.mode==='battle'?$('.battle-side.local .battle-board')?.querySelector(`.cell[data-index="${index}"]`):boardCell(index);
+  if(cell){const marked=state.notes.has(index),size=board.puzzle.size;cell.classList.toggle('note',marked);cell.classList.remove('selected-cell');cell.textContent=marked?'×':'';cell.dataset.renderState=marked?'note':'hidden';cell.setAttribute('aria-label',`第 ${Math.floor(index/size)+1} 行，第 ${index%size+1} 列，區域 ${board.puzzle.regions[index]+1}${marked?'，私人筆記，尚未確認':''}`);}
+  return true;
+}
+function revealGestureCell(index,context){
+  if(context!==boardGestureContext()||!canRevealBoardCell(index))return false;
+  state.revealClickGuard={index,boardId:localGestureBoard().puzzle.id,until:Date.now()+BOARD_DOUBLE_MS};
+  if(state.game.settings.mode==='battle'){battleChoose(index);return true;}
+  const game=state.game,action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};
+  state.selectedCell=null;state.pendingAction={index,turnId:game.turnId,actionId:action.actionId};render();
+  setTimeout(()=>{if(state.pendingAction?.actionId===action.actionId){state.pendingAction=null;render();}},1800);
+  state.role==='host'?act(0,action):send({type:'action',action});return true;
+}
+function getBoardGestures(){
+  if(!state.cellGestures)state.cellGestures=CatCellGestures.create({doubleMs:BOARD_DOUBLE_MS,cellCount:576,
+    getContext:boardGestureContext,canAct:canMarkBoardCell,onMark:togglePrivateCell,onReveal:revealGestureCell,
+    now:()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now(),setTimer:(fn,ms)=>setTimeout(fn,ms),clearTimer:id=>clearTimeout(id)});
+  syncBoardGestures();return state.cellGestures;
+}
+function cellMatchesCurrentBoard(cell){
+  const game=state.game,board=localGestureBoard();return !!board&&cell.dataset.gameId===(game.id||game.puzzle.id)&&cell.dataset.boardId===board.puzzle.id;
+}
+function rolloverGestureSuppressed(index){const guard=state.revealClickGuard;return !!guard&&guard.index===index&&guard.boardId!==localGestureBoard()?.puzzle.id&&Date.now()<guard.until;}
+function toolGestureSuppressed(index){const guard=state.lastToolCellGesture,board=localGestureBoard();return !!guard&&guard.boardId===board?.puzzle.id&&guard.index===index&&Date.now()<guard.until;}
+function captureBoardPress(cell,event){
+  const index=+cell.dataset.index,context=boardGestureContext();
+  if(event?.button===2){cell.boardContextIntent={context,epoch:state.gestureEpoch||0,allowed:cellMatchesCurrentBoard(cell)&&canMarkBoardCell(index,context)};return;}
+  if(event?.button>0)return;
+  if(state.tool&&state.game?.settings.mode!=='battle'){
+    cell.boardToolIntent={context,epoch:state.gestureEpoch||0,tool:state.tool,allowed:cellMatchesCurrentBoard(cell)&&canMarkBoardCell(index,context)&&state.game.turn===state.you&&!state.pendingAction&&!toolGestureSuppressed(index)};return;
+  }
+  const gestures=getBoardGestures(),intent=gestures.press(index);
+  if(!cellMatchesCurrentBoard(cell)||toolGestureSuppressed(index)||rolloverGestureSuppressed(index))gestures.cancelPress(intent);
+  cell.boardPressIntent=intent;
+}
+function cancelCellPress(cell){
+  if(cell.boardPressIntent)state.cellGestures?.cancelPress(cell.boardPressIntent);
+  cell.boardPressIntent=null;cell.boardContextIntent={cancelled:true};cell.boardToolIntent={cancelled:true};cell.boardCancelled=true;
+}
+function activateBoardCell(cell,event={}){
+  const index=+cell.dataset.index,intent=cell.boardPressIntent,toolIntent=cell.boardToolIntent;
+  cell.boardPressIntent=null;cell.boardToolIntent=null;
+  if(event.button>0||!cellMatchesCurrentBoard(cell)||toolGestureSuppressed(index)||rolloverGestureSuppressed(index)||cell.boardCancelled){cell.boardCancelled=false;return;}
+  if(toolIntent||state.tool){
+    const captured=toolIntent||{context:boardGestureContext(),epoch:state.gestureEpoch||0,tool:state.tool,allowed:event.detail==null||event.detail===0};
+    if(captured.cancelled||!captured.allowed||captured.context!==boardGestureContext()||captured.epoch!==(state.gestureEpoch||0)||captured.tool!==state.tool||!canMarkBoardCell(index)||state.game.turn!==state.you||state.pendingAction)return;
+    state.cellGestures?.cancel();state.lastToolCellGesture={index,boardId:localGestureBoard().puzzle.id,until:Date.now()+BOARD_DOUBLE_MS};
+    if(state.tool==='magnifier'){sendItem({item:'magnifier',target:index});return;}
+    if(state.tool==='yarn'){state.yarnTargets.includes(index)?state.yarnTargets=state.yarnTargets.filter(value=>value!==index):state.yarnTargets.length<3&&state.yarnTargets.push(index);render();return;}
+    return;
+  }
+  const gestures=getBoardGestures();
+  if(event.detail>0&&!intent)return;
+  gestures.activate(intent||gestures.press(index),{detail:event.detail||0});
+}
+function contextMarkBoardCell(cell,event){
+  const index=+cell.dataset.index,intent=cell.boardContextIntent;cell.boardContextIntent=null;
+  if(!cellMatchesCurrentBoard(cell)||!canMarkBoardCell(index)||event.button===2&&!intent)return;
+  if(intent&&(intent.cancelled||!intent.allowed||intent.context!==boardGestureContext()||intent.epoch!==(state.gestureEpoch||0)))return;
+  event.preventDefault();getBoardGestures().cancelCell(index);togglePrivateCell(index);
+}
+function boardCellKeydown(event){
+  if(event.key==='ContextMenu'||event.key==='F10'&&event.shiftKey){captureBoardPress(event.currentTarget,{button:2});return;}
+  if(['Enter',' ','Spacebar'].includes(event.key)){if(event.repeat){event.preventDefault();return;}event.currentTarget.boardCancelled=false;captureBoardPress(event.currentTarget,event);return;}
+  if(state.game?.settings.mode==='battle')battleKeydown(event);
+}
+function wireBoardCell(cell,index){
+  const game=state.game,board=localGestureBoard();cell.dataset.gameId=game.id||game.puzzle.id;cell.dataset.boardId=board.puzzle.id;
+  cell.onpointerdown=event=>{cell.boardCancelled=false;captureBoardPress(cell,event);};cell.onpointercancel=()=>cancelCellPress(cell);cell.onblur=()=>cancelCellPress(cell);
+  cell.onclick=event=>activateBoardCell(cell,event);cell.oncontextmenu=event=>contextMarkBoardCell(cell,event);cell.onkeydown=boardCellKeydown;
 }
 function connectedTargets(size,targets){const set=new Set(targets),seen=new Set([targets[0]]),queue=[targets[0]];while(queue.length){const i=queue.shift(),r=Math.floor(i/size),c=i%size;for(const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){const rr=r+dr,cc=c+dc,n=rr*size+cc;if(rr>=0&&rr<size&&cc>=0&&cc<size&&set.has(n)&&!seen.has(n)){seen.add(n);queue.push(n)}}}return seen.size===targets.length}
 function deliverIntel(game,who,intel){
@@ -348,6 +444,7 @@ function syncBattleClock(sentAt,serverTime){
 }
 
 function onOpen() {
+  cancelBoardGestures();
   state.suppressLegacyAudio=true;
   state.lastPong=Date.now();state.bestClockRtt=Infinity;state.clockSyncedAt=null;state.suppressBattleFX=true;if(state.game?.settings.mode!=='battle')state.disconnectAt=null;
   if (state.role==='guest') state.suppressNextTurnSound=true;
@@ -356,6 +453,7 @@ function onOpen() {
   else send({type:'hello',nickname:$('#nick').value||'小花貓',avatar:state.avatar});
 }
 function onClose() {
+  cancelBoardGestures();
   stopGameAudio();state.suppressLegacyAudio=true;
   $('#connection').textContent='連線中斷－盤面已保留';
   if(state.game?.settings.mode==='battle'){if(['playing','countdown','paused'].includes(state.game.status)){if(state.role==='host')CatBattle.pause(state.game,Date.now());else if(state.game.status!=='paused'){state.game.pausedFrom=state.game.status;state.game.countdownRemaining=state.game.status==='countdown'?Math.max(0,state.game.startAt-(Date.now()+(state.clockOffset||0))):null;state.game.status='paused';state.game.pausedAt=Date.now()+(state.clockOffset||0);}state.disconnectAt??=Date.now();state.pendingAction=null;}}
@@ -474,18 +572,6 @@ function syncAudioControls(){
   if(output)output.textContent=`${Math.round(state.volume*100)}%`;
   const sampleStatus=$('#meowLoadStatus'),audioState=state.sound?.getState();if(sampleStatus){sampleStatus.textContent=audioState?.loadedSamples?`已載入 ${audioState.loadedSamples} 組貓叫，隨機播放且不連續重複。`:audioState?.samplesStatus==='failed'?'貓叫錄音載入失敗，目前使用合成備用音效；請重新整理再試。':audioState?.samplesStatus==='loading'?'貓叫錄音載入中…':'首次操作後載入貓叫錄音；載入前會使用合成備用音效。';}
 }
-function setNoteMode(enabled){
-  if(typeof battleMissLocked==='function'&&battleMissLocked())return;
-  state.mode=enabled?'note':'guess';state.tool=null;state.yarnTargets=[];syncNoteModeUI();playUICue();render();
-}
-function syncNoteModeUI(){
-  const locked=typeof battleMissLocked==='function'&&battleMissLocked(),active=state.mode==='note';document.body.classList.toggle('note-mode-active',active);
-  for(const [buttonId,statusId] of [['#noteMode','#noteModeStatus'],['#battleNote','#battleNoteStatus']]){
-    const button=$(buttonId),status=$(statusId);
-    if(button){button.disabled=Boolean(locked);button.dataset.locked=String(Boolean(locked));button.textContent=`× 記號模式：${active?'開':'關'}`;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.title=locked?'鎖定期間暫停翻格與私人標記':active?'關閉記號模式，恢復點格子找貓':'開啟後，點格子只會加上或移除私人記號';}
-    if(status)status.textContent=locked?'鎖定中，翻格與標記都暫停':active?'記號模式：點格子切換紫色 ×；PC 也可右鍵。':'直接點格子找貓；PC 右鍵標記紫色 ×。';
-  }
-}
 function observeLegacyAudio(game){
   const matchId=game.puzzle.id,initial=state.legacyAudioMatch!==matchId;
   prepareGameAudio(matchId,game.status);
@@ -512,50 +598,10 @@ function observeLegacyAudio(game){
 }
 const unlockAudioFromGesture=()=>{if(!state.muted&&state.volume>0)unlockAudio();};
 document.addEventListener('pointerdown',unlockAudioFromGesture);document.addEventListener('keydown',unlockAudioFromGesture);
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stopGameAudio();state.suppressLegacyAudio=true;});
+window.addEventListener('blur',()=>cancelBoardGestures());
+document.addEventListener('visibilitychange',()=>{cancelBoardGestures();if(document.hidden)stopGameAudio();state.suppressLegacyAudio=true;});
 
-function render() {
-  const game=state.game; if (!game) return;
-  if (game.found.length>state.observed.found) tone('cat');
-  if (game.misses.length>state.observed.misses) tone('miss');
-  if (game.status==='finished'&&!state.observed.finished) tone('finish');
-  state.observed={found:game.found.length,misses:game.misses.length,finished:game.status==='finished'};
-  $('#setup').classList.add('hidden'); $('#game').classList.remove('hidden');
-  $('#room').textContent=`房號 ${state.room||'手動連線'}`;
-  $('#turnText').textContent=game.status==='finished'?'本局完成':game.turn===state.you?'輪到你囉！':`換 ${game.players[game.turn].nickname}`;
-  $('#message').textContent=game.hint|| (game.hintVotes?.length?`${game.players[game.hintVotes[0]].nickname} 正在等待共同提示同意`:'') || (game.lastEmote?`${game.players[game.lastEmote.from].nickname}：${game.lastEmote.value}`:'') || (game.streak>1?`連抓 ${game.streak} 隻！`:'');
-  for (let playerIndex=0;playerIndex<2;playerIndex++) {
-    const player=game.players[playerIndex], element=$(`#p${playerIndex}`); element.className=game.turn===playerIndex?'current':'';
-    element.innerHTML=`<div class="face">${playerIndex?'🐈‍⬛':'🐈'}</div><b>${player.nickname}${playerIndex===state.you?'（你）':''}</b><div class="score">${player.score}</div><small>${player.connected?'已連線':'暫時離線'}</small><div>${'🐾'.repeat(player.score)}</div>`;
-  }
-  const board=$('#board'), size=game.puzzle.size, cellSize=Math.max(18,Math.min(29,(innerHeight-175)/size,(innerWidth-350)/size));
-  board.style.setProperty('--n',size); board.style.setProperty('--s',`${cellSize}px`); board.innerHTML='';
-  for (let index=0;index<size*size;index++) {
-    const cell=document.createElement('button'), region=game.puzzle.regions[index], row=Math.floor(index/size), column=index%size;
-    cell.className='cell'; cell.dataset.index=index; cell.setAttribute('role','gridcell');
-    cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}`);
-    cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`; cell.style.setProperty('--bg',colors[region%colors.length]);
-    if (column===size-1||game.puzzle.regions[index+1]!==region) cell.classList.add('er');
-    if (row===size-1||game.puzzle.regions[index+size]!==region) cell.classList.add('eb');
-    if (game.found.includes(index)) { cell.classList.add('cat'); cell.setAttribute('aria-label',`${cell.getAttribute('aria-label')}，已找到貓`); }
-    else if (game.misses.includes(index)) { cell.classList.add('opened'); cell.textContent='×'; cell.disabled=true; }
-    else if (state.notes.has(index)) { cell.classList.add('note'); cell.textContent='×'; }
-    if(game.status!=='playing')cell.disabled=true;
-    cell.oncontextmenu=event=>legacyContextMark(index,event,game.puzzle.id);
-    cell.onclick=event=>{
-      if(event?.button>0||game.status!=='playing'||!unresolved(game,index)||(state.mode==='guess'&&game.turn!==state.you))return;
-      if (state.mode==='note') { state.notes.has(index)?state.notes.delete(index):state.notes.add(index); saveLocal(); render(); return; }
-      const action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};
-      state.role==='host'?act(0,action):send({type:'action',action});
-    };
-    board.appendChild(cell);
-  }
-  $('#pass').disabled=game.turn!==state.you;
-  if (game.status==='finished'&&!$('#result').open) {
-    $('#resultTitle').textContent=game.winner==='tie'?'平手！':game.winner===state.you?'你贏了！':'下一局再加油！';
-    $('#resultScore').textContent=`${game.players[0].score}：${game.players[1].score}`; $('#result').showModal();
-  }
-}
+function render(){renderV2();}
 
 const escapeHTML=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function playVisualEvent(event) {
@@ -585,7 +631,7 @@ function renderV2() {
   const previousTurn=state.observed.turn,turnChanged=game.status==='playing'&&previousTurn!==game.turn,audibleTurnChanged=turnChanged&&previousTurn!==null&&state.observed.status==='playing'&&!state.suppressNextTurnSound;
   const visibleIntel=game.settings.mode==='coop'?game.sharedIntel:state.intel,probed=new Set(visibleIntel.flatMap(intel=>intel.targets||[]));
   const unseen=game.lastEvent?.at>state.observed.eventAt;
-  syncNoteModeUI();observeLegacyAudio(game);
+  syncBoardGestures();observeLegacyAudio(game);
   $('#setup').classList.add('hidden');$('#game').classList.remove('hidden');
   $('#room').textContent=`房號 ${state.room||'手動連線'}`;
   const info=MODE_INFO[game.settings.mode];
@@ -605,7 +651,7 @@ function renderV2() {
     const basketCats=[...captures.map((index,i)=>`<span class="basket-cat" title="已找到的貓" style="animation-delay:${Math.min(i*.02,.3)}s">${catCharacter(catVariant(game,index),'basket-character')}</span>`),...Array.from({length:fallback},(_,i)=>`<span class="basket-cat">${catCharacter((playerIndex*3+i)%8,'basket-character')}</span>`)];
     element.innerHTML=`<div class="turn-label" aria-hidden="true">目前回合</div><div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${playerAvatar(player.avatar||0,'avatar-character')}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'共同進度':'個人成績'}${fishText} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${basketCats.join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
   }
-  const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'本輪已使用道具':state.tool==='magnifier'?'請選未翻中心格':state.tool==='yarn'?`已選 ${state.yarnTargets.length}/3 個相連同區格`:game.shield?'護墊待命中':'';
+  const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'本輪已使用道具':state.tool==='magnifier'?'道具目標：點一下選未翻中心格':state.tool==='yarn'?`道具目標：點一下選取，已選 ${state.yarnTargets.length}/3 格`:game.shield?'護墊待命中':'';
   document.querySelectorAll('#toolbox [data-item]').forEach(button=>{const cost={magnifier:2,yarn:2,shield:3,hourglass:2}[button.dataset.item];button.disabled=!tools||game.turn!==state.you||game.itemUsedThisTurn||balance<cost;button.classList.toggle('selected',state.tool===button.dataset.item)});$('#confirmYarn').classList.toggle('hidden',state.tool!=='yarn');$('#cancelItem').classList.toggle('hidden',!state.tool);
   const board=$('#board'),size=game.puzzle.size,mobile=innerWidth<=700,smallSize=size===6;
   const baseSize=mobile?(smallSize?Math.min(50,(innerWidth-38)/size):Math.max(18,Math.min(24,(innerWidth-18)/Math.min(size,20)))):Math.max(14,Math.min(smallSize?62:36,(innerHeight-368)/size,(innerWidth-508)/size));
@@ -626,9 +672,7 @@ function renderV2() {
     if(state.selectedCell===index)cell.classList.add('selected-cell');
     if(state.pendingAction?.index===index)cell.classList.add('pending-cell');
     if(game.status!=='playing')cell.disabled=true;
-    cell.oncontextmenu=event=>legacyContextMark(index,event,game.puzzle.id);
-    cell.onpointerdown=event=>{if(!event?.button&&!cell.disabled&&state.mode==='guess'&&!state.tool){state.selectedCell=index;cell.classList.add('selected-cell')}};
-    cell.onclick=event=>{if(event?.button>0||game.status!=='playing'||!unresolved(game,index)||(state.mode==='guess'&&(game.turn!==state.you||state.pendingAction)))return;state.selectedCell=null;if(state.tool==='magnifier'){sendItem({item:'magnifier',target:index});return}if(state.tool==='yarn'){state.yarnTargets.includes(index)?state.yarnTargets=state.yarnTargets.filter(value=>value!==index):state.yarnTargets.length<3&&state.yarnTargets.push(index);render();return}if(state.mode==='note'){state.notes.has(index)?state.notes.delete(index):state.notes.add(index);saveLocal();render();return}if(state.pendingAction)return;const action={type:'guess',index,turnId:game.turnId,actionId:crypto.randomUUID()};state.pendingAction={index,turnId:game.turnId,actionId:action.actionId};render();setTimeout(()=>{if(state.pendingAction?.actionId===action.actionId){state.pendingAction=null;render()}},1800);state.role==='host'?act(0,action):send({type:'action',action})};
+    wireBoardCell(cell,index);
     board.appendChild(cell);
   }
   $('#pass').disabled=game.turn!==state.you;
@@ -700,7 +744,7 @@ function sendItem(payload){
 document.querySelectorAll('#toolbox [data-item]').forEach(button=>button.onclick=()=>{
   const item=button.dataset.item;
   if(item==='magnifier'||item==='yarn'){
-    state.mode='guess';state.tool=state.tool===item?null:item;state.yarnTargets=[];render();return;
+    cancelBoardGestures();state.tool=state.tool===item?null:item;state.yarnTargets=[];render();return;
   }
   sendItem({item});
 });
@@ -751,7 +795,6 @@ $('#applyCode').onclick=async()=>{
   } catch (error) { toast(`代碼無效：${error.message}`); }
 };
 $('#copyCode').onclick=()=>navigator.clipboard.writeText($('#outCode').value).then(()=>toast('已複製'));
-$('#noteMode').onclick=()=>setNoteMode(state.mode!=='note');
 $('#pass').onclick=()=>{
   const action={type:'pass',turnId:state.game.turnId,actionId:crypto.randomUUID()}; state.role==='host'?act(0,action):send({type:'action',action});
 };
@@ -767,7 +810,7 @@ $('#mute').onclick=()=>{
 };
 $('#soundVolume').oninput=()=>{state.volume=Math.max(0,Math.min(1,Number($('#soundVolume').value)/100));localStorage.catAudioVolume=String(state.volume);getGameAudio().setVolume(state.volume);syncAudioControls();};
 $('#soundVolume').onchange=()=>{if(!state.muted)unlockAudio().then(unlocked=>{if(unlocked)playUICue();});};
-syncAudioControls();syncNoteModeUI();
+syncAudioControls();
 
 $('#board').addEventListener('keydown',event=>{
   if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)) return;
@@ -783,6 +826,7 @@ function boardCell(index) { return index>=0&&index<state.game.puzzle.size**2?$(`
 
 let rematchVotes=new Set();
 function rematchVote(who) {
+  cancelBoardGestures();
   if(state.game?.settings.mode==='battle'&&state.game.status!=='finished')return;
   rematchVotes.add(who);
   if (state.role==='host'&&rematchVotes.size===2) {

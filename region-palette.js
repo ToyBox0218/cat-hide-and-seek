@@ -12,7 +12,7 @@
   // fewer regions get the most separated colors, not a hue-wheel truncation.
   // Full 24-color measured minimum distance: 0.0762814043 (OKLab units).
   // These are useful checks, not a guarantee of color-vision accessibility.
-  // Strong region boundaries and non-color state marks must remain in the UI.
+  // Unique region colors and non-color state marks are preserved in the UI.
   const COLORS = Object.freeze([
     '#f1ce79', '#e297f6', '#60d8fb', '#60ce7e', '#fbd8fb', '#fb9792',
     '#92fbc4', '#b5b597', '#9cb0f6', '#e7f674', '#d8bad3', '#baf1fb',
