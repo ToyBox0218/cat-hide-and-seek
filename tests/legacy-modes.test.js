@@ -221,7 +221,7 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
       } : value]));
     } };
   }
-  if (battle === true || survival) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-engine.js'), 'utf8'), context, { filename: 'battle-engine.js' });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-engine.js'), 'utf8'), context, { filename: 'battle-engine.js' });
   if (survival) for (const filename of ['survival-engine.js', 'survival-session.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   vm.runInContext(fs.readFileSync(APP_PATH, 'utf8'), context, { filename: APP_PATH });
   if (battleUI || survivalUI) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-ui.js'), 'utf8'), context, { filename: 'battle-ui.js' });

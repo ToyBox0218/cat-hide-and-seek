@@ -109,6 +109,7 @@ body.is-survival .help-fab { display: none !important; }
 .survival-board-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; margin: 8px 0 0; color: #90775c; font-size: 14px; }
 .survival-board-foot > span:first-child { font-weight: 850; color: #6d8157; }
 .survival-board-notice { margin: 8px 2px 0; font-size: 14px; line-height: 1.45; color: #8c7054; }
+.survival-board-notice:empty { display: none; }
 .survival-lock { position: absolute; inset: 0; z-index: 20; display: grid; align-content: center; justify-items: center; gap: 9px; padding: 22px; border: 2px solid #cba876; border-radius: inherit; background: #fff5e4ed; backdrop-filter: blur(2px); color: #885d37; text-align: center; pointer-events: auto; touch-action: none; }
 .survival-lock > span:first-child { font-size: 28px; }
 .survival-lock > strong { font-size: 19px; }
@@ -116,14 +117,15 @@ body.is-survival .help-fab { display: none !important; }
 .survival-lock > span { font-size: 14px; }
 .survival-lock-meter { display: block; width: min(190px, 70%); height: 7px; margin-top: 5px; border-radius: 20px; overflow: hidden; background: #e7d5b9; }
 .survival-lock-meter > i { display: block; height: 100%; background: #bf9366; border-radius: inherit; }
+.survival-screen-reader { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .survival-center-rail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .survival-clock-card { display: grid; justify-items: center; gap: 4px; padding: 12px 5px; border: 2px solid #f9f0dd; border-radius: 20px; background: #e4dbc5; color: #765d3f; box-shadow: 0 3px 0 #b69c7524; }
 .survival-clock-card > span:first-child { font-size: 14px; font-weight: 850; letter-spacing: .06em; }
 .survival-clock-card > strong { font-size: 40px; line-height: 1.15; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
 .survival-clock-card > span:last-child { font-size: 14px; }
-.survival-quota-card { display: grid; justify-items: center; gap: 7px; padding: 14px 8px; border: 1px solid #d8c5a4; border-radius: 19px; background: #fff8e7; text-align: center; }
+.survival-quota-card { position: relative; display: grid; justify-items: center; gap: 5px; padding: 12px 8px; border: 1px solid #d8c5a4; border-radius: 19px; background: #fff8e7; text-align: center; }
 .survival-quota-card > span:first-child { font-size: 14px; font-weight: 800; color: #9a764d; }
-.survival-quota-card > strong { font-size: 32px; line-height: 1.2; color: #966838; }
+.survival-quota-card > strong { font-size: 32px; line-height: 1.2; color: #966838; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .survival-quota-card > span { font-size: 14px; color: #967859; }
 .survival-quota-card > b { font-size: 14px; color: #8a623b; }
 .survival-quota-meter { width: 100%; height: 7px; margin-top: 3px; border-radius: 20px; overflow: hidden; background: #e9dfca; }
@@ -131,15 +133,12 @@ body.is-survival .help-fab { display: none !important; }
 .survival-quota-card.is-complete, .survival-quota-card.is-final { background: #eef2e3; border-color: #bccdad; }
 .survival-quota-card.is-complete > b, .survival-quota-card.is-final > strong { color: #4d794c; }
 .survival-quota-card.is-complete .survival-quota-meter i { background: #78a472; }
-.survival-quota-card.is-urgent { border-color: #cd9157; background: #ffedca; }
-.survival-quota-warning { margin: -5px 0 0; padding: 9px 7px; border-radius: 11px; color: #a05f30; background: #fbe2bd; font-size: 14px; line-height: 1.6; text-align: center; font-weight: 850; }
+.survival-quota-card.is-urgent { border-color: #b96336; background: #ffedca; box-shadow: inset 0 0 0 2px #e7b76f; }
+.survival-quota-card.is-urgent > strong, .survival-quota-card.is-urgent > b { color: #a34c27; }
+.survival-quota-card.is-urgent .survival-quota-meter i { background: #c47840; }
+.survival-quota-warning { margin: -5px 0 0; padding: 9px 7px; border-radius: 11px; color: #a05f30; background: #fbe2bd; font-size: 14px; line-height: 1.4; text-align: center; font-weight: 850; font-variant-numeric: tabular-nums; }
 #survivalGestureHint { flex-direction: column; flex-wrap: nowrap; gap: 6px; padding-block: 6px; font-size: 16px; }
 #survivalGestureHint .gesture-drag { font-size: 14px; }
-.survival-key-hint { color: #a68c71; font-size: 14px; }
-.survival-legend { display: grid; justify-items: center; gap: 5px; margin: 0; font-size: 14px; color: #9d8266; }
-.survival-legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.survival-legend i { color: #493d35; font-style: normal; font-size: 17px; font-weight: 850; }
-.survival-legend i.survival-note-dot { color: #58306f; }
 .survival-friends { min-width: 0; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 120px; grid-template-rows: auto auto auto minmax(0, 1fr); column-gap: 12px; padding: 12px; }
 .survival-friends > .survival-section-heading, .survival-friends-caption { grid-column: 1 / -1; }
 #survivalArena .survival-friends h2 { font-size: 22px; }
@@ -177,19 +176,44 @@ body.is-survival .help-fab { display: none !important; }
 .survival-winners { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-left: auto; }
 .survival-winner-avatar { position: relative; width: 47px; height: 47px; flex: 0 0 auto; }
 .survival-winner-avatar > span:first-child { position: absolute; z-index: 2; left: 50%; top: -13px; transform: translateX(-50%); color: #b88828; font-size: 24px; }
+/* Feedback is a bounded visual layer. It never captures a pointer or holds up
+   the next board, even when the sixth cat and its blast share one event. */
 .survival-fx { position: absolute; inset: 0; z-index: 15; overflow: hidden; border-radius: inherit; pointer-events: none; }
-.survival-tabby-burst { position: absolute; left: var(--x); top: var(--y); width: 0; height: 0; }
-.survival-burst-ring { position: absolute; left: -29px; top: -29px; width: 58px; height: 58px; border: 4px solid #dca858; border-radius: 50%; animation: survivalRing 850ms 220ms ease-out both; }
-.survival-tabby-burst > span { position: absolute; left: -13px; top: -13px; font-size: 25px; animation: survivalPaw 950ms 220ms ease-out both; --dx: -62px; --dy: -57px; }
-.survival-tabby-burst > span:nth-of-type(2) { --dx: 58px; --dy: -50px; animation-delay: 280ms; }
-.survival-tabby-burst > span:nth-of-type(3) { --dx: 15px; --dy: 60px; animation-delay: 320ms; }
+.survival-tabby-sequence { position: absolute; inset: 0; pointer-events: none; }
+.survival-tabby-sequence * { pointer-events: none; }
+.survival-tabby-flight { position: absolute; z-index: 3; left: var(--source-x); top: var(--source-y); width: var(--cat-size); aspect-ratio: 1; transform: translate(-50%, -50%); transform-origin: center; filter: drop-shadow(0 4px 2px #65422250); animation: survivalTabbyLeap 1400ms cubic-bezier(.22,.7,.32,1) both; }
+.survival-tabby-flight .cat-art { display: block; width: 100%; height: 100%; }
+.survival-blast-tile { position: absolute; z-index: 1; border: 3px solid #f8d67b; border-radius: 5px; background: #fff0b24f; box-shadow: inset 0 0 12px #fff0bc, 0 0 7px #f6c46099; animation: survivalTileReveal 500ms 900ms ease-out both; }
+.survival-burst-ring { position: absolute; z-index: 2; left: var(--landing-x); top: var(--landing-y); width: 19%; aspect-ratio: 1; border: 4px solid #f3c564; border-radius: 50%; box-shadow: 0 0 0 3px #fff8d580; animation: survivalRing 500ms 900ms ease-out both; }
+.survival-tabby-score { position: absolute; z-index: 4; left: 50%; top: 12%; display: flex; align-items: center; gap: 8px; padding: 5px 12px; border: 2px solid #d69c4c; border-radius: 30px; background: #fff7dced; color: #885222; box-shadow: 0 3px 0 #72513524; white-space: nowrap; transform: translateX(-50%); animation: survivalScoreFloat 500ms 900ms ease-out both; }
+.survival-tabby-score small { font-size: 14px; font-weight: 850; }
+.survival-tabby-score strong { font-size: 26px; line-height: 1; }
+.survival-tabby-score > span { font-size: 18px; }
+.survival-tabby-sequence.is-previous-board .survival-blast-tile { border-style: dashed; background: #fff7d52b; }
+.survival-tabby-sequence.is-static .survival-tabby-flight { animation: none; opacity: 1; }
+.survival-tabby-sequence.is-static .survival-blast-tile { animation: none; opacity: .8; }
+.survival-tabby-sequence.is-static .survival-burst-ring { animation: none; transform: translate(-50%, -50%); opacity: .8; }
+.survival-tabby-sequence.is-static .survival-tabby-score { animation: none; }
 #survivalBoard .cell.survival-tabby-found { outline: 4px solid #e6b569; outline-offset: -4px; }
-#survivalBoard .cell.survival-blast-flash { animation: survivalCellGlow 900ms ease-out both; }
+#survivalBoard .cell.survival-blast-flash { animation: survivalCellGlow 400ms 900ms ease-out both; }
 .survival-capture-glow, .survival-board-clear { animation: survivalBoardGlow 900ms ease-out both; }
 .survival-cheer { animation: survivalFriendCheer 900ms ease-out both; }
+.survival-score-pop { animation: survivalScorePop 1400ms ease-out both; }
 .survival-static-highlight { outline: 3px solid #bda16a; outline-offset: -3px; }
-@keyframes survivalRing { from { transform: scale(.25); opacity: .95; } to { transform: scale(3.3); opacity: 0; } }
-@keyframes survivalPaw { 0% { transform: scale(.45) rotate(-20deg); opacity: 0; } 20% { opacity: .9; } 100% { transform: translate(var(--dx), var(--dy)) scale(.65) rotate(25deg); opacity: 0; } }
+.survival-quota-cutin { position: fixed; z-index: 50; left: var(--from-x); top: var(--from-y); display: flex; align-items: center; justify-content: center; gap: 13px; width: 284px; max-width: calc(100vw - 28px); padding: 14px 18px; border: 2px solid #bd7440; border-radius: 22px; background: #fff3d8f5; color: #974e28; box-shadow: 0 8px 28px #67441f35, inset 0 0 0 3px #fff9ec; transform: translate(-50%, -50%); transform-origin: center; pointer-events: none; user-select: none; animation: survivalQuotaCutin 1400ms cubic-bezier(.3,.65,.32,1) both; }
+.survival-quota-cutin * { pointer-events: none; }
+.survival-quota-cutin > span { font-size: 32px; }
+.survival-quota-cutin > div { display: grid; gap: 2px; }
+.survival-quota-cutin small { font-size: 14px; font-weight: 850; }
+.survival-quota-cutin strong { font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.survival-quota-cutin > b { align-self: end; margin-bottom: 3px; padding: 5px 7px; border-radius: 9px; background: #f7d6a7; font-size: 16px; white-space: nowrap; }
+.survival-quota-dock { position: fixed; z-index: 45; top: 12px; right: 12px; max-width: calc(100vw - 24px); padding: 7px 11px; border: 1px solid #bd7440; border-radius: 24px; background: #fff3d8f5; color: #974e28; box-shadow: 0 3px 12px #67441f24; font-size: 16px; font-weight: 850; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; user-select: none; }
+@keyframes survivalQuotaCutin { 0% { transform: translate(-50%, -50%) scale(.7); opacity: 0; } 12%, 46% { left: var(--from-x); top: var(--from-y); transform: translate(-50%, -50%) scale(1); opacity: 1; } 88% { left: var(--to-x); top: var(--to-y); transform: translate(-50%, -50%) scale(.4); opacity: .8; } 100% { left: var(--to-x); top: var(--to-y); transform: translate(-50%, -50%) scale(.3); opacity: 0; } }
+@keyframes survivalTabbyLeap { 0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; } 12% { transform: translate(-50%, -50%) scale(1.24) rotate(-8deg); opacity: 1; } 25% { left: var(--source-x); top: var(--source-y); transform: translate(-50%, -50%) scale(1); } 44% { left: var(--mid-x); top: var(--mid-y); transform: translate(-50%, -50%) scale(1.2) rotate(8deg); } 64% { left: var(--landing-x); top: var(--landing-y); transform: translate(-50%, -50%) scale(.88); opacity: 1; } 78% { left: var(--landing-x); top: var(--landing-y); transform: translate(-50%, -50%) scale(1.1); opacity: 1; } 100% { left: var(--landing-x); top: var(--landing-y); transform: translate(-50%, -50%) scale(.92); opacity: 0; } }
+@keyframes survivalRing { from { transform: translate(-50%, -50%) scale(.25); opacity: .95; } to { transform: translate(-50%, -50%) scale(3.1); opacity: 0; } }
+@keyframes survivalTileReveal { 0%, 35% { opacity: .95; } 100% { opacity: 0; } }
+@keyframes survivalScoreFloat { 0% { transform: translate(-50%, 8px) scale(.7); opacity: 0; } 20%, 70% { transform: translate(-50%, 0) scale(1); opacity: 1; } 100% { transform: translate(-50%, -12px) scale(.95); opacity: 0; } }
+@keyframes survivalScorePop { 0%, 42%, 100% { transform: scale(1); } 62% { transform: scale(1.2); color: #b87529; } }
 @keyframes survivalCellGlow { 0%, 30% { box-shadow: inset 0 0 0 3px #ffeeb7, inset 0 0 20px #fff8d5; filter: brightness(1.12); } 100% { filter: none; } }
 @keyframes survivalBoardGlow { 0%, 25% { box-shadow: 0 0 0 4px #d4b67666, 0 0 22px #e5c47733; } 100% { box-shadow: 0 0 0 0 transparent; } }
 @keyframes survivalFriendCheer { 0%, 35% { background: #f5e2b8; } }
@@ -229,8 +253,6 @@ body.is-survival .help-fab { display: none !important; }
   .survival-quota-meter { margin: 3px 0; height: 5px; }
   .survival-quota-warning { grid-column: 1 / -1; margin: 0; padding: 7px 10px; }
   #survivalGestureHint { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 4px 14px; padding: 3px 0; }
-  .survival-key-hint { display: none; }
-  .survival-legend { display: none; }
   .survival-player-heading { grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 7px; min-height: 52px; }
   .survival-player-heading .survival-avatar { width: 48px; height: 48px; }
   #survivalArena .survival-player-name h2 { font-size: 20px; }
@@ -279,7 +301,10 @@ body.is-survival .help-fab { display: none !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   #survivalArena *, #survivalArena *::before, #survivalArena *::after { animation: none !important; transition: none !important; }
-  .survival-tabby-burst { display: none; }
+  .survival-quota-cutin { display: none; }
+  .survival-tabby-flight { left: var(--source-x); top: var(--source-y); opacity: 1; }
+  .survival-burst-ring { transform: translate(-50%, -50%); opacity: .8; }
+  .survival-blast-tile { opacity: .8; }
   #survivalBoard .cell.survival-blast-flash { box-shadow: inset 0 0 0 3px #b9955e; }
   .survival-cheer { outline: 2px solid #cfb47b; outline-offset: -2px; }
 }

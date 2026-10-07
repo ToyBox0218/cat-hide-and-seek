@@ -63,7 +63,7 @@ test('settings fix capacity at four and keep the five-minute rules without HP or
   assert.equal(Survival.constants.MIN_PLAYERS,2);
   assert.equal(Survival.constants.MAX_PLAYERS,4);
   assert.equal(Survival.constants.LOBBY_COUNTDOWN,180000);
-  assert.deepEqual(Survival.constants.QUOTAS,[6,12,20,30]);
+  assert.deepEqual(Survival.constants.QUOTAS,[4,10,16,24]);
   assert.equal(Survival.constants.MATCH_DURATION,300000);
 });
 
@@ -270,11 +270,11 @@ test('a late host tick keeps original automatic start and quota deadlines rather
 });
 
 test('two-player survival retains simultaneous all-fail, sole-survivor and five-minute exact-tie rules', () => {
-  const fail = game({},2); Survival.advance(fail,PLAY_AT + 60000);
+  const fail = game({},2); scores(fail,[3,3]); Survival.advance(fail,PLAY_AT + 60000);
   assert.deepEqual(fail.winnerIds,[]); assert.equal(fail.endReason,'no-survivors');
-  const sole = game({},2); scores(sole,[6,5]); Survival.advance(sole,PLAY_AT + 60000);
+  const sole = game({},2); scores(sole,[4,3]); Survival.advance(sole,PLAY_AT + 60000);
   assert.deepEqual(sole.winnerIds,['player-0']);
-  const tied = game({},2); scores(tied,[30,30]); Survival.advance(tied,PLAY_AT + 300000);
+  const tied = game({},2); scores(tied,[24,24]); Survival.advance(tied,PLAY_AT + 300000);
   assert.deepEqual(tied.winnerIds,['player-0','player-1']); assert.equal(tied.endReason,'time');
 });
 
@@ -420,45 +420,56 @@ test('every current board has valid, unique independent answers and recent layou
 });
 
 test('59.999-second accepted rescue counts, but the exact 60-second checkpoint runs before a guess', () => {
-  const before = game(); scores(before,[5,6,6,6]);
+  const before = game(); scores(before,[3,4,4,4]);
   assert.equal(guess(before,0,cat(before),59999).accepted,true);
   Survival.advance(before,PLAY_AT + 60000);
   assert.equal(before.players[0].status,'active');
-  const exact = game(); scores(exact,[5,6,6,6]);
+  assert.equal(before.players[0].score,4);
+  const exact = game(); scores(exact,[3,4,4,4]);
   assert.equal(guess(exact,0,cat(exact),60000).reason,'eliminated');
-  assert.equal(exact.players[0].score,5);
+  assert.equal(exact.players[0].score,3);
   assert.equal(exact.players[0].status,'eliminated');
   assert.equal(exact.checkpoint,1);
 });
 
 test('every quota boundary accepts a complete action one millisecond before and eliminates before one exactly on time', () => {
-  for (const [minute,quota] of [[1,6],[2,12],[3,20],[4,30]]) {
+  for (const [minute,quota] of [[1,4],[2,10],[3,16],[4,24]]) {
     const before = game(); scores(before,[quota - 1,quota,quota,quota]);
     assert.equal(guess(before,0,cat(before),minute * 60000 - 1).accepted,true);
     Survival.advance(before,PLAY_AT + minute * 60000);
     assert.equal(before.players[0].status,'active');
+    assert.equal(before.players[0].score,quota);
+    assert.equal(before.lastEvent.quota,quota);
     const exact = game(); scores(exact,[quota - 1,quota,quota,quota]);
     assert.equal(guess(exact,0,cat(exact),minute * 60000).reason,'eliminated');
     assert.equal(exact.players[0].score,quota - 1);
     assert.equal(exact.players[0].status,'eliminated');
     assert.equal(exact.checkpoint,minute);
+    assert.equal(exact.lastEvent.quota,quota);
+    assert.deepEqual(exact.lastEvent.eliminatedIds,['player-0']);
   }
 });
 
-test('checkpoint failures are simultaneous, including everybody failing with no champion', () => {
-  const value = game(); scores(value,[5,5,5,5]);
-  Survival.advance(value,PLAY_AT + 60000);
-  assert.ok(value.players.every(player => player.status === 'eliminated'));
-  assert.equal(value.status,'finished');
-  assert.deepEqual(value.winnerIds,[]);
-  assert.equal(value.winner,null);
-  assert.equal(value.endedAt,PLAY_AT + 60000);
-  assert.equal(value.endReason,'no-survivors');
+test('each checkpoint eliminates every player one below quota simultaneously, without a champion', () => {
+  for (const [minute,quota] of [[1,4],[2,10],[3,16],[4,24]]) {
+    const value = game(); scores(value,Array(4).fill(quota - 1));
+    Survival.advance(value,PLAY_AT + minute * 60000);
+    assert.ok(value.players.every(player => player.status === 'eliminated'));
+    assert.equal(value.status,'finished');
+    assert.deepEqual(value.winnerIds,[]);
+    assert.equal(value.winner,null);
+    assert.equal(value.checkpoint,minute);
+    assert.equal(value.endedAt,PLAY_AT + minute * 60000);
+    assert.equal(value.endReason,'no-survivors');
+    const checkpoint = value.events.filter(event => event.type === 'checkpoint').at(-1);
+    assert.equal(checkpoint.quota,quota);
+    assert.deepEqual(checkpoint.eliminatedIds,profiles().map(player => player.id));
+  }
 });
 
 test('one qualifying survivor wins early after all checkpoint eliminations', () => {
   for (let winner = 0; winner < 4; winner++) {
-    const value = game(); scores(value,[5,5,5,5]); value.players[winner].score = 6;
+    const value = game(); scores(value,[3,3,3,3]); value.players[winner].score = 4;
     Survival.advance(value,PLAY_AT + 60000);
     assert.deepEqual(value.winnerIds,[`player-${winner}`]);
     assert.equal(value.winner,`player-${winner}`);
@@ -468,27 +479,31 @@ test('one qualifying survivor wins early after all checkpoint eliminations', () 
 });
 
 test('late advance resolves elapsed deadlines in order and stops at the true early win', () => {
-  const value = game(); scores(value,[12,6,6,6]);
+  const value = game(); scores(value,[10,4,4,4]);
   Survival.advance(value,PLAY_AT + 300000);
   assert.equal(value.endedAt,PLAY_AT + 120000);
   assert.equal(value.checkpoint,2);
   assert.deepEqual(value.winnerIds,['player-0']);
 });
 
-test('all four quotas are cumulative, 240–300 seconds is quota-free, and 42 is never required', () => {
+test('4/10/16/24 quotas are cumulative and 24 rescues suffice throughout the quota-free final minute', () => {
   const value = game();
-  for (const [minute,quota] of [[1,6],[2,12],[3,20],[4,30]]) {
+  assert.equal(Survival.publicGame(value,PLAY_AT).nextQuota,4);
+  for (const [minute,quota] of [[1,4],[2,10],[3,16],[4,24]]) {
     scores(value,Array(4).fill(quota));
     Survival.advance(value,PLAY_AT + minute * 60000);
     assert.equal(value.status,'playing');
     assert.equal(value.checkpoint,minute);
-    assert.equal(Survival.publicGame(value,PLAY_AT + minute * 60000).nextQuota,[12,20,30,null][minute - 1]);
+    assert.ok(value.players.every(player => player.score === quota && player.status === 'active'));
+    assert.equal(Survival.publicGame(value,PLAY_AT + minute * 60000).nextQuota,[10,16,24,null][minute - 1]);
   }
   assert.equal(Survival.publicGame(value,PLAY_AT + 240000).nextCheckpointAt,null);
   Survival.advance(value,PLAY_AT + 299999);
   assert.equal(value.status,'playing');
   Survival.advance(value,PLAY_AT + 300000);
   assert.equal(value.status,'finished');
+  assert.ok(value.players.every(player => player.score === 24));
+  assert.equal(value.checkpoint,4);
   assert.deepEqual(value.winnerIds,profiles().map(player => player.id));
 });
 
@@ -505,7 +520,7 @@ test('end ranks active players by all-match score, then all-match errors, preser
 test('a first-minute manual error still breaks an otherwise exact tie at the final deadline', () => {
   const value = game();
   assert.equal(guess(value,0,empty(value),0).accepted,true);
-  scores(value,[30,30,30,30]);
+  scores(value,[24,24,24,24]);
   for (let minute = 1; minute <= 5; minute++) Survival.advance(value,PLAY_AT + minute * 60000);
   assert.equal(value.players[0].errors,1);
   assert.deepEqual(value.winnerIds,['player-1','player-2','player-3']);
@@ -522,7 +537,7 @@ test('eliminated and retired players never become champions even with larger ret
 });
 
 test('the exact match deadline rejects a last guess and no accepted action can change finished results', () => {
-  const value = game(); scores(value,[30,30,30,30]);
+  const value = game(); scores(value,[24,24,24,24]);
   assert.equal(guess(value,0,cat(value),299999).accepted,true);
   assert.equal(guess(value,1,cat(value,1),300000).reason,'not-playing');
   assert.deepEqual(value.winnerIds,['player-0']);
@@ -635,7 +650,7 @@ test('rejoin exactly at 15 seconds cannot escape retirement and retired players 
 });
 
 test('offline players still owe quota; a failed quota is resolved before their later disconnect deadline', () => {
-  const value = game(); scores(value,[6,5,6,6]);
+  const value = game(); scores(value,[4,3,4,4]);
   Survival.setConnected(value,'player-1',false,PLAY_AT + 55000);
   Survival.advance(value,PLAY_AT + 70000);
   assert.equal(value.players[1].status,'eliminated');
@@ -644,7 +659,7 @@ test('offline players still owe quota; a failed quota is resolved before their l
 });
 
 test('same-instant quota and disconnect retirements are grouped before selecting a winner', () => {
-  const value = game(); scores(value,[5,5,6,6]);
+  const value = game(); scores(value,[3,3,4,4]);
   Survival.setConnected(value,'player-2',false,PLAY_AT + 45000);
   Survival.setConnected(value,'player-3',false,PLAY_AT + 45000);
   Survival.advance(value,PLAY_AT + 60000);
@@ -663,7 +678,7 @@ test('simultaneous disconnect expirations never crown the last iterated seat', (
 });
 
 test('chronological disconnect handling cannot crown somebody who failed an earlier quota', () => {
-  const value = game(); scores(value,[5,6,6,6]);
+  const value = game(); scores(value,[3,4,4,4]);
   for (let who = 1; who < 4; who++) Survival.setConnected(value,`player-${who}`,false,PLAY_AT + 55000);
   Survival.advance(value,PLAY_AT + 75000);
   assert.equal(value.players[0].status,'eliminated');
@@ -672,12 +687,12 @@ test('chronological disconnect handling cannot crown somebody who failed an earl
 });
 
 test('host elimination does not stop the remaining players or the authority clock', () => {
-  const value = game(); scores(value,[5,6,6,6]);
+  const value = game(); scores(value,[3,4,4,4]);
   Survival.advance(value,PLAY_AT + 60000);
   assert.equal(value.players[0].status,'eliminated');
   assert.equal(value.status,'playing');
   assert.equal(guess(value,1,cat(value,1),60000).accepted,true);
-  scores(value,[5,12,12,12]);
+  scores(value,[3,10,10,10]);
   Survival.advance(value,PLAY_AT + 120000);
   assert.equal(value.checkpoint,2);
 });
@@ -792,13 +807,13 @@ test('each minute replaces the unconsumed target using only the current board’
   const firstTarget = firstBoard.puzzle.solution[0], ordinary = firstBoard.puzzle.solution[1];
   assert.equal(guess(value,0,ordinary,0).event.tabby,undefined);
   values.length = 0; values.push(0.999,0,0,0);
-  scores(value,[6,6,6,6]);
+  scores(value,[4,4,4,4]);
   Survival.advance(value,PLAY_AT + 60000);
   const replacement = firstBoard.puzzle.solution[5];
   assert.equal(guess(value,0,firstTarget,60000).event.tabby,undefined);
   assert.equal(guess(value,0,replacement,60300).event.tabby,true);
   for (let minute = 2; minute <= 4; minute++) {
-    scores(value,Array(4).fill([0,6,12,20,30][minute]));
+    scores(value,Array(4).fill([0,4,10,16,24][minute]));
     const target = cat(value), priorDraws = draws.length;
     values.length = 0; values.push(0,0,0,0,0);
     Survival.advance(value,PLAY_AT + minute * 60000);
@@ -808,15 +823,23 @@ test('each minute replaces the unconsumed target using only the current board’
   assert.equal(value.checkpoint,4);
 });
 
-test('an entire pre-deadline tabby action counts atomically toward quota', () => {
-  const {value,values} = specialGame(0), board = value.boards[0];
-  const extra = board.puzzle.solution[5]; values[0] = extra / 36;
-  scores(value,[4,6,6,6]);
-  const result = guess(value,0,board.puzzle.solution[0],59999);
-  assert.equal(result.event.blast.found.includes(extra),true);
-  assert.ok(value.players[0].score >= 6);
-  Survival.advance(value,PLAY_AT + 60000);
-  assert.equal(value.players[0].status,'active');
+test('each quota counts the complete pre-deadline tabby blast when its manual rescue alone would fail', () => {
+  for (const [minute,quota] of [[1,4],[2,10],[3,16],[4,24]]) {
+    const {value,values} = specialGame(0), board = value.boards[0];
+    scores(value,[quota - 2,quota,quota,quota]);
+    Survival.advance(value,PLAY_AT + (minute - 1) * 60000);
+    const extra = board.puzzle.solution[5];
+    values.length = 0; values.push(extra / 36);
+    const scoreBefore = value.players[0].score;
+    assert.ok(scoreBefore + 1 < quota,'the manual rescue must be insufficient without the blast');
+    const result = guess(value,0,board.puzzle.solution[0],minute * 60000 - 1);
+    assert.equal(result.event.blast.found.includes(extra),true);
+    assert.equal(value.players[0].score,scoreBefore + 1 + result.event.blast.found.length);
+    assert.ok(value.players[0].score >= quota);
+    Survival.advance(value,PLAY_AT + minute * 60000);
+    assert.equal(value.players[0].status,'active');
+    assert.equal(value.checkpoint,minute);
+  }
 });
 
 test('public snapshot and its bounded event history whitelist only revealed facts at every nested level', () => {

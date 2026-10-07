@@ -39,6 +39,7 @@ function applySurvivalSnapshot(snapshot,{historical=false}={}){
   const previous=state.game?.settings?.mode==='survival'?state.game:null;
   if(previous?.id===snapshot.id&&snapshot.revision<previous.revision)return false;
   const previousBoard=previous?.boards?.[state.you]?.puzzle.id;
+  if(typeof suiPrepareSnapshot==='function')suiPrepareSnapshot(previous,snapshot,{historical});
   state.game=snapshot;state.you=snapshot.players.findIndex(player=>player.id===state.survivalPlayerId);
   const board=snapshot.boards[state.you];
   if(state.survivalSession?.getServerTime)state.clockOffset=state.survivalSession.getServerTime()-Date.now();

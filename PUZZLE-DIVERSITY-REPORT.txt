@@ -1,0 +1,98 @@
+6×6 puzzle diversity and teachability
+Local implementation and Node verification, 2026-10-07
+
+Scope
+battle-engine.js supplies battle and survival puzzles; the original four modes
+now also use it for6x6 via their existing factory. Larger boards keep their
+original generation path. This change
+preserves the game API, damage/cooldown behavior and public snapshot whitelist.
+No services, dependencies or browser/mobile claims are involved.
+
+The generation change
+- Grow all six connected regions afresh from an eligible set of six cat anchors.
+- Repair connected boundary cells for at most 256 proposals per start, preserving
+  each anchor and minimum-three region sizes, and never increasing competing
+  solutions. The exhaustive checker considers all 90 legal answer permutations.
+- Try 16 independent starts and choose the one farthest from recent geometry.
+  Distance counts changed internal grid boundaries, minimized over all eight
+  rotations/reflections. Region color labels do not affect it.
+- If necessary, make at most 24 validated deformations of catalog seeds, then
+  inspect the finite eligible seed bucket. The old 73 seeds remain a fallback,
+  not the primary generation method. Only 49 seeds pass the logical checker;
+  their transforms still cover all 90 answer patterns.
+- Every returned board must also pass a no-guess deduction proof. Each row,
+  column and region has one cat. If every remaining possible cell for a group's
+  cat conflicts with some other cell, that other cell is empty. These explainable
+  steps cover singles, line/region locks and shared adjacency exclusions. The
+  proof uses only the visible regions, never hidden answers, guesses, recursive
+  search or the exhaustive uniqueness table. It has at most 36 passes, with
+  every productive pass removing at least one candidate.
+
+History and privacy
+The loaded engine privately retains at most 90 answer patterns and 90 canonical
+geometries. This survives quick rematches on the same page even if the caller
+does not pass previousGame. It also incorporates caller-provided histories and
+current answers. Topology equality ignores region labels, rotations and mirrors.
+The optional geometry cache is capped at 384 entries. A page reload resets this
+private history; it is not account-wide or persistent storage. Nothing from it,
+nor entropy, seeds or generation counters, enters public game snapshots.
+There are only 90 possible 6×6 answer patterns, so answers must eventually cycle;
+least-recent eligible selection and explicit current-answer exclusion remain.
+
+Reproduce
+node scripts/benchmark-puzzle-diversity.js --baseline=9c57511 --samples=1080
+node --test tests/battle-engine.test.js tests/puzzle-diversity.test.js
+
+Method
+Seed 123456789; 1,080 boards with caller histories of 90 and the last two answers
+excluded as current boards. Canonical topology ignores label permutations and
+all eight grid symmetries. Boundary distance is Hamming distance over the 60
+internal horizontal/vertical edges, minimized over all eight symmetries. Each
+board's nearest previous-90 distance excludes the first board. The same original
+73 seed geometries are used for both runs' nearest-base measurements.
+
+Paired results (Node v24.19.0 on this execution host)
+                                     Before             After
+Unique answer patterns               90                 90
+Distinct oriented geometries         1,080              1,080
+Distinct canonical topologies        1,074              1,080
+Boards proved by no-guess rules       837 / 1,080        1,080 / 1,080
+Nearest-recent distance, minimum      0 edges            10 edges
+Nearest-recent distance, median       13 edges           16 edges
+Nearest-recent distance, mean         12.138 edges       15.971 edges
+Near recent copies (<=4 edits)        17                 0
+Nearest original base, median        10 edges           15 edges
+Near original base (<=4 edits)        80                 2
+Cold first generation                12.526 ms          21.888 ms
+Warm generation, median              0.125 ms           3.393 ms
+Warm generation, mean                0.136 ms           3.413 ms
+Warm generation, p95                 0.207 ms           4.061 ms
+Warm generation, maximum             0.665 ms           18.210 ms
+
+Interpretation and limits
+The old generator already produced many distinct boards; its weakness was not
+simply a small array. Some recent boards were symmetry-equivalent or close local
+variations, and uniqueness alone did not prove the intended teaching rules could
+solve them. Fresh growth and geometric candidate ranking materially improve both
+measures. The observed minimum distance of 10 is a sample result, not a promised
+hard floor for all possible histories; exact recent canonical repeats are
+rejected. The finite fallback can throw when no eligible nonrepeating geometry
+remains, rather than silently returning a duplicate.
+Generation now costs several milliseconds instead of a fraction of one, with
+fixed bounded work and no unbounded search. This host benchmark does not measure
+mobile browser latency. The proof establishes solvability by the stated rules;
+it does not claim equal human difficulty or guarantee that every player will
+spot each deduction. Logical steps are available from solveLogically(regions,
+true), but this change does not add a hint UI or expose private authority state.
+
+Regression coverage
+The existing 40 battle tests pass unchanged, including independent uniqueness
+and connectivity checks over 1,080 boards and battle behavior/replay protection.
+The dedicated diversity tests independently replay proof steps, cross-check an
+independent DFS answer, verify canonical novelty and boundary distance, exercise
+quick rematches and a stuck RNG, verify normalized caller history, and ensure
+that a unique board without a deduction proof fails teachability validation.
+Dedicated diversity suite: 6/6 passed. Survival engine compatibility: 66/66
+passed against the concurrent survival waiting-room changes. git diff --check
+also passed. These focused checks are not a claim of a full application/browser
+suite pass; the parent task owns integration and visual verification.

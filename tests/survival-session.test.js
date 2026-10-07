@@ -323,17 +323,55 @@ test('closing a guest deliberately removes timers/listeners without a reconnect 
 
 test('an eliminated host keeps serving active guests and cannot keep guessing', () => {
   const value = room(); value.start();
-  for (let hit = 0; hit < 6; hit++) {
+  for (let hit = 0; hit < 4; hit++) {
     value.guests.forEach((guest,index) => guest.client.submit(action(value,index+1,`quota-${hit}`)));
+    if (hit < 3) assert.equal(value.host.submit(action(value,0,`below-quota-${hit}`)).accepted,true);
     value.clock.advance(300);
   }
   value.clock.advance(value.authority.startAt+60000-value.clock.at);
   assert.equal(statePlayer(value,'p1').status,'eliminated');
+  assert.equal(statePlayer(value,'p1').score,3);
+  assert.ok(value.host.getState().players.slice(1).every(player => player.status === 'active' && player.score === 4));
   assert.equal(value.host.getState().status,'playing');
   assert.equal(value.host.submit(action(value,0,'eliminated-host')).accepted,false);
   const guest = value.guests[0]; guest.client.submit(action(value,1,'still-serving'));
-  assert.equal(guest.acks.at(-1).accepted,true); assert.equal(statePlayer(value,'p2').score,7);
-  value.clock.advance(100); assert.equal(guest.client.getState().players[1].score,7);
+  assert.equal(guest.acks.at(-1).accepted,true); assert.equal(statePlayer(value,'p2').score,5);
+  value.clock.advance(100); assert.equal(guest.client.getState().players[1].score,5);
+  value.close(); assert.equal(value.clock.jobs.size,0);
+});
+
+test('host and guest share cumulative 4/10/16/24 checkpoints and a quota-free final minute', () => {
+  const value = room(2), guest = value.guests[0]; value.start();
+  let rescues = 0;
+  const quotas = [4,10,16,24];
+  for (const [index,quota] of quotas.entries()) {
+    assert.equal(value.host.getState().nextQuota,quota);
+    while (rescues < quota) {
+      assert.equal(value.host.submit(action(value,0,`host-rescue-${rescues}`)).accepted,true);
+      guest.client.submit(action(value,1,`guest-rescue-${rescues}`));
+      assert.equal(guest.acks.at(-1).accepted,true);
+      rescues++; value.clock.advance(300);
+    }
+    value.clock.advance(value.authority.startAt + (index + 1) * 60000 - value.clock.at);
+    for (const snapshot of [value.host.getState(),guest.client.getState()]) {
+      assert.equal(snapshot.status,'playing');
+      assert.equal(snapshot.checkpoint,index + 1);
+      assert.equal(snapshot.nextQuota,quotas[index + 1] ?? null);
+      assert.deepEqual(snapshot.players.map(player => player.score),[quota,quota]);
+      assert.ok(snapshot.players.every(player => player.status === 'active'));
+    }
+  }
+  assert.equal(guest.client.getState().nextCheckpointAt,null);
+  value.clock.advance(value.authority.endAt - value.clock.at - 1);
+  assert.equal(value.host.getState().status,'playing');
+  value.clock.advance(1);
+  for (const snapshot of [value.host.getState(),guest.client.getState()]) {
+    assert.equal(snapshot.status,'finished');
+    assert.equal(snapshot.checkpoint,4);
+    assert.deepEqual(snapshot.players.map(player => player.score),[24,24]);
+    assert.deepEqual(snapshot.winnerIds,['p1','p2']);
+    assert.equal(snapshot.endReason,'time');
+  }
   value.close(); assert.equal(value.clock.jobs.size,0);
 });
 
@@ -380,7 +418,7 @@ test('the first offer identifies the game before a reused room address can recei
 
 test('host departure after a finished match preserves its already-established champion', () => {
   const value = room(); value.start();
-  for (let hit = 0; hit < 6; hit++) { value.guests[0].client.submit(action(value,1,`winner-${hit}`)); value.clock.advance(300); }
+  for (let hit = 0; hit < 4; hit++) { value.guests[0].client.submit(action(value,1,`winner-${hit}`)); value.clock.advance(300); }
   value.clock.advance(value.authority.startAt+60000-value.clock.at);
   assert.equal(value.host.getState().status,'finished'); assert.deepEqual(value.host.getState().winnerIds,['p2']);
   value.host.close('host-left-after-results');

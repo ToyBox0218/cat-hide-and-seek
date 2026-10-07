@@ -52,6 +52,7 @@ function shuffle(array) {
 }
 
 function makePuzzle(size) {
+  if(size===6)return CatBattle.generatePuzzle();
   const layout = layouts[size][randomInt(3)], offsets=[];
   let cursor=0;
   for (const width of layout) { offsets.push(cursor); cursor+=width; }
@@ -84,10 +85,6 @@ function makePuzzle(size) {
         }
       }
     }
-  }
-  if(size===6){
-    const symmetry=randomInt(8),sourceRegions=regions.slice(),sourceSolution=solution.slice(),transform=index=>{let row=Math.floor(index/size),column=index%size;if(symmetry>=4)column=size-1-column;for(let turn=0;turn<symmetry%4;turn++){const nextRow=column,nextColumn=size-1-row;row=nextRow;column=nextColumn}return row*size+column};
-    regions.fill(-1);sourceRegions.forEach((region,index)=>{regions[transform(index)]=region});solution.length=0;solution.push(...sourceSolution.map(transform));
   }
   const regionCounts=Array(size).fill(0);
   for(const region of regions){

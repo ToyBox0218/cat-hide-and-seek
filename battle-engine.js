@@ -9,9 +9,9 @@
   const SIZE = 6, CELLS = SIZE * SIZE, HIT_COOLDOWN = 300, MISS_COOLDOWN = 2000, OPENING_COUNTDOWN = 3000;
   const MISS_COOLDOWN_STEP = 2000, MAX_MISS_COOLDOWN = 8000;
   const HISTORY_LIMIT = 90, ACTION_HISTORY_LIMIT = 256;
-  // These are 73 separate random connected-region constructions, each exhaustively
-  // checked against all 90 non-touching row/column permutations. Their transforms
-  // cover every answer pattern; these are not eight copies of a single puzzle.
+  // Verified fallback seeds. Fresh boards first grow all six regions from scratch.
+  // Only seeds with a non-guess logical proof enter the fallback catalog; their
+  // transforms still cover all 90 mathematically possible answer patterns.
   const BASES = [
     '024135:000111031111331121331422333445333555',
     '024153:000122001122333324333344333354333555',
@@ -135,12 +135,136 @@
     for (let turn = 0; turn < symmetry % 4; turn++) [row,column] = [column,SIZE-1-row];
     return row * SIZE + column;
   }
+  // These are per loaded engine, shared by battle and survival, including quick
+  // rematches. They are deliberately absent from game state and public snapshots.
+  // A page reload starts a fresh history; nothing is persisted or sent to guests.
+  const recentPatterns = [], recentGeometry = [], geometryCache = new Map();
+  const GROWTH_ATTEMPTS = 16, REPAIR_STEPS = 256, FALLBACK_ATTEMPTS = 24;
+  let generationSequence = 0;
+  function generationRandom(source) {
+    const entropy = Number(source());
+    let state = ((Number.isFinite(entropy) ? Math.floor(entropy * 0x100000000) : 0) ^ Math.imul(++generationSequence,0x9e3779b9)) >>> 0;
+    // Seed once, instead of asking crypto for every cell. The call counter also
+    // prevents a stuck/deterministic entropy source from repeating one geometry.
+    return function () {
+      state += 0x6d2b79f5;
+      let value = Math.imul(state ^ state >>> 15,state | 1);
+      value ^= value + Math.imul(value ^ value >>> 7,value | 61);
+      return ((value ^ value >>> 14) >>> 0) / 0x100000000;
+    };
+  }
+  const TRANSFORMS = Array.from({length:8}, (_,symmetry) => Array.from({length:CELLS}, (_,cell) => transformedIndex(cell,symmetry)));
+  function geometry(regions) {
+    const key = boardKey(regions);
+    if (geometryCache.has(key)) return geometryCache.get(key);
+    let topology = null;
+    const boundaries = TRANSFORMS.map(transform => {
+      const values = Array(CELLS); regions.forEach((region,cell) => { values[transform[cell]] = region; });
+      const normalized = boardKey(values);
+      if (topology === null || normalized < topology) topology = normalized;
+      let low = 0, high = 0, edge = 0;
+      for (let cell = 0; cell < CELLS; cell++) {
+        for (const next of [cell % SIZE < SIZE-1 ? cell+1 : -1,cell < CELLS-SIZE ? cell+SIZE : -1]) {
+          if (next < 0) continue;
+          if (values[cell] !== values[next]) {
+            if (edge < 32) low |= 1 << edge; else high |= 1 << (edge-32);
+          }
+          edge++;
+        }
+      }
+      return [low,high];
+    });
+    const result = {topology,boundaries};
+    if (geometryCache.size >= 384) geometryCache.delete(geometryCache.keys().next().value);
+    geometryCache.set(key,result); return result;
+  }
+  function popcount(value) {
+    value -= (value >>> 1) & 0x55555555;
+    value = (value & 0x33333333) + ((value >>> 2) & 0x33333333);
+    return (((value + (value >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+  }
+  function geometryDistance(one,two) {
+    const fixed = two.boundaries[0];
+    return Math.min(...one.boundaries.map(bits => popcount(bits[0] ^ fixed[0]) + popcount(bits[1] ^ fixed[1])));
+  }
+  /** A bounded, non-guess proof using only the visible region map.
+   * Each row, column and region contains one cat. If every remaining place for
+   * that cat conflicts with a cell, that cell is empty. This covers singles,
+   * region/line locks and shared adjacency exclusions; there is no trial cat,
+   * answer-table lookup, contradiction search or hidden answer in this solver.
+   */
+  function solveLogically(regions, record) {
+    if (!Array.isArray(regions) || regions.length !== CELLS || regions.some(region => !Number.isInteger(region) || region < 0 || region >= SIZE)) {
+      return {solved:false,steps:[]};
+    }
+    const groups = Array.from({length:SIZE*3}, () => []), active = Array(CELLS).fill(true);
+    const conflicts = Array.from({length:CELLS}, () => new Uint8Array(CELLS));
+    for (let cell = 0; cell < CELLS; cell++) {
+      const row = Math.floor(cell/SIZE), column = cell%SIZE;
+      groups[row].push(cell); groups[SIZE+column].push(cell); groups[SIZE*2+regions[cell]].push(cell);
+      for (let other = 0; other < CELLS; other++) {
+        if (cell === other) continue;
+        const r = Math.floor(other/SIZE), c = other%SIZE;
+        if (row === r || column === c || regions[cell] === regions[other] || (Math.abs(row-r) <= 1 && Math.abs(column-c) <= 1)) conflicts[cell][other] = 1;
+      }
+    }
+    const steps = [];
+    // Each productive pass removes a cell, so 36 passes are a strict upper bound.
+    for (let pass = 0; pass < CELLS; pass++) {
+      let changed = false;
+      for (let group = 0; group < groups.length; group++) {
+        const candidates = groups[group].filter(cell => active[cell]), excluded = [];
+        if (!candidates.length) return {solved:false,steps};
+        for (let cell = 0; cell < CELLS; cell++) {
+          if (active[cell] && candidates.every(other => conflicts[cell][other])) {
+            active[cell] = false; excluded.push(cell); changed = true;
+          }
+        }
+        if (record && excluded.length) steps.push({kind:group < SIZE ? 'row' : group < SIZE*2 ? 'column' : 'region',group:group%SIZE,candidates,excluded});
+      }
+      if (!changed) break;
+    }
+    return {solved:active.filter(Boolean).length === SIZE && groups.every(group => group.filter(cell => active[cell]).length === 1),steps};
+  }
+  function growRegions(solution,rng) {
+    const regions = Array(CELLS).fill(-1), counts = Array(SIZE).fill(1);
+    solution.forEach((cell,region) => { regions[cell] = region; });
+    const weights = Array.from({length:SIZE}, () => 0.5 + rng()*1.5);
+    for (let filled = SIZE; filled < CELLS; filled++) {
+      const frontier = []; let total = 0;
+      for (let cell = 0; cell < CELLS; cell++) if (regions[cell] < 0) {
+        for (const neighbor of NEIGHBORS[cell]) if (regions[neighbor] >= 0) {
+          const region = regions[neighbor], weight = weights[region] * (counts[region] < 3 ? 5 : 1) / (counts[region] > 9 ? 4 : 1);
+          frontier.push({cell,region,weight}); total += weight;
+        }
+      }
+      let draw = rng()*total, selected = frontier[frontier.length-1];
+      for (const entry of frontier) { draw -= entry.weight; if (draw <= 0) { selected = entry; break; } }
+      regions[selected.cell] = selected.region; counts[selected.region]++;
+    }
+    if (counts.some(count => count < 3)) return null;
+    const cats = new Set(solution); let alternatives = countSolutions(regions);
+    // Repair a fresh connected partition, not a rotated or recolored template.
+    // Retain only moves that preserve its cats and do not add competing answers.
+    for (let attempt = 0; attempt < REPAIR_STEPS && alternatives > 1; attempt++) {
+      const cell = Math.floor(rng()*CELLS), source = regions[cell], target = regions[pick(NEIGHBORS[cell],rng)];
+      if (cats.has(cell) || source === target || counts[source] <= 3) continue;
+      regions[cell] = target;
+      if (!regionConnected(regions,source)) { regions[cell] = source; continue; }
+      const next = countSolutions(regions);
+      if (next > alternatives) { regions[cell] = source; continue; }
+      alternatives = next; counts[source]--; counts[target]++;
+    }
+    return alternatives === 1 && solveLogically(regions).solved ? regions : null;
+  }
+
   function getCatalog() {
     if (catalog) return catalog;
     catalog = new Map();
     for (const encoded of BASES) {
       const [columns, cells] = encoded.split(':');
       const baseSolution = Array.from(columns, (column,row) => row*SIZE + Number(column));
+      if (!solveLogically(Array.from(cells,Number)).solved) continue;
       for (let symmetry = 0; symmetry < 8; symmetry++) {
         const regions = Array(CELLS), solution = baseSolution.map(index => transformedIndex(index,symmetry)).sort((a,b) => a-b);
         Array.from(cells, Number).forEach((region,index) => { regions[transformedIndex(index,symmetry)] = region; });
@@ -201,6 +325,7 @@
     }
     const solutionCount = countSolutions(regions,2);
     if (solutionCount !== 1) errors.push('Puzzle does not have exactly one solution.');
+    else if (!solveLogically(regions).solved) errors.push('Puzzle lacks a non-guess logical deduction proof.');
     return {valid:errors.length === 0, errors, solutionCount};
   }
   function varyRegions(base, rng) {
@@ -220,49 +345,64 @@
     const labels = shuffled([0,1,2,3,4,5],rng);
     return regions.map(region => labels[region]);
   }
-  /** Generate from a diverse verified catalog, with fresh validity-checked boundaries.
-   * avoidSolutions is oldest-first history. Once all 90 mathematical patterns have
-   * been seen, reuse the least-recent eligible pattern; always exclude current ones.
+  /** Bounded generation; caller history and same-page history both avoid repeats.
+   * Exact region topology is compared modulo labels, rotations and reflections.
+   * We also choose the least similar of independently grown candidates by actual
+   * internal boundary edits, rather than treating color changes as new puzzles.
    */
   function generatePuzzle(options) {
     options = Array.isArray(options) ? {avoidSolutions:options} : options || {};
-    const rng = typeof options.rng === 'function' ? options.rng : random;
-    const history = options.avoidSolutions || [], forbidden = new Set(options.currentSolutions || []);
-    const byPattern = getCatalog(), available = Array.from(byPattern.keys()).filter(key => !forbidden.has(key));
+    const rng = generationRandom(typeof options.rng === 'function' ? options.rng : random);
+    const history = Array.isArray(options.avoidSolutions) ? options.avoidSolutions : [];
+    const forbidden = new Set(options.currentSolutions || []), byPattern = getCatalog();
+    const available = Array.from(byPattern.keys()).filter(key => !forbidden.has(key));
     if (!available.length) throw new Error('No eligible answer pattern remains.');
-    const used = new Set(history), fresh = available.filter(key => !used.has(key));
-    let key;
-    if (fresh.length) key = pick(fresh,rng);
+    let eligible = available.filter(key => !history.includes(key));
+    if (!eligible.length) {
+      const oldest = Math.min(...available.map(key => history.lastIndexOf(key)));
+      eligible = available.filter(key => history.lastIndexOf(key) === oldest);
+    }
+    const fresh = eligible.filter(key => !recentPatterns.includes(key));
+    if (fresh.length) eligible = fresh;
     else {
-      const lastSeen = value => history.lastIndexOf(value);
-      const oldest = Math.min(...available.map(lastSeen));
-      key = pick(available.filter(value => lastSeen(value) === oldest),rng);
+      const oldest = Math.min(...eligible.map(key => recentPatterns.lastIndexOf(key)));
+      eligible = eligible.filter(key => recentPatterns.lastIndexOf(key) === oldest);
     }
-    const avoidedBoards = new Set(options.avoidBoards || []), variants = byPattern.get(key);
-    let regions, solution;
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const base = pick(variants,rng);
-      solution = base.solution.slice(); regions = varyRegions(base,rng);
-      if (!avoidedBoards.has(boardKey(regions))) break;
+    const key = pick(eligible,rng), variants = byPattern.get(key), solution = variants[0].solution.slice();
+    const avoided = recentGeometry.slice(), avoidedTopologies = new Set(avoided.map(entry => entry.topology));
+    for (const encoded of options.avoidBoards || []) if (typeof encoded === 'string' && /^[0-5]{36}$/.test(encoded)) {
+      const entry = geometry(Array.from(encoded,Number));
+      if (!avoidedTopologies.has(entry.topology)) { avoided.push(entry); avoidedTopologies.add(entry.topology); }
     }
-    // An unlucky or deterministic RNG must not silently repeat an old board.
-    // The catalog has substantially more geometries than our bounded history;
-    // deterministic fallback also considers the next least-recent answer pattern.
-    if (avoidedBoards.has(boardKey(regions))) {
-      const remaining = available.filter(value => value !== key).sort((a,b) => history.lastIndexOf(a)-history.lastIndexOf(b));
-      let replacement = null;
-      for (const alternative of [key].concat(remaining)) {
-        for (const base of byPattern.get(alternative)) {
-          if (!avoidedBoards.has(boardKey(base.regions))) { replacement = base; break; }
-        }
-        if (replacement) break;
+    let best = null, bestDistance = -1;
+    function consider(regions) {
+      if (!regions) return;
+      const shape = geometry(regions);
+      if (avoidedTopologies.has(shape.topology)) return;
+      const distance = avoided.length ? Math.min(...avoided.map(previous => geometryDistance(shape,previous))) : 60;
+      if (distance > bestDistance) { best = {regions,shape}; bestDistance = distance; }
+    }
+    for (let attempt = 0; attempt < GROWTH_ATTEMPTS; attempt++) consider(growRegions(solution,rng));
+    // Fresh growth is probabilistic; bounded catalog deformation covers difficult
+    // answers. Every accepted fallback gets the same proof and topology checks.
+    if (!best || bestDistance < 10) {
+      for (let attempt = 0; attempt < FALLBACK_ATTEMPTS; attempt++) {
+        const regions = varyRegions(pick(variants,rng),rng);
+        if (solveLogically(regions).solved) consider(regions);
+        if (bestDistance >= 12) break;
       }
-      if (!replacement) throw new Error('No unused board geometry remains in the requested history window.');
-      regions = replacement.regions.slice(); solution = replacement.solution.slice();
     }
+    if (!best) {
+      for (const base of variants) consider(base.regions.slice());
+    }
+    if (!best) throw new Error('No unused logical board geometry remains in the requested history window.');
+    const labels = shuffled([0,1,2,3,4,5],rng), regions = best.regions.map(region => labels[region]);
     const puzzle = {id:uniqueId('battle-board'), size:SIZE, regions, solution};
     const validation = validatePuzzle(puzzle);
     if (!validation.valid) throw new Error(`Invalid battle puzzle: ${validation.errors.join(' ')}`);
+    recentPatterns.push(key); recentGeometry.push(best.shape);
+    if (recentPatterns.length > HISTORY_LIMIT) recentPatterns.shift();
+    if (recentGeometry.length > HISTORY_LIMIT) recentGeometry.shift();
     return puzzle;
   }
   function settings(input) {
@@ -471,6 +611,6 @@
     };
   }
   return Object.freeze({create, start, advance, pause, reconnect, abort, act, publicGame, generatePuzzle, validatePuzzle,
-    settings, solutionPattern:pattern, boardKey,
+    settings, solutionPattern:pattern, boardKey, solveLogically,
     constants:Object.freeze({SIZE,HIT_COOLDOWN,MISS_COOLDOWN,MISS_COOLDOWN_STEP,MAX_MISS_COOLDOWN,OPENING_COUNTDOWN,HISTORY_LIMIT,ACTION_HISTORY_LIMIT,ANSWER_PATTERNS:ANSWERS.length})});
 });

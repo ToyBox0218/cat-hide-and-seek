@@ -40,6 +40,9 @@ function assertAbortedLabels(h) {
   assert.doesNotMatch(quotaCopy, /已結算|共享冠軍|衝刺/);
   assert.equal(h.get('#survivalQuotaMeter').classList.contains('hidden'), true);
   assert.equal(h.get('#survivalQuotaWarning').classList.contains('hidden'), true);
+  assert.equal(ui(h).quotaCutin, null, 'an aborted match cannot retain a quota entrance');
+  assert.equal(ui(h).overlays.size, 0, 'an aborted match cannot retain a tabby overlay');
+  assert.equal(ui(h).blastGeometry.size, 0, 'abort drops any geometry queued before drawing');
   for (const name of ['is-urgent', 'is-complete', 'is-final'])
     assert.equal(h.get('#survivalQuotaCard').classList.contains(name), false);
   assert.match(h.get('#survivalBoardNotice').textContent, /中止.*不判勝負.*回看/);
@@ -143,7 +146,8 @@ test('abort cancels pending input and live capture effects, then keeps all publi
   assert.ok(tracked.length > 0 && effectTimers.length > 0);
   assert.equal(h.get('#survivalFX').children.length, 1);
   h.tick(300);
-  const unresolved = grid().children.filter(cell => !cell.classList.contains('opened'));
+  const unresolved = grid().children.filter(cell => !cell.disabled && !cell.classList.contains('opened') && !cell.classList.contains('cat'));
+  assert.ok(unresolved.length >= 2, 'the current board has two genuinely unresolved input cells');
   doubleClick(unresolved[0]);
   assert.ok(h.state.pendingAction, 'an unacknowledged guest action is pending');
   const actionTimers = [...h.state.survivalActionTimers];
@@ -187,19 +191,19 @@ for (const tied of [false, true]) {
 
 test('a real quota elimination keeps its reason and checkpoint history when the match later aborts', () => {
   const {h, authority, engine, sync} = fixture({count:3});
-  authority.players[1].score = 6; authority.players[2].score = 6;
+  authority.players[1].score = 4; authority.players[2].score = 4;
   h.advance(60000); engine.advance(authority, h.now()); sync();
   assert.equal(h.state.game.status, 'playing');
   assert.equal(h.state.game.players[0].status, 'eliminated');
   assert.equal(h.state.game.players[0].reason, 'quota');
   assert.equal(h.get('#survivalSpectatorNotice').classList.contains('hidden'), false);
-  assert.match(h.get('#survivalSpectatorNotice').textContent, /未達第 1 分鐘配額（0／6 隻）/);
+  assert.match(h.get('#survivalSpectatorNotice').textContent, /未達第 1 分鐘配額（0／4 隻）/);
   assert.match(h.get('#survivalScoreList').innerHTML, /觀戰中/);
   const player = json(h.state.game.players[0]);
   const checkpoint = json(h.state.game.events.find(event => event.type === 'checkpoint'));
   engine.abort(authority, 'host-disconnected', h.now()); sync();
   assert.deepEqual(json(h.state.game.players[0]), player);
   assert.deepEqual(json(h.state.game.events.find(event => event.type === 'checkpoint')), checkpoint);
-  assert.match(vm.runInContext('suiReason(state.game.players[0])', h.context), /未達第 1 分鐘配額（0／6 隻）/);
+  assert.match(vm.runInContext('suiReason(state.game.players[0])', h.context), /未達第 1 分鐘配額（0／4 隻）/);
   assertAbortedLabels(h);
 });

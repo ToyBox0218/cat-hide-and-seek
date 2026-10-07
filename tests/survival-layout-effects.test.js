@@ -16,8 +16,8 @@ const appSource = read('tests/survival-app.test.js');
 const appBoundary = appSource.indexOf("\ntest('");
 assert.ok(appBoundary > 0);
 const appContext = {require, __dirname, console, Buffer, URL, URLSearchParams};
-vm.runInNewContext(appSource.slice(0, appBoundary) + '\nglobalThis.helpers = {fixture, makeHarness};', appContext);
-const {fixture, makeHarness} = appContext.helpers;
+vm.runInNewContext(appSource.slice(0, appBoundary) + '\nglobalThis.helpers = {fixture, makeHarness, singleClick, doubleClick, noSurvivalSecrets};', appContext);
+const {fixture, makeHarness, singleClick, doubleClick, noSurvivalSecrets} = appContext.helpers;
 const layoutSource = read('tests/layout-structure.test.js');
 const layoutStart = layoutSource.indexOf('function splitSelectors(');
 const layoutEnd = layoutSource.indexOf('const battleContext =');
@@ -54,6 +54,43 @@ function tabby(f, who=0) {
     f.h.tick(300);
   }
   assert.fail('the deterministic first board must contain a tabby opportunity');
+}
+
+function sixthCatTabbyFixture({reducedMotion=false}={}) {
+  // Puzzle randomness is independent of special-cat randomness: the authority
+  // chooses the first solution cell as the special cat and cell 0 as landing.
+  const f = fixture({count:2, tabbyEnabled:true, fakeAudio:true, engineOptions:h => {
+    let seed = 7635;
+    const puzzleRng = () => { seed = Math.imul(seed,1664525) + 1013904223; return (seed >>> 0) / 0x100000000; };
+    return {rng:() => 0, makePuzzle:options => h.context.CatBattle.generatePuzzle({...options,rng:puzzleRng})};
+  }});
+  const {h,authority,engine,sync,grid} = f, oldBoard = authority.boards[0];
+  h.context.matchMedia = () => ({matches:reducedMotion});
+  for (const index of oldBoard.puzzle.solution.slice(1)) {
+    const result = engine.act(authority, authority.players[0].id,
+      {type:'guess', boardId:oldBoard.puzzle.id, index, actionId:`before-tabby-${index}`}, h.now());
+    assert.equal(result.accepted,true); assert.equal(result.event.blast,undefined);
+    assert.equal(result.event.advanced,false); sync(); h.tick(300);
+  }
+  const privateIndex = oldBoard.puzzle.regions.findIndex((_,index) => !oldBoard.puzzle.solution.includes(index));
+  h.state.notes.add(privateIndex); h.renderSurvival();
+  const oldCells = [...grid().children], frame = {left:80,top:139,width:326,height:326};
+  h.get('#survivalFX').getBoundingClientRect = () => frame;
+  oldCells.forEach((cell,index) => {
+    const left = 86 + index % 6 * 52, top = 145 + Math.floor(index / 6) * 52;
+    cell.getBoundingClientRect = () => ({left,top,width:50,height:50,right:left+50,bottom:top+50});
+  });
+  const previous = json(h.state.game), index = oldBoard.puzzle.solution[0];
+  const result = engine.act(authority, authority.players[0].id,
+    {type:'guess', boardId:oldBoard.puzzle.id, index, actionId:'sixth-cat-tabby'}, h.now());
+  assert.equal(result.accepted,true); assert.equal(result.event.advanced,true);
+  assert.ok(result.event.blast); assert.equal(result.event.blast.landing,0);
+  const snapshot = engine.publicGame(authority,h.now());
+  noSurvivalSecrets(snapshot);
+  assert.equal(snapshot.boards[0].number,2); assert.equal(snapshot.players[0].score,6);
+  assert.deepEqual(json(snapshot.boards[0].found),[]);
+  h.applySurvivalSnapshot(snapshot); h.renderSurvival();
+  return {...f, oldBoard, oldCells, previous, snapshot, event:result.event, frame};
 }
 
 test('four-player shell contains one main board and exactly one compact public preview', () => {
@@ -179,6 +216,90 @@ test('fresh/replayed/out-of-order snapshots cannot replay capture sound or tabby
   assert.equal(joined.get('#survivalFX').children.length, 0);
 });
 
+for (const reducedMotion of [false,true]) {
+  test(`a real sixth-cat tabby advances immediately while old geometry feedback remains, reduced motion ${reducedMotion}`, () => {
+    const f = sixthCatTabbyFixture({reducedMotion});
+    const {h,authority,sync,grid,oldBoard,oldCells,event,frame,submissions} = f;
+    const layer = h.get('#survivalFX'), overlay = layer.children[0], newCells = [...grid().children];
+    assert.equal(layer.children.length,1);
+    assert.equal(overlay.classList.contains('is-previous-board'),true);
+    assert.equal(overlay.classList.contains('is-static'),reducedMotion);
+    assert.equal(overlay.dataset.boardId,oldBoard.puzzle.id);
+    assert.equal(overlay.dataset.eventId,event.id);
+    assert.equal(overlay.dataset.source,String(event.index));
+    assert.equal(overlay.dataset.landing,String(event.blast.landing));
+    for (const [name,index] of [['source',event.index],['landing',event.blast.landing]]) {
+      const rect = oldCells[index].getBoundingClientRect();
+      assert.equal(overlay.style.getPropertyValue(`--${name}-x`),`${(rect.left-frame.left+rect.width/2)/frame.width*100}%`);
+      assert.equal(overlay.style.getPropertyValue(`--${name}-y`),`${(rect.top-frame.top+rect.height/2)/frame.height*100}%`);
+    }
+    assert.match(overlay.innerHTML,/上盤/);
+    assert.equal((overlay.innerHTML.match(/class="survival-blast-tile"/g)||[]).length,event.blast.cells.length);
+    assert.doesNotMatch(overlay.innerHTML,/class="[^\"]*\bnote\b|私人|solution|data-region/,
+      'the old-board overlay contains only public event art and geometry');
+    assert.equal(grid().dataset.boardId,authority.boards[0].puzzle.id);
+    assert.notEqual(grid().dataset.boardId,oldBoard.puzzle.id);
+    assert.equal(h.get('#survivalMainScore').textContent,'6');
+    assert.equal(h.get('#survivalMainErrors').textContent,'0');
+    assert.match(h.get('#survivalBoardNumber').textContent,/第 2 盤/);
+    assert.equal(h.state.notes.size,0);
+    assert.equal(newCells.every((cell,index) => cell!==oldCells[index]&&!cell.disabled&&cell.tagName==='BUTTON'),true);
+    assert.equal(newCells.some(cell => cell.classList.contains('survival-blast-flash')),false,
+      'the old blast cannot highlight unresolved cells on the new board');
+
+    // The 300 ms authoritative hit cooldown still applies. The longer visual
+    // sequence does not prevent private marks or an accepted new-board reveal.
+    assert.equal(h.survivalCanMark(),true);
+    singleClick(h,newCells[0]);
+    assert.equal(h.state.notes.has(0),true);
+    assert.strictEqual(layer.children[0],overlay);
+    const index = authority.boards[0].puzzle.solution[0];
+    doubleClick(newCells[index]);
+    assert.equal(submissions.length,1);
+    assert.equal(submissions[0].boardId,authority.boards[0].puzzle.id);
+    assert.equal(authority.players[0].score,7,'the next board accepts a real guess before the old effect ends');
+    sync();
+    assert.equal(h.get('#survivalMainScore').textContent,'7');
+    assert.deepEqual([...grid().children],newCells);
+    assert.strictEqual(layer.children[0],overlay);
+    const finalState = json(h.state.game);
+    h.tick(1600);
+    assert.equal(layer.children.length,0); assert.equal(ui(h).overlays.size,0);
+    assert.equal(ui(h).effects.size,0); assert.equal(ui(h).timers.size,0);
+    assert.deepEqual(json(h.state.game),finalState,'effect cleanup does not apply or delay gameplay');
+  });
+}
+
+test('sixth-cat public history and reconnect snapshots cannot replay the previous-board animation', () => {
+  const {h,previous,snapshot,event} = sixthCatTabbyFixture();
+  const overlay = h.get('#survivalFX').children[0], calls = json(sounds(h)), timers = [...ui(h).timers];
+  h.applySurvivalSnapshot(json(snapshot)); h.renderSurvival();
+  assert.equal(h.applySurvivalSnapshot(previous),false);
+  assert.strictEqual(h.get('#survivalFX').children[0],overlay);
+  assert.deepEqual([...ui(h).timers],timers);
+  assert.deepEqual(json(sounds(h)),calls);
+  h.tick(1600); h.applySurvivalSnapshot(json(snapshot)); h.renderSurvival();
+  assert.equal(h.get('#survivalFX').children.length,0);
+  assert.equal(ui(h).blastGeometry.size,0);
+  assert.deepEqual(json(sounds(h)),calls);
+
+  vm.runInContext('survivalStatus({status:"reconnecting"})',h.context);
+  h.applySurvivalSnapshot(json(snapshot),{historical:true});
+  vm.runInContext('survivalStatus({status:"connected"})',h.context); h.renderSurvival();
+  assert.equal(h.get('#survivalFX').children.length,0);
+  assert.equal(ui(h).seen.has(event.id),true);
+  assert.deepEqual(json(sounds(h)),calls);
+  const joined = makeHarness({fakeAudio:true});
+  joined.state.survivalPlayerId = snapshot.players[0].id; joined.state.survivalLinkStatus = 'connected';
+  joined.applySurvivalSnapshot(json(snapshot),{historical:true}); joined.renderSurvival();
+  assert.equal(joined.get('#survivalBoard').dataset.boardId,snapshot.boards[0].puzzle.id);
+  assert.equal(joined.get('#survivalMainScore').textContent,'6');
+  assert.equal(joined.get('#survivalFX').children.length,0);
+  assert.equal(ui(joined).blastGeometry.size,0); assert.equal(ui(joined).timers.size,0);
+  assert.equal(sounds(joined).length,0);
+  noSurvivalSecrets(joined.state.game);
+});
+
 for (const interruption of ['background','reconnect','finished','aborted','leave']) {
   test(`${interruption} immediately clears live tabby timers/classes/nodes without replay`, () => {
     const f = fixture({tabbyEnabled:true,fakeAudio:true}), {h,authority,sync,grid} = f;
@@ -244,14 +365,16 @@ for (const reducedMotion of [false,true]) {
     const f = fixture({tabbyEnabled:true}), {h,grid} = f;
     h.context.matchMedia=()=>({matches:reducedMotion});
     const event=tabby(f), publicState=json(h.state.game);
-    assert.equal(h.get('#survivalFX').children.length, reducedMotion ? 0 : 1);
+    assert.equal(h.get('#survivalFX').children.length, 1, 'reduced motion keeps the public result as a static overlay');
+    assert.equal(h.get('#survivalFX').children[0].classList.contains('is-static'), reducedMotion);
     assert.equal(grid().classList.contains('survival-static-highlight'), reducedMotion);
     for (const index of event.blast.cells) assert.equal(grid().children[index].classList.contains('survival-blast-flash'), true);
     assert.ok(ui(h).effects.size <= 32);
     if (reducedMotion) {
       const reduced=style(['#survivalArena *'],1280,720,true);
       assert.equal(reduced.animation,'none'); assert.equal(reduced.transition,'none');
-      assert.equal(style(['.survival-tabby-burst'],1280,720,true).display,'none');
+      assert.equal(style(['.survival-tabby-flight'],1280,720,true).opacity,'1');
+      assert.equal(style(['.survival-tabby-sequence.is-static .survival-tabby-flight'],1280,720,true).animation,'none');
     }
     h.tick(1500);
     assert.equal(ui(h).effects.size,0); assert.equal(ui(h).timers.size,0);

@@ -1,94 +1,83 @@
-CAT HIDE & SEEK — APPROVED SURVIVAL ABORT-DISPLAY CORRECTION
-Date: 2026-10-06
-Base/public repository commit: 92b7cfc3dc3093dfb533a6a4b8b130768e0776ba
-Status: User approved publication and local browser recheck on2026-10-06. Exact-commit deployment evidence and the subsequent render recheck are recorded separately.
+CAT HIDE & SEEK — APPROVED QUOTA / FEEDBACK / PUZZLE RELEASE
+Date: 2026-10-07
+Base/public repository commit: 9c5751121df0a87f7c9597ada9ae10330310e3e3
+Status: User approved publication on 2026-10-07. Exact-commit Pages and public-file verification are recorded separately; the new visuals await local IAB review.
 
-PASS — 946 Node tests (node --test tests/*.test.js), 0 failed
+PASS — 980 Node tests (node --test tests/*.test.js), 0 failed
+PASS — All 33 JavaScript files pass node --check; git diff --check passes
 
-8 focused abort-display regressions:
-- Actual engine host abort and app guest recovery timeout replace the live counter,
-  player rows, follow choices and quota/result labels with aborted/no-result copy.
-- Historical/reconnect aborted snapshots cannot display stale winner IDs or legacy
-  winner fields as crowns; normal single/shared champions still display correctly.
-- Player scores, errors, boards and earlier quota-elimination history are unchanged.
-- Aborted boards remain read-only; pending gestures, feedback and audio are cleaned.
-- Against release92b7cfc UI in an isolated VM,5 fail /3 pass; corrected UI passes8/8.
-  The production file was never reverted during the baseline comparison.
+Quota and authority
+- Cumulative survival quotas are 4/10/16/24 at 60/120/180/240 seconds.
+- The 240–300 s final minute remains quota-free. All-match score, then fewer
+  all-match errors, exact shared champions, simultaneous failures and no-crown
+  abort semantics are unchanged.
+- 66 survival engine and 38 session tests cover exact boundaries, one-below
+  elimination, manual/atomic blast rescue, simultaneous retirement, five-minute
+  real-action simulated host/guest tie, 2–4 seats and 180 s lobby / 3 s intro separation.
 
-66 survival authority tests:
-- Fixed two-to-four-human room, no AI and no manual-ready requirement.
-- Solo host waits indefinitely. Second connected protocol-confirmed seat starts
-  one 180-second host deadline; later joins do not reset it. Dropping below two
-  cancels; requalification starts a fresh complete countdown.
-- Automatic deadline and immediate host start resolve once. Late joins or
-  confirmation cannot enter an already-starting match. Ineligible lobby seats
-  are removed before the separate 3-second intro and 300-second match clock.
-- Cumulative quotas 6/12/20/30 at 60/120/180/240 seconds, with no fifth quota.
-- All checkpoint failures resolve together; no-survivor and sole-survivor cases.
-- At 300 seconds, all-match score then all-match errors, with exact shared ties.
-- Legal, unique independent 6x6 boards; six rescues advance only that board.
-- Miss locks 2/4/6/8 seconds, manual-hit reset, no HP or damage-combo scoring.
-- One secret, nonbanking tabby opportunity per minute, including final minute.
-- Uniform rejection-sampled 36-cell landing, clipped full3x3, no bad reroll,
-  no chain, no duplicated cats/errors, atomic old-board resolution before advance.
-- Every quota deadline, same-time retirement, late ticks, replay and stale boards.
-- Public nested whitelist excludes answers, private marks, targets and RNG state.
+Countdown UI and special-cat feedback
+- 20 cut-in tests cover the 20 s crossing, one alert per checkpoint, no first-join,
+  hidden-return or reconnect replay, safe-state cancellation, spectator focus,
+  final-minute exception, reduced motion and cleanup. A small pointer-transparent
+  urgent chip remains visible only while the main quota HUD is offscreen.
+- Numeric urgency is not a repeating live announcement; a separate accessible
+  message announces once per checkpoint/player.
+- Special TABBY has distinct striped/scarf/star artwork. A measured old-cell
+  capture precedes snapshot rendering, allowing a pop/leap, landing ring, 3×3
+  feedback and score pop even when the sixth cat already advanced the board.
+- The previous renderer skipped such effects because it compared the event's old
+  board ID against the newly drawn board. The stale-age cutoff also dropped some
+  fresh delayed events. Event IDs and explicit history suppression now control
+  replay; new-board gameplay never waits for the animation.
+- Launch/impact cues align with the flight and landing; hidden/offscreen other
+  players do not generate a pile of attack sounds. Mute and cleanup remain shared.
+- 101 application/abort/layout integration tests cover actual authority-to-public-
+  snapshot rollover, immediate score/new board, usable new-board input during
+  old-board feedback, privacy, duplicates/stale/history/reconnect snapshots,
+  effect cleanup and the prior aborted-label fix. These are VM/source tests.
 
-37 survival session simulations:
-- Two, three and four injected in-process clients; these are not real WebRTC.
-- Joined snapshot -> explicit guest receipt confirmation -> bound host eligibility.
-- Half-connected clients cannot trigger the timer or play; fifth-seat rejection.
-- Host immediate/automatic race, third/fourth non-reset, cancellation and rejoin.
-- IDs are connection-bound, credentials generated securely, no nickname takeover.
-- Fifteen-second rejoin grace, deadline handling, readonly retired spectators.
-- Removed lobby credentials cannot restore an omitted seat; stable player IDs
-  survive numeric-seat remapping. Pending handshakes/timers/listeners are bounded.
-- Eliminated host continues serving; lost host aborts without a new champion.
-- Public snapshots and credentials remain separate; updates coalesce to100ms.
+Puzzle diversity and solvability
+- 6 new generator tests independently verify DFS uniqueness and replay each
+  visible-rule deduction proof, canonical geometry history, quick rematches,
+  bounded operation counts, constant entropy and caller history normalization.
+- 4 factory-level tests confirm all four original modes now use the shared 6×6
+  generator: 12 quick boards per mode are distinct, valid, logically solvable,
+  with fresh scores and no private history in their public snapshots.
+- Existing 12/20/24 generation remains unchanged; 419 legacy/app tests pass.
+- Deterministic 1,080-board comparison against 9c57511, seed 123456789:
+  canonical geometries 1,074→1,080; recent near-copies (<=4 boundary edits) 17→0;
+  median nearest-recent distance 13→16 edges; explicit logical proofs 837→1,080.
+  Both retain all 90 possible answer patterns. Exact recent symmetry-equivalent
+  repeats are rejected; reported distances are sample results, not universal
+  human-difficulty guarantees.
+- Generation grows connected regions independently, repairs within fixed limits,
+  proves uniqueness and a no-guess deduction sequence, and ranks actual boundary
+  difference. It privately retains 90 patterns/geometries for same-page rematches;
+  reload resets that history. No answers/seeds/history are added to guest data.
+- Node benchmark warm p95 0.207→4.061 ms, cold 12.526→21.888 ms. This is not a mobile
+  browser benchmark. Full method and operation bounds: PUZZLE-DIVERSITY-REPORT.txt.
 
-68 survival app/VM integration tests:
-- Mode selection, shared generic join discovery, four-seat lobby and readable state.
-- Three distinct time phases: unlimited solo/180s waiting,3s intro,5min match.
-- All shared single/double/long-drag input routes, mouse/touch/pen/keyboard.
-- Private purple X stays local; right click is a no-op; lock blocks every input.
-- Board rollover and harmless snapshots preserve or invalidate gestures correctly.
-- Readonly spectators, quota/final-minute/tie/no-champion displays.
-- Room/game-scoped credentials, private note restore, bounded reconnect attempts,
-  expired-seat explicit re-entry, host failure/collision/stale-callback cleanup.
+Existing coverage retained
+- 745 existing tests: 40 battle-engine, 81 cell-gesture, 40 drag-stroke, 419 legacy/app,
+  52 audio, 20 palette and 93 source-layout checks.
+- Single mark/double reveal/hold-drag ADD, right-click no-op, private purple X,
+  factual dark gray X, no automatic exclusion hints and strict central miss lock.
+- Battle HP/combo/board advance, items, treasure, coop, recorded meows, avatar
+  mapping and reduced-motion behavior remain covered.
 
-22 survival layout/effect checks (source arithmetic and fake DOM, not pixels):
-- Desktop1280x720,1366x768,1920x1080 active-game width/height budgets.
-- Mobile320/360/390/430 with normal scrolling, readable16/14px text,
-  44px controls, one main grid and one selected public preview.
-- Stable board nodes; effects do not block input; reduced-motion alternative.
-- Muted/history/reconnect/background events do not replay; audio is bounded.
-- Fixed lingering effect timers/bursts on hide/disconnect/end/leave.
-- Fixed an earlier capture timer truncating a newer capture glow.
+Packaging
+- Current single HTML and source ZIP are rebuilt from the frozen source.
+- Preview embeds scripts/styles/art/audio and opens in labeled duel practice.
+  Return to the entry to create a survival friend room with2–4real participants.
+  Use the same new artifact for every participant when checking this update.
+- Artifact hashes and byte-by-byte ZIP verification are recorded separately.
 
-745 existing regressions retained:
--40 battle-engine,81 cell-gesture,40 drag-stroke,419 legacy/app,
- 52 audio,20 palette and93 source-layout tests.
-- Existing five modes and labeled offline practice retain their rules/input.
-- Real meow assets/license, private purpleX/actual darkgrayX, no automatic hints,
- independent battle boards/HP/combo, items, treasure and coop remain covered.
-
-PASS — Syntax and packaging
-- All29 JavaScript files pass node --check; git diff --check passes.
-- Standalone preview and source ZIP are rebuilt from this frozen source.
-- The preview includes every local JS/CSS/image/audio asset. It opens in labeled
-  duel practice; returning to the entry offers survival, which requires2–4 real
-  humans and working networking. It does not simulate survival opponents.
-- Artifact hashes and file-byte verification are recorded beside the deliverables.
-
-PRIOR ACTUAL LOCAL IAB QA — Release92b7cfc
-- Same-computer2–4-player P2P, full five-minute match, score/error tie-break and
-  reconnect were verified. That run identified the misleading aborted-state copy.
-
-NOT YET VERIFIED — This correction and remaining device/network coverage
-- Corrected labels have not yet been visually rechecked in a deployed browser.
-- Separate-device/external-network PeerJS/STUN/NAT connectivity remains unverified.
-- Full rendered viewport fit, native mobile gestures, accessibility and audio
-  acceptance cannot be inferred from the prior same-computer session.
-- Source arithmetic/fake DOM are not screenshot or physical-device evidence.
-- Cloud browser URL/permission/DevTools restrictions were not retried or bypassed.
-- No new account, paid service, TURN relay or Library upload.
+Actual-browser status and limits
+- Prior release 92b7cfc passed same-computer local IAB 2–4-player P2P, a full
+  five-minute match, score/error tie-break and reconnect checks.
+- The new cut-in, TABBY motion, compact HUD and generation latency await the
+  authorized user-computer IAB review. No new rendered screenshots are claimed.
+- Physical mobile gestures, external-network/multiple-device P2P and audio
+  acceptance cannot be inferred from source tests or same-computer tests.
+- Cloud browser restrictions were not retried or bypassed. No new dependency,
+  service, account, paid relay or Library upload was introduced.

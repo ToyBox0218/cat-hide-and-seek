@@ -22,11 +22,11 @@ vm.runInNewContext(legacySource.slice(0, firstTest) + '\nglobalThis.shared = {ha
 const {harness, singleClick, doubleClick, pointerAt, dragMarks, assertNoPrivateKeys, GESTURE_WAIT} = helperContext.shared;
 const makeHarness = options => harness({mode:'survival', survival:true, survivalUI:true, ...options});
 
-function fixture({count=4, status='playing', who=0, tabbyEnabled=false, capacity=4, ...options}={}) {
+function fixture({count=4, status='playing', who=0, tabbyEnabled=false, capacity=4, engineOptions={}, ...options}={}) {
   const h = makeHarness(options), engine = h.context.CatSurvival;
   const authority = engine.create({tabbyEnabled,capacity}, Array.from({length:count},(_,index)=>({
     id:`p${index+1}`, nickname:index ? `Friend ${index}` : 'Test Cat', avatar:index%6, ready:true, connected:true
-  })), {now:h.now()});
+  })), {now:h.now(), ...(typeof engineOptions === 'function' ? engineOptions(h) : engineOptions)});
   if (status !== 'lobby') {
     assert.equal(engine.start(authority,h.now()),true);
     if (status !== 'countdown') { h.advance(3000); engine.advance(authority,h.now()); }
@@ -110,8 +110,8 @@ test('survival authored shell has unique IDs and contains every quota and gestur
   assert.equal(new Set(ids).size,ids.length,'setup and dynamically authored survival shell cannot reuse IDs');
   for (const required of ['survivalLobby','survivalBoard','survivalLock','survivalGestureHint','survivalScoreList','survivalFollow','survivalSpectatorNotice','survivalResult']) assert.ok(ids.includes(required));
   assert.match(ui,/單點.*私人標記.*快速雙點.*長按拖曳.*右鍵不操作/);
-  for (const quota of [6,12,20,30]) assert.match(ui,new RegExp(`<strong>${quota} <small>隻`));
-  assert.match(ui,/2／4／6／8 秒/);
+  for (const quota of [4,10,16,24]) assert.match(ui,new RegExp(`<strong>${quota} <small>隻`));
+  assert.match(html+'\n'+ui,/2／4／6／8 秒/,'the shared help retains the escalating miss-lock rule');
   assert.doesNotMatch(html+'\n'+ui,/id="survival(?:Capacity|ReadyButton)"/);
   assert.match(ui,/立即開始/);assert.match(ui,/180 秒/);
   assert.doesNotMatch(ui, /class="[^"\n]*(?:battle-hp|battle-combo|attack-damage)/);
@@ -170,7 +170,7 @@ test('fake DOM scoreboard uses cumulative cats and errors with private notes onl
 
 test('fake DOM last minute removes quota elimination UI and keeps the five-minute clock', () => {
   const {h,authority,engine,sync} = fixture();
-  authority.players.forEach(player=>{player.score=30;});
+  authority.players.forEach(player=>{player.score=24;});
   h.advance(240000); engine.advance(authority,h.now()); sync();
   assert.equal(h.state.game.status,'playing');
   assert.equal(h.get('#survivalMinuteLabel').textContent,'最後一分鐘');
@@ -185,18 +185,21 @@ test('fake DOM quota warnings use cumulative progress and the current host minut
   const {h,authority,engine,sync} = fixture();
   authority.players.forEach(player=>{player.score=6;});
   h.advance(60000); engine.advance(authority,h.now()); sync();
-  assert.equal(h.get('#survivalQuotaTarget').textContent,'12 隻');
-  assert.equal(h.get('#survivalQuotaRemaining').textContent,'你還差 6 隻');
+  assert.match(h.get('#survivalQuotaTarget').textContent,/6\s*\/\s*10/);
+  assert.match(h.get('#survivalQuotaRemaining').textContent,/還差 4 隻/);
   assert.equal(h.get('#survivalQuotaMeter').getAttribute('aria-valuenow'),'6');
-  h.advance(45000); h.updateSurvivalTimers();
+  assert.equal(h.get('#survivalQuotaMeter').getAttribute('aria-valuemax'),'10');
+  h.advance(40000); h.updateSurvivalTimers();
   assert.equal(h.get('#survivalQuotaWarning').classList.contains('hidden'),false);
-  assert.match(h.get('#survivalQuotaWarning').textContent,/最後 15 秒，還差 6 隻/);
+  assert.match(h.get('#survivalQuotaWarning').textContent,/20 秒.*差 4 隻/);
+  h.advance(5000); h.updateSurvivalTimers();
+  assert.match(h.get('#survivalQuotaWarning').textContent,/15 秒.*差 4 隻/);
 });
 
 test('fake DOM eliminated players can switch read-only views without exposing private notes', () => {
   const {h,authority,sync,grid} = fixture();
   h.state.notes.add(5); authority.players[0].status='eliminated'; authority.players[0].reason='quota'; sync();
-  assert.match(h.get('#survivalSpectatorNotice').textContent,/轉為觀戰.*未達/);
+  assert.match(h.get('#survivalSpectatorNotice').textContent,/觀戰.*未達/);
   assert.equal(grid().getAttribute('aria-readonly'),'true');
   assert.equal(grid().children.every(cell=>cell.tagName==='SPAN'&&cell.getAttribute('aria-disabled')==='true'),true);
   assert.equal(grid().children.some(cell=>cell.classList.contains('note')),false);
