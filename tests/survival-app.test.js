@@ -97,8 +97,8 @@ test('survival is one of the two retained connected modes and loads after its sh
   assert.deepEqual(options.map(match=>match[1]).sort(), ['battle','survival']);
   assert.deepEqual(options.filter(match=>/\bselected\b/.test(match[2])).map(match=>match[1]), ['battle']);
   assert.match(html, /六種模式/);
-  const scripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1]);
-  for (const [before,after] of [['battle-engine.js','survival-engine.js'],['survival-engine.js','survival-session.js'],['survival-session.js','app.js'],['cell-gestures.js','app.js'],['board-strokes.js','app.js'],['app.js','survival-app.js'],['battle-ui.js','survival-ui.js'],['survival-app.js','survival-ui.js']]) {
+  const scripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1].split('?')[0]);
+  for (const [before,after] of [['battle-engine.js','survival-engine.js'],['survival-engine.js','survival-session.js'],['survival-session.js','app.js'],['cell-gestures.js','app.js'],['board-strokes.js','board-pointer-adapter.js'],['board-pointer-adapter.js','app.js'],['app.js','survival-app.js'],['battle-ui.js','survival-ui.js'],['survival-app.js','survival-ui.js']]) {
     assert.ok(scripts.includes(before)&&scripts.includes(after)&&scripts.indexOf(before)<scripts.indexOf(after),`${before} must precede ${after}`);
   }
 });

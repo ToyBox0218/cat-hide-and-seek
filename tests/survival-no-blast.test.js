@@ -1,9 +1,13 @@
 'use strict';
-const test=require('node:test'),assert=require('node:assert/strict'),Survival=require('../survival-engine.js');
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Survival=require('../survival-engine.js');
 function player(id){return{id,nickname:id,connected:true,ready:true}}
 test('survival settings expose no tabby or blast ability',()=>{
   const settings=Survival.settings({tabbyEnabled:true});
   assert.deepEqual(settings,{mode:'survival',size:6,capacity:4});
+});
+test('survival UI and styles contain no retired blast or special-cat behavior',()=>{
+  const root=path.resolve(__dirname,'..'),source=['survival-app.js','survival-ui.js','survival.css'].map(file=>fs.readFileSync(path.join(root,file),'utf8')).join('\n');
+  assert.doesNotMatch(source,/blast|tabby|虎斑|爆破|3×3/i);
 });
 test('a found cat reveals and scores only the selected cell',()=>{
   const game=Survival.create({},[player('a'),player('b')],{now:0,rng:()=>0.25});

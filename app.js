@@ -184,10 +184,10 @@ function canRevealBoardCell(index){
   return hasIndependentBoards(game)?board.cooldownUntil<=Date.now()+(state.clockOffset||0):game.turn===state.you;
 }
 function cancelBoardGestures(reason='state-change'){
-  state.cellGestures?.cancel();state.boardStrokes?.cancel(reason);state.gestureEpoch=(state.gestureEpoch||0)+1;state.boardGestureKey=boardGestureContext();state.lastToolCellGesture=null;state.revealClickGuard=null;
+  state.cellGestures?.cancel();state.boardPointerAdapter?.cancel(reason);state.gestureEpoch=(state.gestureEpoch||0)+1;state.boardGestureKey=boardGestureContext();state.lastToolCellGesture=null;state.revealClickGuard=null;
 }
 function syncBoardGestures(){
-  const key=boardGestureContext();if(state.boardGestureKey!==key){state.cellGestures?.cancel();state.boardStrokes?.cancel('state-change');state.boardGestureKey=key;}state.boardStrokes?.sync();
+  const key=boardGestureContext();if(state.boardGestureKey!==key){state.cellGestures?.cancel();state.boardPointerAdapter?.cancel('state-change');state.boardGestureKey=key;}state.boardPointerAdapter?.strokes.sync();
   const board=localGestureBoard();let changed=false;
   if(board)for(const index of [...state.notes])if(board.found.includes(index)||board.misses.includes(index)){state.notes.delete(index);changed=true;}
   if(changed&&state.role)saveLocal();
@@ -259,12 +259,11 @@ function cancelCellPress(cell){
   if(cell.boardPressIntent)state.cellGestures?.cancelPress(cell.boardPressIntent);
   cell.boardPressIntent=null;cell.boardToolIntent={cancelled:true};cell.boardCancelled=true;
 }
-function activateBoardCell(cell,event={}){
+function activateBoardCell(cell,event={},stroke={}){
   if(event.button>0)return;
-  if(cell.boardPointerState)finishBoardStroke({...pointerEventValues(event),pointerId:cell.boardPointerState.id,pointerType:cell.boardPointerState.type},cell);
-  const index=+cell.dataset.index,intent=cell.boardPressIntent,toolIntent=cell.boardToolIntent,pointer=cell.boardPointerState;
+  const index=+cell.dataset.index,intent=cell.boardPressIntent,toolIntent=cell.boardToolIntent,pointer=stroke.pointer;
   cell.boardPressIntent=null;cell.boardToolIntent=null;cell.boardPointerState=null;
-  if(pointer?.consumed||(!intent&&Date.now()<(state.strokeClickSuppressedUntil||0)))return;
+  if(stroke.consumed||(!intent&&stroke.suppressed))return;
   if(event.button>0||!cellMatchesCurrentBoard(cell)||toolGestureSuppressed(index)||rolloverGestureSuppressed(index)||cell.boardCancelled){cell.boardCancelled=false;return;}
   if(toolIntent||state.tool){
     const captured=toolIntent||{context:boardGestureContext(),epoch:state.gestureEpoch||0,tool:state.tool,allowed:event.detail==null||event.detail===0};
@@ -284,9 +283,7 @@ function boardCellKeydown(event){
 }
 function wireBoardCell(cell,index){
   const game=state.game,board=localGestureBoard();cell.dataset.gameId=game.id||game.puzzle.id;cell.dataset.boardId=board.puzzle.id;
-  cell.onpointerdown=event=>{if(event.button>0)return;cell.boardCancelled=false;if(event.isPrimary!==false)captureBoardPress(cell,event);startBoardStroke(cell,event);};
-  cell.onpointercancel=event=>{cancelCellPress(cell);cancelBoardStrokePointer(event);};cell.onlostpointercapture=event=>{if(state.boardStrokeCapture?.cell===cell)cancelBoardStrokePointer(event,'lostcapture');};cell.onblur=()=>{cancelCellPress(cell);const pointer=cell.boardPointerState;if(pointer&&state.boardPointerRecords?.get(pointer.id)===pointer)cancelBoardStrokePointer({pointerId:pointer.id},'cell-blur');};
-  cell.onclick=event=>activateBoardCell(cell,event);cell.onkeydown=boardCellKeydown;
+  getBoardPointerAdapter().wireCell(cell,index,{onPointerDown:(node,event)=>{node.boardCancelled=false;if(event.isPrimary!==false)captureBoardPress(node,event);},onCancel:cancelCellPress,onClick:activateBoardCell,onKeydown:(node,event)=>boardCellKeydown(event)});
 }
 // Pointer strokes are private ADD-only input, separate from click recognition.
 const boardInputNow=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
@@ -296,115 +293,19 @@ function boardAllowsStroke(context){
   return game.settings.mode==='battle'?battlePhaseAllowsNotes(game)&&!battleMissLocked(game):game.status==='playing';
 }
 function playableGrid(){return state.game?.settings.mode==='survival'?$('#survivalBoard'):state.game?.settings.mode==='battle'?$('.battle-side.local .battle-board'):$('#board');}
-function strokeGeometry(){
-  const grid=playableGrid();if(!grid)return null;
-  const bounds=grid.getBoundingClientRect(),key=boardGestureContext(),old=state.strokeGeometry;
-  if(old&&old.grid===grid&&old.key===key&&['left','top','width','height'].every(name=>old.bounds[name]===bounds[name]))return old;
-  const cells=Array.from(grid.children).map(cell=>({index:+cell.dataset.index,rect:cell.getBoundingClientRect()}));
-  return state.strokeGeometry={grid,key,bounds,cells};
+function getBoardPointerAdapter(){
+  if(!state.boardPointerAdapter){state.boardPointerAdapter=CatBoardPointerAdapter.create({cellCount:576,pointerProperty:'boardPointerState',cellSelector:'.cell',getGrid:playableGrid,getContext:boardGestureContext,canAct:boardAllowsStroke,isCellCurrent:cellMatchesCurrentBoard,
+    canMark:(index,context)=>!state.tool&&canMarkBoardCell(index,context),onAdd:(index,context)=>!state.tool&&setPrivateCell(index,true,context,false),now:boardInputNow,
+    onCancelPress:cancelCellPress,onCancelGestures:()=>state.cellGestures?.cancel(),onStrokeStart:(event,record,strokes)=>{if(state.tool)strokes.cancel('tool-target');},
+    onStrokeEnd:()=>{if(state.strokeNotesDirty){state.strokeNotesDirty=false;saveLocal();}}});state.boardStrokes=state.boardPointerAdapter.strokes;}
+  return state.boardPointerAdapter;
 }
-function strokeCellAt(x,y){
-  const geometry=strokeGeometry();if(!geometry)return null;
-  const hit=document.elementFromPoint?.(x,y)?.closest?.('.cell');
-  if(hit&&geometry.grid.contains?.(hit)&&cellMatchesCurrentBoard(hit))return +hit.dataset.index;
-  if(document.elementFromPoint)return null;
-  return geometry.cells.find(({rect})=>x>=rect.left&&x<rect.left+rect.width&&y>=rect.top&&y<rect.top+rect.height)?.index??null;
-}
-function strokeIndicesBetween(from,to,context){
-  if(context!==boardGestureContext())return [];
-  const geometry=strokeGeometry();if(!geometry)return [];
-  const dx=to.x-from.x,dy=to.y-from.y,hits=[];
-  for(const {index,rect} of geometry.cells){
-    const inset=Math.min(.5,rect.width/8,rect.height/8),left=rect.left+inset,right=rect.left+rect.width-inset,top=rect.top+inset,bottom=rect.top+rect.height-inset;
-    let enter=0,leave=1,valid=true;
-    for(const [start,delta,min,max] of [[from.x,dx,left,right],[from.y,dy,top,bottom]]){
-      if(delta===0){if(start<min||start>max){valid=false;break;}continue;}
-      const a=(min-start)/delta,b=(max-start)/delta;enter=Math.max(enter,Math.min(a,b));leave=Math.min(leave,Math.max(a,b));if(enter>leave){valid=false;break;}
-    }
-    if(valid)hits.push({index,enter});
-  }
-  return hits.sort((a,b)=>a.enter-b.enter).map(hit=>hit.index);
-}
-function releaseBoardStrokeCapture(){
-  const capture=state.boardStrokeCapture;state.boardStrokeCapture=null;
-  if(capture)try{if(capture.cell.hasPointerCapture?.(capture.id))capture.cell.releasePointerCapture(capture.id);}catch{}
-}
-function getBoardStrokes(){
-  if(!state.boardStrokes)state.boardStrokes=CatBoardStrokes.create({getContext:boardGestureContext,canAct:boardAllowsStroke,
-    canMark:(index,context)=>!state.tool&&canMarkBoardCell(index,context),onAdd:(index,context)=>!state.tool&&setPrivateCell(index,true,context,false),
-    indicesBetween:strokeIndicesBetween,now:boardInputNow,
-    onStart:event=>{
-      state.cellGestures?.cancel();
-      if(state.tool){state.boardStrokes.cancel('tool-target');return;}
-      const record=state.boardPointerRecords?.get(event.id);if(record){record.consumed=true;cancelCellPress(record.cell);}
-      const grid=playableGrid();grid?.classList.add('marking-stroke');
-      if(record?.cell)try{record.cell.setPointerCapture?.(event.id);state.boardStrokeCapture={cell:record.cell,id:event.id};}catch{}
-    },
-    onEnd:event=>{
-      const record=state.boardPointerRecords?.get(event.id);if(record)record.consumed=event.consumed;
-      if(event.consumed){state.cellGestures?.cancel();state.strokeClickSuppressedUntil=Date.now()+600;if(record?.cell)cancelCellPress(record.cell);}
-      playableGrid()?.classList.remove('marking-stroke');releaseBoardStrokeCapture();
-      if(state.strokeNotesDirty){state.strokeNotesDirty=false;saveLocal();}
-    }});
-  return state.boardStrokes;
-}
-function pointerEventValues(event){
-  return {pointerId:event.pointerId,pointerType:event.pointerType,button:event.button,buttons:event.buttons,isPrimary:event.isPrimary,clientX:event.clientX,clientY:event.clientY,timeStamp:event.timeStamp};
-}
-function pointerStrokeEvent(event,record){
-  const x=Number.isFinite(event.clientX)?event.clientX:record?.x,y=Number.isFinite(event.clientY)?event.clientY:record?.y;
-  let now=boardInputNow();const stamp=event.timeStamp;
-  if(record&&Number.isFinite(stamp)&&Number.isFinite(record.stamp)&&stamp>=record.stamp&&(stamp>=1e12)===(record.stamp>=1e12))now=record.began+(stamp-record.stamp);
-  return {id:event.pointerId??record?.id??1,type:event.pointerType||record?.type||'mouse',button:event.button??0,buttons:event.buttons,primary:event.isPrimary!==false,x,y,index:strokeCellAt(x,y),now};
-}
-function startBoardStroke(cell,event){
-  if(event.button>0)return;
-  const rect=cell.getBoundingClientRect(),id=event.pointerId??1;
-  const record={id,type:event.pointerType||'mouse',cell,consumed:false,x:Number.isFinite(event.clientX)?event.clientX:rect.left+rect.width/2,y:Number.isFinite(event.clientY)?event.clientY:rect.top+rect.height/2,began:boardInputNow(),stamp:event.timeStamp};
-  state.boardPointerRecords??=new Map();state.boardPointerRecords.set(id,record);cell.boardPointerState=record;
-  const outcome=getBoardStrokes().down({...pointerStrokeEvent(event,record),index:+cell.dataset.index});
-  if(outcome.consumed){record.consumed=true;cancelCellPress(cell);state.cellGestures?.cancel();}
-}
-function observeExtraBoardPointer(event){
-  if(event.button>0||!state.boardStrokes?.state().pointerCount||state.boardPointerRecords?.has(event.pointerId??1))return;
-  const id=event.pointerId??1;state.boardPointerRecords??=new Map();
-  const record={id,type:event.pointerType||'mouse',cell:null,consumed:true,x:event.clientX,y:event.clientY,began:boardInputNow(),stamp:event.timeStamp};
-  state.boardPointerRecords.set(id,record);state.boardStrokes.down({...pointerStrokeEvent(event,record),index:null});state.cellGestures?.cancel();
-}
-function moveBoardStroke(event){
-  if(!state.boardStrokes||!state.boardPointerRecords?.has(event.pointerId??1))return;
-  const record=state.boardPointerRecords.get(event.pointerId??1),coalesced=event.getCoalescedEvents?.()||[];
-  if(record.type!=='touch'&&event.buttons!==undefined&&!(event.buttons&1)){cancelBoardStrokePointer(event,'released');return;}
-  for(const sample of [...coalesced,event]){
-    const outcome=state.boardStrokes.move(pointerStrokeEvent({...pointerEventValues(sample),pointerId:event.pointerId,pointerType:event.pointerType},record));
-    if(outcome.consumed){record.consumed=true;state.cellGestures?.cancel();if(record.cell)cancelCellPress(record.cell);}
-  }
-  if(state.boardStrokes.state().active&&event.cancelable)event.preventDefault();
-}
-function finishBoardStroke(event,cell=null){
-  const id=event.pointerId??cell?.boardPointerState?.id??1,current=state.boardPointerRecords?.get(id);
-  if(cell&&current&&current!==cell.boardPointerState)return;
-  const record=current||cell?.boardPointerState;
-  if(!state.boardStrokes||!record)return;
-  const outcome=state.boardStrokes.up(pointerStrokeEvent({...pointerEventValues(event),pointerId:id},record));
-  record.consumed=record.consumed||outcome.consumed;state.boardPointerRecords?.delete(id);
-}
-function cancelBoardStrokePointer(event,reason='pointercancel'){
-  const id=event.pointerId??1,record=state.boardPointerRecords?.get(id);
-  state.boardStrokes?.pointerCancel({id},reason);
-  if(record){record.consumed=true;if(record.cell)cancelCellPress(record.cell);}state.boardPointerRecords?.delete(id);
-}
-function resetBoardStrokes(reason){
-  state.boardStrokes?.reset(reason);
-  for(const record of state.boardPointerRecords?.values()||[]){record.consumed=true;if(record.cell)cancelCellPress(record.cell);}
-  state.boardPointerRecords?.clear();state.strokeGeometry=null;releaseBoardStrokeCapture();
-}
-document.addEventListener('pointerdown',observeExtraBoardPointer);
-document.addEventListener('pointermove',moveBoardStroke,{passive:false});
-document.addEventListener('pointerup',event=>finishBoardStroke(event));
-document.addEventListener('pointercancel',event=>cancelBoardStrokePointer(event));
-document.addEventListener('scroll',()=>{if(state.boardStrokes?.state().tracking)cancelBoardGestures('scroll');},true);
-window.addEventListener('resize',()=>cancelBoardGestures('resize'));
+function getBoardStrokes(){return getBoardPointerAdapter().strokes;}
+function startBoardStroke(cell,event){return getBoardPointerAdapter().start(cell,event);}
+function moveBoardStroke(event){return getBoardPointerAdapter().move(event);}
+function finishBoardStroke(event,cell=null){return getBoardPointerAdapter().finish(event,cell);}
+function cancelBoardStrokePointer(event,reason='pointercancel'){return getBoardPointerAdapter().cancelPointer(event,reason);}
+function resetBoardStrokes(reason){state.boardPointerAdapter?.reset(reason);}
 function connectedTargets(size,targets){const set=new Set(targets),seen=new Set([targets[0]]),queue=[targets[0]];while(queue.length){const i=queue.shift(),r=Math.floor(i/size),c=i%size;for(const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){const rr=r+dr,cc=c+dc,n=rr*size+cc;if(rr>=0&&rr<size&&cc>=0&&cc<size&&set.has(n)&&!seen.has(n)){seen.add(n);queue.push(n)}}}return seen.size===targets.length}
 function deliverIntel(game,who,intel){
   if(game.settings.mode==='coop'){game.sharedIntel.push(intel);if(game.sharedIntel.length>12)game.sharedIntel.shift();return}
@@ -715,13 +616,24 @@ function prepareGameAudio(matchId,status){
 }
 function playCaptureSound(id,combo=1){state.captureSoundEvents??=new Set();if(state.captureSoundEvents.has(id))return false;state.captureSoundEvents.add(id);if(state.captureSoundEvents.size>128)state.captureSoundEvents.delete(state.captureSoundEvents.values().next().value);soundCue('meow',{id,combo});if(combo>1)soundCue('combo',{id,combo,delay:.14});return true;}
 function playUICue(){return soundCue('ui',{id:`ui:${++state.uiSoundSequence}`});}
+function playGestureCue(kind,options={}){
+  if(state.muted||state.volume<=0||document.hidden)return Promise.resolve(false);
+  const id=options.id||`classic:${kind}:${++state.uiSoundSequence}`;
+  return unlockAudio().then(unlocked=>unlocked?soundCue(kind,{...options,id}):false);
+}
+function toggleGameMute(){
+  state.muted=!state.muted;localStorage.p2pMuted=state.muted?'1':'0';getGameAudio().setMuted(state.muted);syncAudioControls();
+  if(!state.muted)return unlockAudio().then(unlocked=>{if(unlocked)playUICue();return unlocked;});
+  return Promise.resolve(true);
+}
 function syncAudioControls(){
-  for(const id of ['#mute','#battleMute']){const button=$(id);if(button){button.textContent=state.muted?'🔇':'🔊';button.setAttribute('aria-pressed',String(state.muted));button.setAttribute('aria-label',state.muted?'開啟音效':'關閉音效');}}
+  for(const id of ['#mute','#battleMute','#classicMute']){const button=$(id);if(button){button.textContent=state.muted?'🔇':'🔊';button.setAttribute('aria-pressed',String(state.muted));button.setAttribute('aria-label',state.muted?'開啟音效':'關閉音效');}}
   const volume=$('#soundVolume'),output=$('#soundVolumeValue');
   if(volume){volume.value=String(Math.round(state.volume*100));volume.setAttribute('aria-valuetext',`音量 ${Math.round(state.volume*100)}%`);}
   if(output)output.textContent=`${Math.round(state.volume*100)}%`;
   const sampleStatus=$('#meowLoadStatus'),audioState=state.sound?.getState();if(sampleStatus){sampleStatus.textContent=audioState?.loadedSamples?`已載入 ${audioState.loadedSamples} 組貓叫，隨機播放且不連續重複。`:audioState?.samplesStatus==='failed'?'貓叫錄音載入失敗，目前使用合成備用音效；請重新整理再試。':audioState?.samplesStatus==='loading'?'貓叫錄音載入中…':'首次操作後載入貓叫錄音；載入前會使用合成備用音效。';}
 }
+window.CatGameAudioControls={play:playGestureCue,toggleMute:toggleGameMute,sync:syncAudioControls,isMuted:()=>state.muted};
 function observeLegacyAudio(game){
   const matchId=game.puzzle.id,initial=state.legacyAudioMatch!==matchId;
   prepareGameAudio(matchId,game.status);
@@ -965,10 +877,7 @@ $('#hint').onclick=()=>{
 document.querySelectorAll('.emote').forEach(button=>button.onclick=()=>{
   const action={type:'emote',value:button.textContent,turnId:state.game.turnId,actionId:crypto.randomUUID()}; state.role==='host'?act(0,action):send({type:'action',action});
 });
-$('#mute').onclick=()=>{
-  state.muted=!state.muted;localStorage.p2pMuted=state.muted?'1':'0';getGameAudio().setMuted(state.muted);syncAudioControls();
-  if(!state.muted)unlockAudio().then(unlocked=>{if(unlocked)playUICue();});
-};
+$('#mute').onclick=toggleGameMute;
 $('#soundVolume').oninput=()=>{state.volume=Math.max(0,Math.min(1,Number($('#soundVolume').value)/100));localStorage.catAudioVolume=String(state.volume);getGameAudio().setVolume(state.volume);syncAudioControls();};
 $('#soundVolume').onchange=()=>{if(!state.muted)unlockAudio().then(unlocked=>{if(unlocked)playUICue();});};
 syncAudioControls();

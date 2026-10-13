@@ -4,7 +4,7 @@ const $=selector=>document.querySelector(selector),levels=window.CAT_CLASSIC_LEV
 if(!levels.length||!window.CatClassic)return;
 const palette=window.CatPalette?.colors||['#f1ce79','#e297f6','#60d8fb','#60ce7e','#fbd8fb','#fb9792'];
 const storeKey='catClassicProgressV1';
-const state={level:0,cats:new Set(),crosses:new Set(),gestures:null,strokes:null,pointerRecords:new Map(),strokeGeometry:null,strokeDirty:false,strokeCapture:null,strokeClickSuppressedUntil:0,viewEpoch:0,sessionLabel:'全新關卡',newGameArmed:false};
+const state={level:0,cats:new Set(),crosses:new Set(),gestures:null,pointerAdapter:null,strokeDirty:false,viewEpoch:0,sessionLabel:'全新關卡',newGameArmed:false,audioSequence:0};
 
 function saved(){try{const value=JSON.parse(localStorage.getItem(storeKey)||'{}');return value&&typeof value==='object'?value:{}}catch{return{}}}
 function cleanIndexes(values,limit){return Array.isArray(values)?[...new Set(values.filter(value=>Number.isInteger(value)&&value>=0&&value<limit))]:[]}
@@ -32,9 +32,7 @@ function tierName(tier){return['','新手暖身','基礎排除','交叉推理','
 function gestureContext(){return`${state.viewEpoch}:${state.level}`}
 function canAct(index,context=gestureContext()){return context===gestureContext()&&!$('#classicGame').classList.contains('hidden')&&Number.isInteger(index)&&index>=0&&index<puzzle().size*puzzle().size}
 function cancelGestures(reason='state-change'){
-  state.gestures?.cancel();state.strokes?.reset(reason);
-  for(const record of state.pointerRecords.values()){record.consumed=true;if(record.cell)cancelCellPress(record.cell)}
-  state.pointerRecords.clear();state.strokeGeometry=null;releaseStrokeCapture();$('#classicBoard')?.classList.remove('marking-stroke');
+  state.gestures?.cancel();state.pointerAdapter?.reset(reason);
   if(state.strokeDirty){state.strokeDirty=false;save()}
 }
 function setMessage(text){$('#classicMessage').textContent=text}
@@ -48,10 +46,11 @@ function ensureChrome(){
   if(!$('#classicSessionState'))panel.insertAdjacentHTML('afterbegin','<div class="classic-session-row"><span id="classicSessionState" role="status">全新關卡</span><strong id="classicPlacedCount">0 / 4</strong></div>');
   if(!card.querySelector('.classic-board-heading'))card.insertAdjacentHTML('afterbegin','<div class="classic-board-heading board-heading"><b>你的尋貓小屋</b><span id="classicBoardStatus">第 1 關 · 4×4</span></div>');
   if(!$('#classicLegend'))board.insertAdjacentHTML('afterend','<div id="classicLegend" class="classic-legend"><span><i class="classic-swatch note">×</i> 單點／長按拖曳標記</span><span><i class="classic-swatch cat"><span class="cat-art orange" aria-hidden="true"></span></i> 雙點放貓</span><span>提示只高亮，不會自動落子</span></div>');
+  board.setAttribute('aria-describedby','classicLegend classicHintText classicMessage');
 }
 
 function load(index,{reset=false,reason='navigate'}={}){
-  cancelGestures();state.viewEpoch++;
+  closeResult();cancelGestures();state.viewEpoch++;
   state.level=Math.max(0,Math.min(levels.length-1,Number(index)||0));
   const progress=saved(),record=!reset&&progress.boards?.[state.level],clean=boardState(record,puzzle());
   state.cats=new Set(clean.cats);state.crosses=new Set(clean.crosses);
@@ -63,10 +62,19 @@ function load(index,{reset=false,reason='navigate'}={}){
   setMessage(clean.repaired?'偵測到每格都是貓的異常舊資料，已從空白盤面恢復。':state.sessionLabel==='全新關卡'?'這是空白新局；單點標記 ×，雙點放置貓，長按拖曳可連續標記 ×。':state.sessionLabel);
 }
 function isComplete(){const value=puzzle();return state.cats.size===value.size&&value.solution.every(index=>state.cats.has(index))}
+function classicCue(kind,options={}){return window.CatGameAudioControls?.play?.(kind,{id:`classic:${state.level}:${kind}:${++state.audioSequence}`,...options})}
+function hasRuleConflict(index){
+  if(!state.cats.has(index))return false;const value=puzzle(),row=Math.floor(index/value.size),column=index%value.size,region=value.regions[index];
+  return [...state.cats].some(other=>other!==index&&(Math.floor(other/value.size)===row||other%value.size===column||value.regions[other]===region||(Math.abs(Math.floor(other/value.size)-row)<=1&&Math.abs(other%value.size-column)<=1)));
+}
 function mark(index,cat){
+  const wasComplete=isComplete();
   if(cat){state.crosses.delete(index);state.cats.has(index)?state.cats.delete(index):state.cats.add(index)}
   else{state.cats.delete(index);state.crosses.has(index)?state.crosses.delete(index):state.crosses.add(index)}
-  state.sessionLabel='進行中';save();render();
+  state.sessionLabel='進行中';save();render({announceCompletion:!wasComplete});
+  if(isComplete())return;
+  if(cat&&state.cats.has(index)&&hasRuleConflict(index)){setMessage('這隻貓與同排、同欄、同色區或相鄰的貓衝突；可用提示檢查下一步。');classicCue('miss');}
+  else classicCue(cat&&state.cats.has(index)?'found':'ui');
 }
 function setCross(index,marked,context=gestureContext(),persist=true){
   if(!canAct(index,context)||state.cats.has(index)||state.crosses.has(index)===marked)return false;
@@ -81,85 +89,61 @@ function getGestures(){
   return state.gestures;
 }
 const inputNow=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
-function geometry(){
-  const board=$('#classicBoard');if(!board)return null;const bounds=board.getBoundingClientRect(),key=gestureContext(),old=state.strokeGeometry;
-  if(old&&old.board===board&&old.key===key&&['left','top','width','height'].every(name=>old.bounds[name]===bounds[name]))return old;
-  return state.strokeGeometry={board,key,bounds,cells:Array.from(board.children).map(node=>({index:+node.dataset.index,rect:node.getBoundingClientRect()}))};
-}
-function strokeCellAt(x,y){
-  const value=geometry();if(!value)return null;const hit=document.elementFromPoint?.(x,y)?.closest?.('.classic-cell');
-  if(hit&&value.board.contains(hit))return +hit.dataset.index;if(document.elementFromPoint)return null;
-  return value.cells.find(({rect})=>x>=rect.left&&x<rect.right&&y>=rect.top&&y<rect.bottom)?.index??null;
-}
-function indicesBetween(from,to,context){
-  if(context!==gestureContext())return[];const value=geometry();if(!value)return[];const dx=to.x-from.x,dy=to.y-from.y,hits=[];
-  for(const {index,rect} of value.cells){const inset=Math.min(.5,rect.width/8,rect.height/8),left=rect.left+inset,right=rect.right-inset,top=rect.top+inset,bottom=rect.bottom-inset;let enter=0,leave=1,valid=true;
-    for(const [start,delta,min,max] of [[from.x,dx,left,right],[from.y,dy,top,bottom]]){if(delta===0){if(start<min||start>max){valid=false;break}continue}const a=(min-start)/delta,b=(max-start)/delta;enter=Math.max(enter,Math.min(a,b));leave=Math.min(leave,Math.max(a,b));if(enter>leave){valid=false;break}}
-    if(valid)hits.push({index,enter});
-  }
-  return hits.sort((a,b)=>a.enter-b.enter).map(hit=>hit.index);
-}
-function releaseStrokeCapture(){const capture=state.strokeCapture;state.strokeCapture=null;if(capture)try{if(capture.cell.hasPointerCapture?.(capture.id))capture.cell.releasePointerCapture(capture.id)}catch{}}
-function getStrokes(){
-  if(!state.strokes)state.strokes=CatBoardStrokes.create({cellCount:36,getContext:gestureContext,canAct:context=>context===gestureContext()&&!$('#classicGame').classList.contains('hidden'),canMark:(index,context)=>canAct(index,context)&&!state.cats.has(index),onAdd:(index,context)=>setCross(index,true,context,false),indicesBetween,now:inputNow,
-    onStart:event=>{state.gestures?.cancel();const record=state.pointerRecords.get(event.id);if(record){record.consumed=true;cancelCellPress(record.cell)}$('#classicBoard')?.classList.add('marking-stroke');if(record?.cell)try{record.cell.setPointerCapture?.(event.id);state.strokeCapture={cell:record.cell,id:event.id}}catch{}},
-    onEnd:event=>{const record=state.pointerRecords.get(event.id);if(record)record.consumed=event.consumed;if(event.consumed){state.gestures?.cancel();state.strokeClickSuppressedUntil=Date.now()+600;if(record?.cell)cancelCellPress(record.cell)}$('#classicBoard')?.classList.remove('marking-stroke');releaseStrokeCapture();if(state.strokeDirty){state.strokeDirty=false;save()}}
-  });return state.strokes;
-}
-function pointerValues(event){return{pointerId:event.pointerId,pointerType:event.pointerType,button:event.button,buttons:event.buttons,isPrimary:event.isPrimary,clientX:event.clientX,clientY:event.clientY,timeStamp:event.timeStamp}}
-function strokeEvent(event,record){const x=Number.isFinite(event.clientX)?event.clientX:record?.x,y=Number.isFinite(event.clientY)?event.clientY:record?.y;let now=inputNow(),stamp=event.timeStamp;if(record&&Number.isFinite(stamp)&&Number.isFinite(record.stamp)&&stamp>=record.stamp&&(stamp>=1e12)===(record.stamp>=1e12))now=record.began+(stamp-record.stamp);return{id:event.pointerId??record?.id??1,type:event.pointerType||record?.type||'mouse',button:event.button??0,buttons:event.buttons,primary:event.isPrimary!==false,x,y,index:strokeCellAt(x,y),now}}
 function cancelCellPress(cell){if(cell?.classicPress)state.gestures?.cancelPress(cell.classicPress);if(cell){cell.classicPress=null;cell.classicCancelled=true}}
-function startStroke(cell,event){
-  if(event.button>0)return;const rect=cell.getBoundingClientRect(),id=event.pointerId??1,record={id,type:event.pointerType||'mouse',cell,consumed:false,x:Number.isFinite(event.clientX)?event.clientX:rect.left+rect.width/2,y:Number.isFinite(event.clientY)?event.clientY:rect.top+rect.height/2,began:inputNow(),stamp:event.timeStamp};
-  state.pointerRecords.set(id,record);cell.classicPointerState=record;const outcome=getStrokes().down({...strokeEvent(event,record),index:+cell.dataset.index});if(outcome.consumed){record.consumed=true;cancelCellPress(cell);state.gestures?.cancel()}
+function getPointerAdapter(){
+  if(!state.pointerAdapter)state.pointerAdapter=CatBoardPointerAdapter.create({cellCount:36,pointerProperty:'classicPointerState',cellSelector:'.classic-cell',getGrid:()=>$('#classicBoard'),getContext:gestureContext,canAct:context=>context===gestureContext()&&!$('#classicGame').classList.contains('hidden'),canMark:(index,context)=>canAct(index,context)&&!state.cats.has(index),onAdd:(index,context)=>setCross(index,true,context,false),now:inputNow,onCancelPress:cancelCellPress,onCancelGestures:()=>state.gestures?.cancel(),onStrokeEnd:()=>{if(state.strokeDirty){state.strokeDirty=false;save()}}});
+  return state.pointerAdapter;
 }
-function moveStroke(event){if(!state.strokes||!state.pointerRecords.has(event.pointerId??1))return;const record=state.pointerRecords.get(event.pointerId??1),samples=event.getCoalescedEvents?.()||[];if(record.type!=='touch'&&event.buttons!==undefined&&!(event.buttons&1)){cancelStroke(event,'released');return}for(const sample of [...samples,event]){const outcome=state.strokes.move(strokeEvent({...pointerValues(sample),pointerId:event.pointerId,pointerType:event.pointerType},record));if(outcome.consumed){record.consumed=true;state.gestures?.cancel();cancelCellPress(record.cell)}}if(state.strokes.state().active&&event.cancelable)event.preventDefault()}
-function finishStroke(event,cellNode=null){const id=event.pointerId??cellNode?.classicPointerState?.id??1,current=state.pointerRecords.get(id);if(cellNode&&current&&current!==cellNode.classicPointerState)return;const record=current||cellNode?.classicPointerState;if(!state.strokes||!record)return;const outcome=state.strokes.up(strokeEvent({...pointerValues(event),pointerId:id},record));record.consumed=record.consumed||outcome.consumed;state.pointerRecords.delete(id)}
-function cancelStroke(event,reason='pointercancel'){const id=event.pointerId??1,record=state.pointerRecords.get(id);state.strokes?.pointerCancel({id},reason);if(record){record.consumed=true;cancelCellPress(record.cell)}state.pointerRecords.delete(id)}
-function observeExtraPointer(event){
-  if(event.button>0||!state.strokes?.state().pointerCount||state.pointerRecords.has(event.pointerId??1)||event.target?.closest?.('.classic-cell'))return;
-  const id=event.pointerId??1,record={id,type:event.pointerType||'mouse',cell:null,consumed:true,x:event.clientX,y:event.clientY,began:inputNow(),stamp:event.timeStamp};state.pointerRecords.set(id,record);state.strokes.down({...strokeEvent(event,record),index:null});state.gestures?.cancel();
+function focusFromArrow(cell,event){
+  if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return false;
+  const size=puzzle().size,index=+cell.dataset.index,row=Math.floor(index/size),column=index%size,nextRow=row+(event.key==='ArrowUp'?-1:event.key==='ArrowDown'?1:0),nextColumn=column+(event.key==='ArrowLeft'?-1:event.key==='ArrowRight'?1:0);
+  event.preventDefault();if(nextRow>=0&&nextRow<size&&nextColumn>=0&&nextColumn<size)document.querySelector(`#classicBoard [data-index="${nextRow*size+nextColumn}"]`)?.focus({preventScroll:true});return true;
 }
 function wireCell(cell,index){
-  const gestures=getGestures();
-  cell.onpointerdown=event=>{if(event.button>0)return;cell.classicCancelled=false;if(event.isPrimary!==false)cell.classicPress=gestures.press(index,{pointerType:event.pointerType||'mouse',timeStamp:event.timeStamp});startStroke(cell,event)};
-  cell.onpointercancel=event=>{cancelCellPress(cell);cancelStroke(event)};cell.onlostpointercapture=event=>{if(state.strokeCapture?.cell===cell)cancelStroke(event,'lostcapture')};cell.onblur=()=>{cancelCellPress(cell);const pointer=cell.classicPointerState;if(pointer&&state.pointerRecords.get(pointer.id)===pointer)cancelStroke({pointerId:pointer.id},'cell-blur')};
-  cell.onkeydown=event=>{if(!['Enter',' ','Spacebar'].includes(event.key)||event.repeat)return;cell.classicPress=gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp})};
-  cell.onclick=event=>{if(event.button>0)return;if(cell.classicPointerState)finishStroke({...pointerValues(event),pointerId:cell.classicPointerState.id,pointerType:cell.classicPointerState.type},cell);const intent=cell.classicPress,pointer=cell.classicPointerState;cell.classicPress=null;cell.classicPointerState=null;if(pointer?.consumed||(!intent&&Date.now()<state.strokeClickSuppressedUntil)||cell.classicCancelled){cell.classicCancelled=false;return}if(event.detail>0&&!intent)return;gestures.activate(intent||gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp}),{detail:event.detail||0,timeStamp:event.timeStamp})};
+  const gestures=getGestures();getPointerAdapter().wireCell(cell,index,{onPointerDown:(node,event)=>{node.classicCancelled=false;if(event.isPrimary!==false)node.classicPress=gestures.press(index,{pointerType:event.pointerType||'mouse',timeStamp:event.timeStamp})},onCancel:cancelCellPress,
+    onKeydown:(node,event)=>{if(focusFromArrow(node,event))return;if(!['Enter',' ','Spacebar'].includes(event.key))return;if(event.repeat){event.preventDefault();return}node.classicPress=gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp})},
+    onClick:(node,event,stroke)=>{const intent=node.classicPress;node.classicPress=null;if(stroke.consumed||(!intent&&stroke.suppressed)||node.classicCancelled){node.classicCancelled=false;return}if(event.detail>0&&!intent)return;gestures.activate(intent||gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp}),{detail:event.detail||0,timeStamp:event.timeStamp})}});
 }
-function render(){
+function closeResult(){const dialog=$('#classicResult');if(dialog?.open)dialog.close()}
+function showResult(){
+  const dialog=$('#classicResult'),last=state.level===levels.length-1;if(!dialog||dialog.open)return;
+  $('#classicResultTitle').textContent=last?'300 關全部完成！':`第 ${state.level+1} 關完成！`;
+  $('#classicResultText').textContent=last?'恭喜完成整套經典單人關卡。你可以重玩本關或回到模式選單。':'進度已儲存。要直接前往下一關，還是重玩這一關？';
+  $('#classicResultNext').hidden=last;dialog.showModal?.();if(!dialog.open)dialog.setAttribute('open','');
+  requestAnimationFrame(()=>$(last?'#classicResultReplay':'#classicResultNext')?.focus());classicCue('win',{delay:.12});
+}
+function render({announceCompletion=false}={}){
   const value=puzzle(),progress=saved(),completed=new Set(cleanIndexes(progress.completed,levels.length)),container=$('#classicBoard');
   container.style.setProperty('--classic-size',value.size);container.style.setProperty('--n',value.size);container.replaceChildren();
   value.regions.forEach((region,index)=>{const cell=document.createElement('button'),hasCat=state.cats.has(index),hasCross=state.crosses.has(index);cell.type='button';cell.className='cell classic-cell';cell.dataset.index=index;cell.dataset.region=region;cell.dataset.state=hasCat?'cat':hasCross?'cross':'open';cell.style.setProperty('--bg',palette[region%palette.length]);cell.classList.toggle('cat',hasCat);cell.classList.toggle('is-cat',hasCat);cell.classList.toggle('note',hasCross);cell.classList.toggle('is-cross',hasCross);if(hasCat)cell.innerHTML=classicCat(index);else if(hasCross)cell.textContent='✕';cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',`第 ${Math.floor(index/value.size)+1} 排第 ${index%value.size+1} 格，色區 ${region+1}${hasCat?'，已放貓':hasCross?'，已排除':'，未標記'}`);wireCell(cell,index);container.append(cell)});
   $('#classicProgress').textContent=`${state.level+1} / ${levels.length}`;$('#classicLevel').value=state.level+1;$('#classicTier').textContent=tierName(value.tier);$('#classicSize').textContent=`${value.size}×${value.size}`;$('#classicSessionState').textContent=state.sessionLabel;$('#classicPlacedCount').textContent=`${state.cats.size} / ${value.size}`;$('#classicBoardStatus').textContent=`第 ${state.level+1} 關 · ${value.size}×${value.size}`;$('#classicPrev').disabled=state.level===0;$('#classicNext').disabled=state.level===levels.length-1&&!isComplete();
   const complete=isComplete();$('#classicGame').classList.toggle('is-complete',complete);$('#classicCompletion').textContent=complete?'完成！已儲存進度':completed.has(state.level)?'已完成，可重玩':'尚未完成';
   if(complete&&!completed.has(state.level)){completed.add(state.level);progress.completed=[...completed].sort((a,b)=>a-b);progress.current=Math.min(state.level+1,levels.length-1);localStorage.setItem(storeKey,JSON.stringify(progress));setMessage(state.level===levels.length-1?'300 關全部完成！':'完成本關，可以前往下一關。')}
+  if(complete&&announceCompletion)showResult();
 }
 function show(index){$('#setup').classList.add('hidden');$('#game').classList.add('hidden');$('#classicGame').classList.remove('hidden');$('#helpButton').classList.add('hidden');document.body.classList.add('is-classic');load(index,{reason:'enter'})}
 function startNew(){const facts=progressFacts();if(facts.hasProgress&&!state.newGameArmed){state.newGameArmed=true;const button=$('#chooseClassic');button.classList.add('is-confirming');button.innerHTML='<strong>確認清除並開始</strong><small>再按一次，既有經典進度會清除</small>';return}localStorage.removeItem(storeKey);show(0)}
 function resume(){const facts=progressFacts();if(!facts.hasProgress){updateEntry();return}state.newGameArmed=false;show(facts.current)}
-function hide(){cancelGestures();state.viewEpoch++;document.body.classList.remove('is-classic');$('#classicGame').classList.add('hidden');$('#setup').classList.remove('hidden');$('#setup').removeAttribute('data-flow');$('#entryChoice').classList.remove('hidden');$('#entryFlow').classList.add('hidden');$('#helpButton').classList.remove('hidden');updateEntry()}
+function hide(){closeResult();cancelGestures();state.viewEpoch++;document.body.classList.remove('is-classic');$('#classicGame').classList.add('hidden');$('#setup').classList.remove('hidden');$('#setup').removeAttribute('data-flow');$('#entryChoice').classList.remove('hidden');$('#entryFlow').classList.add('hidden');$('#helpButton').classList.remove('hidden');updateEntry()}
 function cell(index){return $('#classicBoard')?.querySelector(`[data-index="${index}"]`)}
 function showHint(){
   cancelGestures();const hint=CatClassic.nextHint(puzzle(),state);document.querySelectorAll('.classic-cell').forEach(node=>node.classList.remove('is-hint','is-related','is-conflict'));
-  if(!hint){$('#classicHintText').textContent='目前沒有可用提示。';return}
-  $('#classicHintText').textContent=hint.text;for(const index of hint.related||[])cell(index)?.classList.add('is-related');if(Number.isInteger(hint.index))cell(hint.index)?.classList.add(hint.kind==='error'?'is-conflict':'is-hint');setMessage('提示只標出可推理的下一步，請由你決定是否落子。');
+  if(!hint){$('#classicHintText').textContent='目前沒有可用提示。';classicCue('miss');return}
+  $('#classicHintText').textContent=hint.text;for(const index of hint.related||[])cell(index)?.classList.add('is-related');if(Number.isInteger(hint.index))cell(hint.index)?.classList.add(hint.kind==='error'?'is-conflict':'is-hint');setMessage('提示只標出可推理的下一步，請由你決定是否落子。');classicCue(hint.kind==='error'?'miss':'ui');
 }
 
-document.addEventListener('pointerdown',observeExtraPointer);
-document.addEventListener('pointermove',moveStroke,{passive:false});
-document.addEventListener('pointerup',event=>finishStroke(event));
-document.addEventListener('pointercancel',event=>cancelStroke(event));
-document.addEventListener('scroll',()=>{if(state.strokes?.state().tracking)cancelGestures('scroll')},true);
-window.addEventListener('resize',()=>{if(state.strokes?.state().tracking)cancelGestures('resize');else state.strokeGeometry=null});
 window.addEventListener('blur',()=>cancelGestures('blur'));
 document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelGestures('hidden')});
 
 ensureChrome();
-updateEntry();$('#chooseClassic').onclick=startNew;$('#continueClassic').onclick=resume;$('#classicExit').onclick=hide;$('#classicLevel').oninput=event=>load(Number(event.target.value)-1);$('#classicPrev').onclick=()=>load(state.level-1);$('#classicNext').onclick=()=>load(state.level+1);$('#classicReplay').onclick=()=>{cancelGestures();if(confirm('清除本關標記並重新開始？'))load(state.level,{reset:true})};$('#classicHint').onclick=showHint;
+updateEntry();$('#chooseClassic').onclick=startNew;$('#continueClassic').onclick=resume;$('#classicExit').onclick=hide;$('#classicMute').onclick=()=>window.CatGameAudioControls?.toggleMute?.();window.CatGameAudioControls?.sync?.();$('#classicLevel').oninput=event=>load(Number(event.target.value)-1);$('#classicPrev').onclick=()=>load(state.level-1);$('#classicNext').onclick=()=>load(state.level+1);$('#classicReplay').onclick=()=>{cancelGestures();if(confirm('清除本關標記並重新開始？'))load(state.level,{reset:true})};$('#classicHint').onclick=showHint;
+$('#classicResultReplay').onclick=()=>load(state.level,{reset:true});$('#classicResultNext').onclick=()=>load(state.level+1);$('#classicResultClose').onclick=closeResult;$('#classicResult')?.addEventListener('close',()=>cell(puzzle().solution.find(index=>state.cats.has(index)))?.focus({preventScroll:true}));
 for(const option of [...document.querySelectorAll('#gameMode option')])if(!['battle','survival'].includes(option.value))option.remove();
 const survivalOption=$('#gameMode option[value="survival"]');if(survivalOption)survivalOption.textContent='🏆 4 人大逃殺｜2–4 人好友，最多四人';
 const tabbyToggle=$('#survivalTabby');if(tabbyToggle)tabbyToggle.closest('label')?.remove();
 const survivalSettings=$('#survivalSettings');if(survivalSettings){const note=survivalSettings.querySelector('p:last-child');if(note)note.textContent='2 至 4 位真人，最多四人。找到貓只計一分，不會炸開或連帶揭露鄰格。'}
-for(const paragraph of document.querySelectorAll('#helpDialog p'))if(/虎斑|爆破|3×3|道具戰|寶藏貓|雙貓合作/.test(paragraph.textContent))paragraph.remove();
+for(const paragraph of document.querySelectorAll('#helpDialog p')){
+  if(paragraph.textContent.startsWith('貓咪大逃殺：'))paragraph.innerHTML='<b>貓咪大逃殺：</b>2–4 位真人好友各解獨立 6×6；每隻貓只計 1 分，不會炸開或連帶揭露鄰格。1／2／3／4 分鐘累積門檻為 4／10／16／24 隻，最後一分鐘沒有新門檻；5 分鐘後比全場貓數，再比猜錯較少。';
+  else if(/道具戰|寶藏貓|雙貓合作/.test(paragraph.textContent))paragraph.remove();
+}
 })();

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>貓咪捉迷藏｜P2P 雙人尋貓</title>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./survival.css">
-  <link rel="stylesheet" href="./classic.css?v=20261013d">
+  <link rel="stylesheet" href="./survival.css?v=20261013e">
+  <link rel="stylesheet" href="./classic.css?v=20261013e">
 </head>
 <body><main>
   <button id="helpButton" class="help-fab" aria-label="打開玩法與音效設定">？ 玩法／音效</button>
@@ -42,9 +42,11 @@
   </section>
 
   <section id="classicGame" class="classic-game hidden" aria-label="經典單人貓數獨">
-    <header class="classic-header"><button id="classicExit" type="button">← 返回模式</button><div><small>CLASSIC SOLO</small><h1>經典單人 · 貓數獨</h1></div><strong id="classicProgress">1 / 300</strong></header>
+    <header class="classic-header"><button id="classicExit" type="button">← 返回模式</button><div><small>CLASSIC SOLO</small><h1>經典單人 · 貓數獨</h1></div><div class="classic-header-actions"><strong id="classicProgress">1 / 300</strong><button id="classicMute" type="button" aria-label="關閉音效" aria-pressed="false">🔊</button></div></header>
     <div class="classic-layout"><aside class="classic-panel"><label for="classicLevel">選擇關卡</label><input id="classicLevel" type="range" min="1" max="300" value="1"><div class="classic-meta"><span id="classicTier">入門</span><span id="classicSize">4×4</span></div><p>每一橫排、直欄、色區恰好一隻貓；貓不能相鄰，斜角也不行。</p><div class="classic-actions"><button id="classicHint" type="button">💡 提示下一步</button><button id="classicReplay" type="button">↻ 重玩本關</button></div><p id="classicMessage" role="status" aria-live="polite">點一下標記 ×，點兩下放置貓。</p></aside><div class="classic-board-card"><div id="classicBoard" class="classic-board" role="grid" aria-label="經典單人棋盤"></div><p id="classicHintText" class="classic-hint-text" aria-live="polite"></p><div class="classic-footer"><button id="classicPrev" type="button">上一關</button><span id="classicCompletion">尚未完成</span><button id="classicNext" type="button">下一關</button></div></div></div>
   </section>
+
+  <dialog id="classicResult" class="classic-result" aria-labelledby="classicResultTitle" aria-describedby="classicResultText"><h2 id="classicResultTitle">關卡完成！</h2><p id="classicResultText">進度已儲存。</p><div class="classic-result-actions"><button id="classicResultReplay" type="button">重玩本關</button><button id="classicResultNext" type="button">下一關</button><button id="classicResultClose" type="button">留在盤面</button></div></dialog>
 
   <section id="game" class="hidden">
     <section id="survivalArena" class="hidden" aria-label="貓咪大逃殺"></section>
@@ -73,5 +75,5 @@
   <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 </main>
-<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./region-palette.js"></script><script>window.CAT_MEOW_SAMPLES=["./assets/audio/cat-meow-soft.wav","./assets/audio/cat-meow-food.wav","./assets/audio/cat-meow-purr.wav"];</script><script src="./game-audio.js"></script><script src="./battle-engine.js"></script><script src="./cell-gestures.js"></script><script src="./board-strokes.js"></script><script src="./survival-engine.js"></script><script src="./survival-session.js"></script><script src="./classic-engine.js"></script><script src="./classic-levels.js"></script><script src="./app.js"></script><script src="./battle-ui.js"></script><script src="./survival-app.js"></script><script src="./survival-ui.js"></script><script src="./classic-app.js?v=20261013d"></script>
+<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./region-palette.js"></script><script>window.CAT_MEOW_SAMPLES=["./assets/audio/cat-meow-soft.wav","./assets/audio/cat-meow-food.wav","./assets/audio/cat-meow-purr.wav"];</script><script src="./game-audio.js"></script><script src="./battle-engine.js"></script><script src="./cell-gestures.js"></script><script src="./board-strokes.js"></script><script src="./board-pointer-adapter.js?v=20261013e"></script><script src="./survival-engine.js"></script><script src="./survival-session.js"></script><script src="./classic-engine.js"></script><script src="./classic-levels.js"></script><script src="./app.js?v=20261013e"></script><script src="./battle-ui.js"></script><script src="./survival-app.js?v=20261013e"></script><script src="./survival-ui.js?v=20261013e"></script><script src="./classic-app.js?v=20261013e"></script>
 </body></html>

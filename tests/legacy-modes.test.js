@@ -206,7 +206,7 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
   context.window = context; documentOwner = context.document;
   for (const node of nodes.values()) node.ownerDocument = context.document;
   context.document.body.ownerDocument = context.document;
-  for (const filename of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js']) {
+  for (const filename of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js', 'board-pointer-adapter.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   }
   const audio = { calls: [], options: [], controllers: [], getState: () => audio.controllers.at(-1)?.getState() };
@@ -1860,7 +1860,7 @@ const playedAudio = h => h.audio.calls.filter(call => call.method === 'play').ma
 
 test('HTML loads palette and audio modules before their adapters and omits redundant guess buttons', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  for (const module of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js']) {
+  for (const module of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js', 'board-pointer-adapter.js']) {
     assert.ok(html.indexOf(module) >= 0, `${module} must ship in the page`);
     assert.ok(html.indexOf(module) < html.indexOf('app.js'), `${module} must load before app.js`);
   }
