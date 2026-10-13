@@ -315,12 +315,12 @@ function stablePublic(h, game = h.state.game) { const value = json(h.publicGame(
 function sentActions(h) { return h.messages.filter(message => message.type === 'action' || message.type === 'state').length; }
 
 function assertUnopenedCell(cell, { note = false, disabled = false } = {}) {
-  assert.equal(cell.textContent, note ? '��' : '', `unopened cell ${cell.dataset.index} retains its correct private-only or unopened glyph`);
+  assert.equal(cell.textContent, note ? '×' : '', `unopened cell ${cell.dataset.index} retains its correct private-only or unopened glyph`);
   for (const name of ['opened', 'cat', 'auto-x', 'dimmed']) assert.equal(cell.classList.contains(name), false, `unopened cell ${cell.dataset.index} must not be ${name}`);
   assert.equal(cell.classList.contains('note'), note);
   assert.equal(cell.disabled, disabled);
-  assert.doesNotMatch(cell.getAttribute('aria-label'), /�۰ʱư�|�W�h�ư�|�w½�}|�T�{�S����/);
-  if (note) assert.match(cell.getAttribute('aria-label'), /�p�H���O.*�|���T�{/);
+  assert.doesNotMatch(cell.getAttribute('aria-label'), /自動排除|規則排除|已翻開|確認沒有貓/);
+  if (note) assert.match(cell.getAttribute('aria-label'), /私人筆記.*尚未確認/);
   assert.equal(cell.style.opacity ?? '', ''); assert.equal(cell.style.filter ?? '', '');
 }
 function assertGuessBlocked(h, cell, game, message = 'the current restriction blocks left-click guesses') {
@@ -329,9 +329,9 @@ function assertGuessBlocked(h, cell, game, message = 'the current restriction bl
   assert.deepEqual(json(h.publicGame(game)), before, message); assert.deepEqual([...h.state.notes], notes); assert.equal(h.messages.length, sent);
 }
 function assertConfirmedEmpty(cell) {
-  assert.equal(cell.textContent, '��'); assert.equal(cell.classList.contains('opened'), true);
+  assert.equal(cell.textContent, '×'); assert.equal(cell.classList.contains('opened'), true);
   assert.equal(cell.classList.contains('note'), false); assert.equal(cell.classList.contains('auto-x'), false);
-  assert.match(cell.getAttribute('aria-label'), /�w½�}���Ů�.*�T�{�S����/);
+  assert.match(cell.getAttribute('aria-label'), /已翻開的空格.*確認沒有貓/);
 }
 function assertNoPrivateKeys(value, at = 'snapshot') {
   if (!value || typeof value !== 'object') return;
@@ -419,7 +419,7 @@ for (const mode of ['basic', 'items', 'treasure', 'coop']) for (const width of [
     game.found = captures;
     game.foundBy = Object.fromEntries(captures.map((index, position) => [index, position < 20 ? 0 : 1]));
     for (const who of [0, 1]) {
-      game.players[who].nickname = `${who ? '���' : '�ڪ�'}�ܪ��ܪ��ܪ��ܪ����߫}�W�r <��&�B��>`;
+      game.players[who].nickname = `${who ? '對手' : '我的'}很長很長很長很長的貓咪名字 <貓&朋友>`;
       game.players[who].cats = who ? 3 : 20; game.players[who].score = who ? 3 : 20;
       game.players[who].fish = 4;
     }
@@ -441,13 +441,13 @@ for (const mode of ['basic', 'items', 'treasure', 'coop']) for (const width of [
     assert.equal(h.get('#p1').classList.contains('inactive'), true); assert.equal(h.get('#p1').getAttribute('aria-current'), 'false');
     for (const who of [0, 1]) {
       const html = h.get(`#p${who}`).innerHTML;
-      assert.match(html, /�ܪ��ܪ��ܪ��ܪ����߫}�W�r &lt;��&amp;�B��&gt;/);
-      assert.doesNotMatch(html, /<��&�B��>/);
+      assert.match(html, /很長很長很長很長的貓咪名字 &lt;貓&amp;朋友&gt;/);
+      assert.doesNotMatch(html, /<貓&朋友>/);
       assert.equal((html.match(/class="basket-cat"/g) || []).length, who ? 3 : 20, 'every collected cat retains its own authored basket markup');
-      assert.match(html, /aria-label="�߫}�x�l"/);
+      assert.match(html, /aria-label="貓咪籃子"/);
       if (['items', 'coop'].includes(mode)) {
-        assert.match(html, /class="intel-list"/); assert.match(html, /�P�� 2 ����/); assert.match(html, /����榳��/);
-        assert.doesNotMatch(html, /�P�� 1 ����/, 'only the two most recent intel entries occupy each card');
+        assert.match(html, /class="intel-list"/); assert.match(html, /周圍有 2 隻貓/); assert.match(html, /選取格有貓/);
+        assert.doesNotMatch(html, /周圍有 1 隻貓/, 'only the two most recent intel entries occupy each card');
       } else assert.doesNotMatch(html, /class="intel-list"/);
     }
     assert.equal(h.get('#toolbox').classList.contains('hidden'), !['items', 'coop'].includes(mode));
@@ -720,9 +720,9 @@ test('purple private-note and dark-gray confirmed-empty glyphs retain readable c
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const privateLegends = [...html.matchAll(/class="sample note-sample">([^<]+)<\/i>/g)];
   assert.equal(privateLegends.length, 2);
-  assert.ok(privateLegends.every(match => match[1] === '��'), 'both legends use a purple X for private marks');
-  assert.match(html, /�`�� �� �N���w�T�{���Ů�F���� ��/);
-  for (const file of ['app.js', 'battle-ui.js', 'index.html']) assert.doesNotMatch(fs.readFileSync(path.join(ROOT, file), 'utf8'), /��/, `${file} must not show the old diamond marker`);
+  assert.ok(privateLegends.every(match => match[1] === '×'), 'both legends use a purple X for private marks');
+  assert.match(html, /深灰 × 代表已確認的空格；紫色 ×/);
+  for (const file of ['app.js', 'battle-ui.js', 'index.html']) assert.doesNotMatch(fs.readFileSync(path.join(ROOT, file), 'utf8'), /◇/, `${file} must not show the old diamond marker`);
   const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
   const luminance = hex => hex.match(/[\da-f]{2}/gi).map(component => parseInt(component, 16) / 255)
@@ -761,7 +761,7 @@ test('short room codes normalize whitespace/case and preserve compatible long ro
   assert.equal(h.state.room, 'CAT-0042'); assert.equal(h.state.role, 'guest');
 });
 
-for (const size of [6, 12, 20, 24]) test(`generated ${size}��${size} legacy puzzles have connected ?3-cell regions and exactly one solution`, () => {
+for (const size of [6, 12, 20, 24]) test(`generated ${size}×${size} legacy puzzles have connected ≥3-cell regions and exactly one solution`, () => {
   const h = harness({ size, seed: 0xABCD + size });
   for (let i = 0; i < 6; i++) assertPuzzle(h.makePuzzle(size));
 });
@@ -851,7 +851,7 @@ for (const who of [0, 1]) test(`battle player ${who} misses escalate 2/4/6/8/8 s
     assert.deepEqual(json(h.publicGame(game)), beforeReplay, 'duplicate, resolved, and early clicks cannot extend a penalty');
     assert.equal(h.act(1 - who, battleAction(h, 1 - who, { index: opponent.puzzle.solution[attempt] })).accepted, true);
     assert.equal(opponent.missStreak, 0); assert.equal(opponent.cooldownDuration, 300);
-    assert.equal(board.cooldownUntil, h.now() + duration, 'an opponent capture cannot change this player��s lock');
+    assert.equal(board.cooldownUntil, h.now() + duration, 'an opponent capture cannot change this player’s lock');
     h.advance(duration - 1);
     assert.equal(h.act(who, battleAction(h, who, { index: misses[attempt + 1] })).reason, 'cooldown');
     h.advance(1);
@@ -1099,7 +1099,7 @@ test('local practice explicitly labels its inactive opponent and never pretends 
   h.advance(3000); for (const interval of h.intervals) interval();
   assert.equal(h.state.game.status, 'playing');
   assert.equal(h.state.practice, true); assert.equal(h.state.transport, null); assert.equal(h.state.peer, null);
-  assert.equal(h.state.room, '�����m��'); assert.match(h.get('#battleConnection').textContent, /�����m��.*��⤣�|���/);
+  assert.equal(h.state.room, '本機練習'); assert.match(h.get('#battleConnection').textContent, /本機練習.*對手不會行動/);
   assert.equal(h.get('#battleCopyRoom').classList.contains('hidden'), true);
   assert.equal(h.get('#leavePractice').classList.contains('hidden'), false);
   const initial = JSON.stringify(h.state.game);
@@ -1124,12 +1124,12 @@ test('battle rematch replaces both boards only after both votes and resets HP, c
   assert.equal(h.state.notes.size, 0);
 });
 
-test('public entry exposes only battle and survival while keeping generic create/join flow', () => {
+test('public entry defaults to battle while every legacy mode and generic create/join flow remain selectable', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const picker = html.match(/<select id="gameMode">([\s\S]*?)<\/select>/)[1];
   const options = [...picker.matchAll(/<option value="([^"]+)"([^>]*)>/g)];
   assert.deepEqual(options.filter(([, , attributes]) => /\bselected\b/.test(attributes)).map(([, mode]) => mode), ['battle']);
-  assert.deepEqual(options.map(([, mode]) => mode).sort(), ['battle', 'survival']);
+  assert.deepEqual(options.map(([, mode]) => mode).sort(), ['basic', 'battle', 'coop', 'items', 'survival', 'treasure']);
   const sizes = html.match(/<select id="size">([\s\S]*?)<\/select>/)[1];
   assert.match(sizes, /<option value="6" selected>/);
   assert.equal((sizes.match(/ selected/g) || []).length, 1);
@@ -1138,7 +1138,7 @@ test('public entry exposes only battle and survival while keeping generic create
   }
   assert.match(html, /<button id="previewBattle" class="hidden"/);
   assert.doesNotMatch(html, /<script>\s*startPractice\(\)/);
-  assert.match(html, /<h1>�߫}���g��<\/h1>/);
+  assert.match(html, /<h1>貓咪捉迷藏<\/h1>/);
   const h = harness({ mode: 'battle', battle: true, battleUI: true });
   assert.equal(h.state.game, null, 'page setup never silently starts a practice match');
   assert.equal(h.get('#size').disabled, true); assert.equal(h.settingsFromUI().size, 6);
@@ -1404,7 +1404,7 @@ test('battle interval removes the miss lock at its exact deadline and never disp
   h.advance(1); for (const interval of h.intervals) interval();
   let own = h.get('.battle-side.local');
   assert.equal(own.querySelector('.battle-lock').classList.contains('hidden'), true, 'the centered lock leaves immediately at expiry');
-  assert.equal(h.get('#battleNotice').textContent, '�i�H��ߤF�I', 'unlock status does not duplicate the persistent gesture line');
+  assert.equal(h.get('#battleNotice').textContent, '可以找貓了！', 'unlock status does not duplicate the persistent gesture line');
   assert.equal(own.querySelector('.battle-board').children[game.boards[0].puzzle.solution[0]].disabled, false);
   h.advance(10000); h.updateBattleTimers(); own = h.get('.battle-side.local');
   const lock = own.querySelector('.battle-lock');
@@ -1496,7 +1496,7 @@ test('miss lock blocks every gesture and expiry restores private single marks an
   h.act(0, battleAction(h, 0, { index: cat })); h.advance(300); h.updateBattleTimers();
   h.act(0, battleAction(h, 0, { index: miss }));
   const lock = h.get('.battle-side.local').querySelector('.battle-lock');
-  assert.equal(lock.classList.contains('lock-pop'), true); assert.doesNotMatch(lock.querySelector('.lock-note').textContent, /�{�b�i�H���O��/);
+  assert.equal(lock.classList.contains('lock-pop'), true); assert.doesNotMatch(lock.querySelector('.lock-note').textContent, /現在可以做記號/);
   for (const index of [cat, target, miss]) assert.equal(grid().children[index].disabled, true);
   const before = stablePublic(h), sent = sentActions(h);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -1507,7 +1507,7 @@ test('miss lock blocks every gesture and expiry restores private single marks an
   assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent); assert.equal(h.state.pendingAction, null);
   h.advance(2000 - GESTURE_WAIT); h.updateBattleTimers();
   assert.equal(board.found.includes(target), false, 'expiry cannot submit an earlier activation');
-  assert.equal(lock.classList.contains('hidden'), true); assert.equal(h.get('#battleNotice').textContent, '�i�H��ߤF�I', 'unlock status does not duplicate the persistent gesture line');
+  assert.equal(lock.classList.contains('hidden'), true); assert.equal(h.get('#battleNotice').textContent, '可以找貓了！', 'unlock status does not duplicate the persistent gesture line');
   singleClick(h, grid().children[target]);
   assert.equal(h.state.notes.has(target), true); assert.equal(board.found.includes(target), false); assert.equal(sentActions(h), sent);
   doubleClick(grid().children[target]);
@@ -1630,7 +1630,7 @@ test('a fresh miss pops once and shows one unlock notice without rerender replay
   h.tick(520); assert.equal(lock.classList.contains('lock-pop'), false);
   h.renderBattle(); assert.equal(lock.classList.contains('lock-pop'), false);
   h.tick(1480); assert.equal(lock.classList.contains('hidden'), true);
-  assert.equal(h.get('#battleNotice').textContent, '�i�H��ߤF�I', 'unlock status does not duplicate the persistent gesture line');
+  assert.equal(h.get('#battleNotice').textContent, '可以找貓了！', 'unlock status does not duplicate the persistent gesture line');
   assert.equal(playedAudio(h).filter(sound => sound.kind === 'unlock').length, 1);
   h.renderBattle(); h.updateBattleTimers(); assert.equal(playedAudio(h).filter(sound => sound.kind === 'unlock').length, 1);
   h.tick(1100); h.renderBattle();
@@ -2754,7 +2754,7 @@ test('quick match is hidden unless explicitly enabled and keeps the enabled serv
   assert.equal(enabled.disabled, false); assert.equal(typeof enabled.onclick, 'function');
 });
 
-for (const size of [6, 12, 20, 24]) test(`rendered ${size}��${size} regions use unique stable colors across peers and rerenders`, () => {
+for (const size of [6, 12, 20, 24]) test(`rendered ${size}×${size} regions use unique stable colors across peers and rerenders`, () => {
   const h = harness({ size }), first = h.begin(); h.renderLegacy();
   const colors = json(h.context.CatPalette.build(first.puzzle));
   assert.equal(colors.length, size); assert.equal(new Set(colors).size, size);
@@ -2769,7 +2769,7 @@ for (const size of [6, 12, 20, 24]) test(`rendered ${size}��${size} regions 
   assert.equal(new Set(nextColors).size, size); inspect(h, nextColors);
 });
 
-test('battle boards preserve each public board��s palette for both local and opponent views', () => {
+test('battle boards preserve each public board’s palette for both local and opponent views', () => {
   const host = harness({ mode: 'battle', battle: true, battleUI: true }), game = host.begin(); host.renderBattle();
   assert.notEqual(game.boards[0].puzzle.id, game.boards[1].puzzle.id);
   const guest = harness({ mode: 'battle', battle: true, battleUI: true }); guest.state.role = 'guest'; guest.state.you = 1;
@@ -3015,7 +3015,7 @@ test('battle glow hooks are event-bound and cleared with their tracked effect ti
   const badge = h.get('.battle-side.local').querySelector('.combo-badge');
   assert.equal(cell.classList.contains('found-glow'), true); assert.equal(badge.classList.contains('combo-glow'), true);
   const callout = h.get('.battle-side.local').querySelector('.capture-callout');
-  assert.equal(badge.dataset.comboTier, '1'); assert.equal(callout.textContent, '���F�I');
+  assert.equal(badge.dataset.comboTier, '1'); assert.equal(callout.textContent, '抓到了！');
   assert.equal(callout.classList.contains('show'), true);
   for (const [node, className] of [[cell, 'found-glow'], [badge, 'combo-glow'], [callout, 'show']]) {
     assert.ok([...h.state.battleClassEffects].some(effect => effect.node === node && effect.className === className));
@@ -3032,7 +3032,7 @@ test('battle glow hooks are event-bound and cleared with their tracked effect ti
 test('capture callouts reuse one node and replace their timeout at each fresh combo', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin(); h.renderBattle();
   const callout = h.get('.battle-side.local').querySelector('.capture-callout');
-  const solutions = [...game.boards[0].puzzle.solution], labels = ['���F�I', '2 �s�p�I', '3 �s�p�I', '�p�p�s�� ��4'];
+  const solutions = [...game.boards[0].puzzle.solution], labels = ['抓到了！', '2 連喵！', '3 連喵！', '喵喵連擊 ×4'];
   for (let index = 0; index < 4; index++) {
     h.act(0, battleAction(h, 0, { index: solutions[index] })); h.renderBattle();
     assert.strictEqual(h.get('.battle-side.local').querySelector('.capture-callout'), callout);
@@ -3129,4 +3129,3 @@ for (const mode of ['battle', 'practice']) test(`${mode} a rapid third touch aft
   assert.equal(h.state.notes.has(index), false); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
   singleClick(h, grid().children[index]); assert.equal(h.state.notes.has(index), true, 'a later deliberate single remains available');
 });
-

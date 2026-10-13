@@ -8,7 +8,7 @@ const Survival = require('../survival-engine.js');
 const PLAY_AT = Survival.constants.OPENING_COUNTDOWN;
 let actionSequence = 0;
 function seeded(seed) { return () => { seed = Math.imul(seed,1664525) + 1013904223; return (seed >>> 0) / 0x100000000; }; }
-function profiles(count = 4) { return Array.from({length:count}, (_, i) => ({id:`player-${i}`, nickname:`�ߤ�${i}`, avatar:i % 6, ready:true})); }
+function profiles(count = 4) { return Array.from({length:count}, (_, i) => ({id:`player-${i}`, nickname:`貓友${i}`, avatar:i % 6, ready:true})); }
 function puzzleMaker(seed = 7635) {
   const rng = seeded(seed);
   return options => Battle.generatePuzzle({...options, rng});
@@ -55,8 +55,8 @@ test('UMD runs in a browser with CatBattle and secure randomness, without DOM or
 });
 
 test('settings fix capacity at four and keep the five-minute rules without HP or combo', () => {
-  assert.deepEqual(Survival.settings(), {mode:'survival',size:6,capacity:4});
-  assert.deepEqual(Survival.settings({capacity:99,tabbyEnabled:false,hp:999,duration:999}), {mode:'survival',size:6,capacity:4});
+  assert.deepEqual(Survival.settings(), {mode:'survival',size:6,tabbyEnabled:true,capacity:4});
+  assert.deepEqual(Survival.settings({capacity:99,tabbyEnabled:false,hp:999,duration:999}), {mode:'survival',size:6,tabbyEnabled:false,capacity:4});
   assert.equal(Survival.settings({capacity:3}).capacity,4);
   assert.equal(Survival.settings({capacity:'6'}).capacity,4);
   assert.equal(Survival.settings({capacity:'invalid'}).capacity,4);
@@ -312,7 +312,7 @@ test('a lobby seat expires exactly at 15 seconds, freeing capacity without a ret
   assert.ok(value.players.every(player => player.status === 'active'));
   assert.equal(value.lastEvent.type,'lobby-expiry'); assert.equal(value.lastEvent.at,15000);
   assert.deepEqual(Survival.publicGame(value,15000).lastEvent.removedIds,['player-1']);
-  assert.equal(Survival.addPlayer(value,{id:'replacement',nickname:'�s�ߤ�'},15000),true);
+  assert.equal(Survival.addPlayer(value,{id:'replacement',nickname:'新貓友'},15000),true);
   assert.equal(Survival.setReady(value,'replacement',true,15000),true);
   assert.equal(Survival.start(value,15000),true);
 });
@@ -359,7 +359,7 @@ test('lobby expiry groups simultaneous seats and processes distinct deadlines in
   assert.deepEqual(events.map(event => [event.at,event.removedIds]),[[15000,['player-1','player-2']],[20000,['player-3']]]);
 });
 
-test('lobby reindex preserves retained boards and replay state for the later match', () => {
+test('lobby reindex preserves retained boards and aligns private tabby and replay state for the later match', () => {
   const value = lobby({tabbyEnabled:true},4,{rng:() => 0});
   const retainedBoard = value.boards[2];
   Survival.setConnected(value,'player-1',false,0);
@@ -371,7 +371,7 @@ test('lobby reindex preserves retained boards and replay state for the later mat
   const action = {type:'guess',actionId:'after-reindex',boardId:retainedBoard.puzzle.id,index:retainedBoard.puzzle.solution[0]};
   const result = Survival.act(value,'player-2',action,18000);
   assert.equal(result.accepted,true); assert.equal(result.event.playerId,'player-2'); assert.equal(result.event.who,1);
-  assert.equal(result.event.tabby,undefined);
+  assert.equal(result.event.tabby,true);
   assert.equal(Survival.act(value,'player-2',action,18300).reason,'duplicate');
   assert.equal(value.players[0].score,0); assert.equal(value.players[2].score,0); assert.equal(value.players[3].score,0);
 });
@@ -697,7 +697,7 @@ test('host elimination does not stop the remaining players or the authority cloc
   assert.equal(value.checkpoint,2);
 });
 
-test.skip('retired tabby opportunities are no longer part of survival', () => {
+test('tabby opportunities are secret until revealed and fully disabled when requested', () => {
   const {value} = specialGame(0);
   const before = Survival.publicGame(value,PLAY_AT);
   assert.ok(before.boards.every(board => board.revealedTabbies.length === 0));
@@ -710,7 +710,7 @@ test.skip('retired tabby opportunities are no longer part of survival', () => {
   assert.equal(guess(ordinary,0,cat(ordinary)).event.tabby,undefined);
 });
 
-test.skip('retired tabby landing randomness is no longer part of survival', () => {
+test('production randomness rejects biased integer tails for both target selection and landing', () => {
   let words = [], reads = 0;
   const crypto = {getRandomValues(array) { reads++; array[0] = words.length ? words.shift() : 100; return array; }};
   const context = {CatBattle:Battle,crypto}; vm.createContext(context);
@@ -727,7 +727,7 @@ test.skip('retired tabby landing randomness is no longer part of survival', () =
   assert.equal(reads,2);
 });
 
-test.skip('retired tabby landings are no longer part of survival', () => {
+test('tabby landings cover all 36 cells, including all corners and already revealed or empty cells', () => {
   for (let landing = 0; landing < 36; landing++) {
     const {value,draws} = specialGame(landing);
     const board = value.boards[0], target = board.puzzle.solution[0];
@@ -741,7 +741,7 @@ test.skip('retired tabby landings are no longer part of survival', () => {
   }
 });
 
-test.skip('retired blast reveal behavior is no longer part of survival', () => {
+test('blast reveals every unopened cell in its clipped 3×3, scores cats once and marks empties without errors', () => {
   const {value} = specialGame(14), board = value.boards[0], target = board.puzzle.solution[0];
   const cells = expectedBlast(14), expectedCats = cells.filter(index => board.puzzle.solution.includes(index) && index !== target);
   const expectedMisses = cells.filter(index => !board.puzzle.solution.includes(index));
@@ -757,7 +757,7 @@ test.skip('retired blast reveal behavior is no longer part of survival', () => {
   assert.equal(value.players[0].score,score);
 });
 
-test.skip('retired blast behavior is no longer part of survival', () => {
+test('blast skips previously found cats and previous manual errors, never resetting or duplicating their statistics', () => {
   const {value,values} = specialGame(0), board = value.boards[0], target = board.puzzle.solution[0];
   const ordinary = board.puzzle.solution[1];
   const error = empty(value);
@@ -774,7 +774,7 @@ test.skip('retired blast behavior is no longer part of survival', () => {
   assert.equal(new Set(board.misses).size,board.misses.length);
 });
 
-test.skip('retired special hit behavior is no longer part of survival', () => {
+test('manual special hit and blast finish the old board atomically before exactly one fresh board', () => {
   const {value,values,draws} = specialGame(0), old = value.boards[0], target = old.puzzle.solution[0];
   const last = old.puzzle.solution[5];
   for (let i = 1; i < 5; i++) assert.equal(guess(value,0,old.puzzle.solution[i],(i - 1) * 300).accepted,true);
@@ -793,7 +793,7 @@ test.skip('retired special hit behavior is no longer part of survival', () => {
   assert.equal(guess(value,0,cat(value),1500).event.tabby,undefined);
 });
 
-test.skip('retired tabby opportunity behavior is no longer part of survival', () => {
+test('a board clear does not bank or reroll a tabby opportunity in the same minute', () => {
   const {value,draws} = specialGame(0), board = value.boards[0], target = board.puzzle.solution[0];
   for (let i = 1; i < 6; i++) assert.equal(guess(value,0,board.puzzle.solution[i],(i - 1) * 300).accepted,true);
   assert.equal(guess(value,0,target,1500).event.advanced,true);
@@ -802,7 +802,7 @@ test.skip('retired tabby opportunity behavior is no longer part of survival', ()
   assert.equal(draws.length,5);
 });
 
-test.skip('retired minute target behavior is no longer part of survival', () => {
+test('each minute replaces the unconsumed target using only the current board’s unfound cats, including the final minute', () => {
   const {value,values,draws} = specialGame(0), firstBoard = value.boards[0];
   const firstTarget = firstBoard.puzzle.solution[0], ordinary = firstBoard.puzzle.solution[1];
   assert.equal(guess(value,0,ordinary,0).event.tabby,undefined);
@@ -823,7 +823,7 @@ test.skip('retired minute target behavior is no longer part of survival', () => 
   assert.equal(value.checkpoint,4);
 });
 
-test.skip('retired blast scoring is no longer part of quota checks', () => {
+test('each quota counts the complete pre-deadline tabby blast when its manual rescue alone would fail', () => {
   for (const [minute,quota] of [[1,4],[2,10],[3,16],[4,24]]) {
     const {value,values} = specialGame(0), board = value.boards[0];
     scores(value,[quota - 2,quota,quota,quota]);
@@ -842,7 +842,7 @@ test.skip('retired blast scoring is no longer part of quota checks', () => {
   }
 });
 
-test.skip('legacy blast snapshot whitelist is retired; no-blast snapshots are covered separately', () => {
+test('public snapshot and its bounded event history whitelist only revealed facts at every nested level', () => {
   const {value} = specialGame(14);
   guess(value,0,cat(value));
   value.privateToken = 'TOP_SECRET'; value.players[0].credential = 'TOP_SECRET';
@@ -891,4 +891,3 @@ test('aborting while waiting clears the lobby countdown and cannot auto-start la
   assert.equal(Survival.advance(value,1000000),false);
   assert.equal(value.status,'aborted'); assert.equal(value.startAt,null);
 });
-
