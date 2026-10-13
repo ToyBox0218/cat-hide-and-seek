@@ -5,7 +5,7 @@ const ROOT=path.resolve(__dirname,'..');
 test('classic entry exposes start, hint, replay, navigation and progress controls',()=>{
   const html=fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
   for(const id of ['chooseClassic','classicGame','classicLevel','classicHint','classicReplay','classicPrev','classicNext','classicCompletion'])assert.match(html,new RegExp(`id="${id}"`),id);
-  const scripts=[...html.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1]);
+  const scripts=[...html.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1].split('?')[0]);
   assert.ok(scripts.indexOf('classic-engine.js')<scripts.indexOf('classic-levels.js'));
   assert.ok(scripts.indexOf('classic-levels.js')<scripts.indexOf('classic-app.js'));
 });

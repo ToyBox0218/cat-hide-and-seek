@@ -34,8 +34,17 @@ async function connect(){
     assert.deepEqual(results.entry.modes,['battle','survival']);assert.equal(results.entry.hasClassic,true);assert.equal(results.entry.tabbyVisible,false);assert.equal(results.entry.misleadingHelp,false);
 
     await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(150);
-    results.classicStart=await cdp.evaluate(`(()=>({visible:!document.querySelector('#classicGame').classList.contains('hidden'),progress:document.querySelector('#classicProgress').textContent,cells:document.querySelectorAll('.classic-cell').length}))()`);
+    results.classicStart=await cdp.evaluate(`(()=>{const cells=[...document.querySelectorAll('.classic-cell')];return{visible:!document.querySelector('#classicGame').classList.contains('hidden'),progress:document.querySelector('#classicProgress').textContent,cells:cells.length,cats:document.querySelectorAll('.classic-cell.is-cat').length,pseudoMarks:cells.filter(cell=>getComputedStyle(cell,'::before').content!=='none').length,backgrounds:[...new Set(cells.map(cell=>getComputedStyle(cell).backgroundColor))],regionEdges:cells.filter(cell=>[...cell.classList].some(name=>name.startsWith('region-edge-'))).length}})()`);
     assert.equal(results.classicStart.visible,true);assert.equal(results.classicStart.progress.trim(),'1 / 300');assert.equal(results.classicStart.cells,16);
+    assert.equal(results.classicStart.cats,0);assert.equal(results.classicStart.pseudoMarks,0);assert.ok(results.classicStart.backgrounds.length>=4,JSON.stringify(results.classicStart));assert.ok(results.classicStart.backgrounds.every(color=>color!=='rgba(0, 0, 0, 0)'),JSON.stringify(results.classicStart));assert.equal(results.classicStart.regionEdges,16);
+
+    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,completed:[7],boards:{0:{cats:Array.from({length:16},(_,index)=>index),crosses:[]}}}));location.reload();return true})()`);await wait(700);await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(100);
+    results.staleSaveRecovery=await cdp.evaluate(`(()=>{const saved=JSON.parse(localStorage.getItem('catClassicProgressV1'));return{cats:document.querySelectorAll('.classic-cell.is-cat').length,savedCats:saved.boards['0'].cats.length,completed:saved.completed}})()`);
+    assert.equal(results.staleSaveRecovery.cats,0);assert.equal(results.staleSaveRecovery.savedCats,0);assert.deepEqual(results.staleSaveRecovery.completed,[7]);
+
+    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,completed:[7],boards:{0:{cats:[0,1],crosses:[2]}}}));location.reload();return true})()`);await wait(700);await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(100);
+    results.temporaryConflictPreserved=await cdp.evaluate(`(()=>{const saved=JSON.parse(localStorage.getItem('catClassicProgressV1'));return{cats:[...document.querySelectorAll('.classic-cell.is-cat')].map(cell=>Number(cell.dataset.index)),crosses:[...document.querySelectorAll('.classic-cell.is-cross')].map(cell=>Number(cell.dataset.index)),completed:saved.completed}})()`);
+    assert.deepEqual(results.temporaryConflictPreserved,{cats:[0,1],crosses:[2],completed:[7]});
 
     await cdp.evaluate(`document.querySelector('#classicHint').click()`);await wait(50);
     results.hint=await cdp.evaluate(`(()=>({text:document.querySelector('#classicHintText').textContent,highlighted:document.querySelectorAll('.is-hint,.is-related,.is-conflict').length}))()`);
