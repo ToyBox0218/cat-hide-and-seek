@@ -35,7 +35,7 @@
   }
   function uniqueId(prefix) { return `${prefix}-${(++sequence).toString(36)}-${cryptoWord().toString(36)}`; }
   function settings(input) {
-    return {mode:'survival', size:SIZE, tabbyEnabled:!input || input.tabbyEnabled !== false, capacity:MAX_PLAYERS};
+    return {mode:'survival', size:SIZE, capacity:MAX_PLAYERS};
   }
   function isAuthority(game) { return !!game && contexts.has(game); }
   function time(game, at) {
@@ -77,7 +77,6 @@
     });
     game.players = game.players.filter((_, who) => keep[who]);
     game.boards = game.boards.filter((_, who) => keep[who]);
-    context.opportunities = context.opportunities.filter((_, who) => keep[who]);
     context.boardActions = context.boardActions.filter((_, who) => keep[who]);
     return removedIds;
   }
@@ -113,8 +112,7 @@
       cooldownUntil:previous ? previous.cooldownUntil : 0,
       cooldownStartedAt:previous ? previous.cooldownStartedAt : null,
       cooldownKind:previous ? previous.cooldownKind : null,
-      cooldownDuration:previous ? previous.cooldownDuration : 0,
-      revealedTabbies:[], blastRevealed:[]
+      cooldownDuration:previous ? previous.cooldownDuration : 0
     };
   }
   function create(input, players, options) {
@@ -132,7 +130,7 @@
     contexts.set(game, {
       now, rng:typeof options.rng === 'function' ? options.rng : null,
       makePuzzle:typeof options.makePuzzle === 'function' ? options.makePuzzle : Battle.generatePuzzle,
-      history:{patterns:[], boards:[]}, opportunities:[], boardActions:[], actionIds:[], opportunityMinute:-1
+      history:{patterns:[], boards:[]}, boardActions:[], actionIds:[]
     });
     for (const profile of players || []) {
       if (!addPlayer(game, profile, initialTime)) throw new Error('Invalid, duplicate or excess survival player.');
@@ -146,14 +144,13 @@
     if (game.status !== 'lobby' || game.players.length >= game.settings.capacity || game.players.some(player => player.id === profile.id)) return false;
     const who = game.players.length, board = makeBoard(game, 1);
     game.players.push({
-      id:profile.id, nickname:String(profile.nickname || '貓友').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0,24) || '貓友',
+      id:profile.id, nickname:String(profile.nickname || '�ߤ�').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0,24) || '�ߤ�',
       avatar:Number.isInteger(profile.avatar) && profile.avatar >= 0 && profile.avatar < 6 ? profile.avatar : who % 6,
       connected:profile.connected !== false, ready:profile.connected !== false && profile.ready === true,
       score:0, errors:0, status:'active', reason:null,
       disconnectDeadline:profile.connected === false ? stamp + DISCONNECT_GRACE : null
     });
     game.boards.push(board);
-    contexts.get(game).opportunities.push(null);
     contexts.get(game).boardActions.push(new Set());
     record(game, 'join', stamp, {playerId:profile.id, who});
     reconcileLobby(game, stamp);
@@ -189,15 +186,6 @@
     advance(game, stamp);
     if (wasLobby && game.status !== 'lobby' && game.countdownStartedAt !== null) return true;
     return beginCountdown(game, stamp);
-  }
-  function assignOpportunities(game, minute) {
-    const context = contexts.get(game);
-    context.opportunityMinute = minute;
-    context.opportunities = game.players.map((player, who) => {
-      if (!game.settings.tabbyEnabled || player.status !== 'active') return null;
-      const board = game.boards[who], candidates = board.puzzle.solution.filter(index => !board.found.includes(index));
-      return candidates.length ? {minute, boardId:board.puzzle.id, index:candidates[randomInteger(candidates.length, context.rng)], used:false} : null;
-    });
   }
   function finish(game, ids, reason, at) {
     game.status = 'finished'; game.winnerIds = ids.slice(); game.winner = ids.length === 1 ? ids[0] : null;
@@ -243,7 +231,7 @@
       }
       if (game.status === 'countdown' && deadline === game.startAt) {
         game.status = 'playing'; game.startedAt = game.startAt;
-        assignOpportunities(game, 0); record(game, 'start', deadline);
+        record(game, 'start', deadline);
       }
       const eliminatedIds = [], retiredIds = [];
       const quotaDue = game.status === 'playing' && game.checkpoint < QUOTAS.length && deadline === game.startAt + (game.checkpoint + 1) * MINUTE;
@@ -268,7 +256,6 @@
         checkpoint:game.checkpoint, quota:quotaDue ? QUOTAS[game.checkpoint - 1] : null, eliminatedIds, retiredIds
       });
       if (resolveSurvivors(game, deadline, game.status === 'playing' && deadline === game.endAt)) break;
-      if (quotaDue) assignOpportunities(game, game.checkpoint);
     }
     game._lastNow = stamp;
     return game.revision !== revision;
@@ -283,13 +270,6 @@
     game.endReason = typeof reason === 'string' ? reason.slice(0,120) : 'host-lost';
     record(game, 'abort', stamp, {reason:game.endReason});
     return true;
-  }
-  function blastCells(landing) {
-    const row = Math.floor(landing / SIZE), column = landing % SIZE, cells = [];
-    for (let r = Math.max(0,row - 1); r <= Math.min(SIZE - 1,row + 1); r++) {
-      for (let c = Math.max(0,column - 1); c <= Math.min(SIZE - 1,column + 1); c++) cells.push(r * SIZE + c);
-    }
-    return cells;
   }
   const rejected = reason => ({accepted:false, reason});
   function act(game, id, action, at) {
@@ -327,23 +307,6 @@
     } else {
       type = 'hit'; board.missStreak = 0; board.cooldownDuration = HIT_COOLDOWN; board.cooldownKind = 'hit';
       board.found.push(action.index); player.score++; fields.found.push(action.index);
-      const opportunity = context.opportunities[who];
-      if (opportunity && !opportunity.used && opportunity.boardId === board.puzzle.id && opportunity.index === action.index) {
-        opportunity.used = true; board.revealedTabbies.push(action.index); fields.tabby = true;
-        const landing = randomInteger(CELLS, context.rng), cells = blastCells(landing);
-        fields.blast = {landing, cells, found:[], misses:[]};
-        // The manual hit and every blast reveal belong to this same old board.
-        // Empty reveals never increment errors, and blast hits never reset locks.
-        for (const index of cells) {
-          if (board.found.includes(index) || board.misses.includes(index)) continue;
-          board.blastRevealed.push(index);
-          if (board.puzzle.solution.includes(index)) {
-            board.found.push(index); player.score++; fields.found.push(index); fields.blast.found.push(index);
-          } else {
-            board.misses.push(index); fields.misses.push(index); fields.blast.misses.push(index);
-          }
-        }
-      }
     }
     board.cooldownUntil = stamp + board.cooldownDuration;
     fields.score = player.score; fields.errors = player.errors;
@@ -352,7 +315,6 @@
       game.boards[who] = makeBoard(game, board.number + 1, board);
       context.boardActions[who] = new Set();
       // No replacement target on the next board until the next minute begins.
-      context.opportunities[who] = null;
       fields.advanced = true;
     }
     const event = record(game, type, stamp, fields);
@@ -362,7 +324,7 @@
     if (!event || typeof event !== 'object') return null;
     const result = {};
     for (const key of ['id','sequence','type','at','playerId','who','index','boardId','boardNumber','ready','connected',
-      'advanced','tabby','score','errors','missStreak','cooldownDuration','checkpoint','quota','reason']) {
+      'advanced','score','errors','missStreak','cooldownDuration','checkpoint','quota','reason']) {
       if (Object.prototype.hasOwnProperty.call(event,key) && ['string','number','boolean'].includes(typeof event[key])) result[key] = event[key];
     }
     for (const key of ['winnerIds','eliminatedIds','retiredIds','removedIds']) {
@@ -370,11 +332,6 @@
     }
     for (const key of ['found','misses']) {
       if (Array.isArray(event[key])) result[key] = event[key].filter(value => Number.isInteger(value) && value >= 0 && value < CELLS);
-    }
-    if (event.blast && Number.isInteger(event.blast.landing) && event.blast.landing >= 0 && event.blast.landing < CELLS) {
-      result.blast = {landing:event.blast.landing};
-      for (const key of ['cells','found','misses']) result.blast[key] = Array.isArray(event.blast[key]) ?
-        event.blast[key].filter(value => Number.isInteger(value) && value >= 0 && value < CELLS) : [];
     }
     return result;
   }
@@ -400,8 +357,7 @@
         puzzle:{id:board.puzzle.id, size:SIZE, regions:board.puzzle.regions.slice()},
         found:board.found.slice(), misses:board.misses.slice(), number:board.number, missStreak:board.missStreak,
         cooldownUntil:board.cooldownUntil, cooldownKind:board.cooldownKind,
-        cooldownDuration:board.cooldownDuration, cooldownStartedAt:board.cooldownStartedAt,
-        revealedTabbies:board.revealedTabbies.slice(), blastRevealed:board.blastRevealed.slice()
+        cooldownDuration:board.cooldownDuration, cooldownStartedAt:board.cooldownStartedAt
       })),
       lastEvent:publicEvent(game.lastEvent), events:game.events.slice(-EVENT_HISTORY_LIMIT).map(publicEvent)
     };
@@ -410,3 +366,4 @@
     constants:Object.freeze({SIZE, CELLS, MIN_PLAYERS, MAX_PLAYERS, LOBBY_COUNTDOWN, OPENING_COUNTDOWN, MATCH_DURATION, MINUTE,
       DISCONNECT_GRACE, HIT_COOLDOWN, MISS_COOLDOWN, MAX_MISS_COOLDOWN, QUOTAS, HISTORY_LIMIT, ACTION_HISTORY_LIMIT, EVENT_HISTORY_LIMIT})});
 });
+

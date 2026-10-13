@@ -16,22 +16,22 @@ const state = {
 };
 function regionPalette(puzzle){return CatPalette.build(puzzle);}
 const AVATARS=[
-  {name:'橘子虎斑'},{name:'黑白燕尾'},{name:'奶油三花'},
-  {name:'灰灰摺耳'},{name:'白桃暹羅'},{name:'蓬鬆棕貓'}
+  {name:'��l�괳'},{name:'�¥տP��'},{name:'���o�T��'},
+  {name:'�ǦǺP��'},{name:'�ծ��ù'},{name:'���P�Ŀ�'}
 ];
-const NICK_ADJECTIVES=['奶油','星星','棉花','蜂蜜','布丁','小雨','泡泡','月光','焦糖','草莓','栗子','雲朵'];
-const NICK_NOUNS=['虎斑','肉球','鈴鐺','鬍鬚','毛球','貓掌','小尾巴','探險家','瞇瞇眼','甜甜圈','小偵探','呼嚕'];
+const NICK_ADJECTIVES=['���o','�P�P','�֪�','���e','���B','�p�B','�w�w','���','�J�}','���','�ߤl','����'];
+const NICK_NOUNS=['�괳','�ײy','�a�L','�GŽ','��y','�ߴx','�p����','���I�a','�N�N��','������','�p����','�I�P'];
 function catCharacter(variant,extra=''){return `<span class="cat-character cat-character-${variant%8} ${extra}" aria-hidden="true"><i class="cat-ears"></i><i class="cat-face"></i><i class="cat-mark"></i><i class="cat-eyes"></i><i class="cat-accessory"></i></span>`}
 function playerAvatar(variant,extra=''){const selected=Number.isInteger(+variant)&&+variant>=0&&+variant<AVATARS.length?+variant:0;return `<span class="avatar-art avatar-art-${selected} lively-avatar ${extra}" data-avatar="${selected}" aria-hidden="true"></span>`}
 function stableHash(value){let hash=2166136261;for(const char of String(value)){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
 const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
-  survival:{label:'🐈 貓咪大逃殺',description:'2–4 位好友各找自己的貓，第二人進房開始 180 秒等候，也可由房主立即開賽。'},
-  battle:{label:'🐾 貓咪大對決',description:'同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。'},
-  basic:{label:'🔎 基本對戰',description:'猜空會公開空格並換手；找到最多貓獲勝。'},
-  items:{label:'🐟 魚乾道具戰',description:'翻空格集魚乾；每輪最多用一個道具。'},
-  treasure:{label:'🔔 寶藏派對',description:'鈴鐺貓值 2 分，普通貓 1 分，含少量運氣。'},
-  coop:{label:'🤝 默契合作',description:'共享魚乾、道具與偵查，一起找完全部貓。'}
+  survival:{label:'?? �߫}�j�k��',description:'2�V4 ��n�ͦU��ۤv���ߡA�ĤG�H�i�ж}�l 180 �����ԡA�]�i�ѩХD�ߧY�}�ɡC'},
+  battle:{label:'?? �߫}�j��M',description:'�P�ɸѦۤv�� 6��6�A�s����ߥi�֥[�����F����������s�L�A�s�걵��C'},
+  basic:{label:'?? �򥻹��',description:'�q�ŷ|���}�Ů�ô���F���̦h����ӡC'},
+  items:{label:'?? �����D���',description:'½�Ů涰�����F�C���̦h�Τ@�ӹD��C'},
+  treasure:{label:'?? �_�ì���',description:'�a�L�߭� 2 ���A���q�� 1 ���A�t�ֶq�B��C'},
+  coop:{label:'?? �q���X�@',description:'�@�ɳ����B�D��P���d�A�@�_�䧹�����ߡC'}
 };
 const tiles = {
   5:{c:[3,0,2,4,1],r:[1,1,0,0,0,1,1,0,3,3,2,2,2,3,3,2,4,3,3,3,4,4,3,3,3]},
@@ -98,6 +98,8 @@ function makePuzzle(size) {
 const cleanSettings = input => ({
   size:['battle','survival'].includes(input.mode)?6:([6,12,20,24].includes(+input.size)?+input.size:20),
   maxHP:Math.max(50,Math.min(500,+input.maxHP||150)),
+  // Retain decoder compatibility for old saved rooms, while the current UI
+  // exposes only battle and survival.
   mode:['basic','items','treasure','coop','battle','survival'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
   ...(input.mode==='survival'?{capacity:4,tabbyEnabled:input.tabbyEnabled!==false}:{}),
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),
@@ -111,12 +113,12 @@ const settingsFromUI = () => cleanSettings({
 });
 
 function newGame(size) {
-  if(settingsFromUI().mode==='survival')return CatSurvival.create(settingsFromUI(),[{id:crypto.randomUUID(),nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar}],{now:Date.now()});
-  if(settingsFromUI().mode==='battle')return CatBattle.create(settingsFromUI(),[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,connected:true},{nickname:'等待貓友',avatar:1,connected:false}]);
+  if(settingsFromUI().mode==='survival')return CatSurvival.create(settingsFromUI(),[{id:crypto.randomUUID(),nickname:$('#nick').value||'���o�괳',avatar:state.avatar}],{now:Date.now()});
+  if(settingsFromUI().mode==='battle')return CatBattle.create(settingsFromUI(),[{nickname:$('#nick').value||'���o�괳',avatar:state.avatar,connected:true},{nickname:'���ݿߤ�',avatar:1,connected:false}]);
   const puzzle=makePuzzle(size),settings=settingsFromUI(),treasureCount=size<=12?2:3;
   return {
     puzzle,settings,
-    players:[{nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar,score:0,cats:0,fish:0,connected:true},{nickname:'等待貓友',avatar:1,score:0,cats:0,fish:0,connected:false}],
+    players:[{nickname:$('#nick').value||'���o�괳',avatar:state.avatar,score:0,cats:0,fish:0,connected:true},{nickname:'���ݿߤ�',avatar:1,score:0,cats:0,fish:0,connected:false}],
     status:'lobby', starter:randomInt(2), turn:0, turnId:0, deadline:null,
     found:[], foundBy:{}, misses:[], clues:{}, streak:0, winner:null, round:0,
     treasures:shuffle(puzzle.solution.slice()).slice(0,treasureCount),sharedFish:0,sharedIntel:[],itemUsedThisTurn:false,shield:null,
@@ -195,7 +197,7 @@ function setPrivateCell(index,marked,context=boardGestureContext(),persist=true)
   marked?state.notes.add(index):state.notes.delete(index);state.selectedCell=null;
   state.noteVersions??=new Map();state.noteVersions.set(index,(state.noteVersions.get(index)||0)+1);if(persist)saveLocal();else state.strokeNotesDirty=true;
   const board=localGestureBoard(),cell=state.game.settings.mode==='survival'?$('#survivalBoard')?.querySelector(`.cell[data-index="${index}"]`):state.game.settings.mode==='battle'?$('.battle-side.local .battle-board')?.querySelector(`.cell[data-index="${index}"]`):boardCell(index);
-  if(cell){const size=board.puzzle.size;cell.classList.toggle('note',marked);cell.classList.remove('selected-cell');cell.textContent=marked?'×':'';cell.dataset.renderState=marked?'note':'hidden';cell.setAttribute('aria-label',`第 ${Math.floor(index/size)+1} 行，第 ${index%size+1} 列，區域 ${board.puzzle.regions[index]+1}${marked?'，私人筆記，尚未確認':''}`);}
+  if(cell){const size=board.puzzle.size;cell.classList.toggle('note',marked);cell.classList.remove('selected-cell');cell.textContent=marked?'��':'';cell.dataset.renderState=marked?'note':'hidden';cell.setAttribute('aria-label',`�� ${Math.floor(index/size)+1} ��A�� ${index%size+1} �C�A�ϰ� ${board.puzzle.regions[index]+1}${marked?'�A�p�H���O�A�|���T�{':''}`);}
   return true;
 }
 function togglePrivateCell(index,context=boardGestureContext()){return setPrivateCell(index,!state.notes.has(index),context);}
@@ -207,16 +209,16 @@ function markGestureCell(index,context){
 function explainRevealBlock(index,{pressedBlocked=false}={}){
   const game=state.game,board=localGestureBoard();let message='';
   if(!game||!board||document.hidden)return;
-  if(game.status==='countdown'||game.status==='lobby')message='讀秒結束後才能翻格';
-  else if(game.status==='paused')message='對局暫停中，現在只能做私人記號';
-  else if(game.status!=='playing')message='這局已結束，請開始新的一局';
-  else if(game.settings.mode==='survival'&&survivalMissLocked(game)||game.settings.mode==='battle'&&battleMissLocked(game))message='鎖定倒數中，翻格與標記都暫停';
-  else if(game.settings.mode==='survival'&&!survivalCanMark(game))message=game.players[state.you]?.status!=='active'?'你已離場，可以切換觀戰盤面':'連線中斷，正在嘗試回座';
-  else if(state.pendingAction)message='正在等待翻格結果，請稍候';
-  else if(state.tool)message='正在選擇道具目標，取消道具後可翻格';
-  else if(!hasIndependentBoards(game)&&game.turn!==state.you)message='還沒輪到你，可以先單點做私人記號';
-  else if(hasIndependentBoards(game)&&board.cooldownUntil>Date.now()+(state.clockOffset||0))message='剛找到貓，稍等一下再雙點翻格';
-  else if(pressedBlocked)message='剛才按下時還不能翻格，請放開後重新雙點';
+  if(game.status==='countdown'||game.status==='lobby')message='Ū��������~��½��';
+  else if(game.status==='paused')message='�什�Ȱ����A�{�b�u�వ�p�H�O��';
+  else if(game.status!=='playing')message='�o���w�����A�ж}�l�s���@��';
+  else if(game.settings.mode==='survival'&&survivalMissLocked(game)||game.settings.mode==='battle'&&battleMissLocked(game))message='��w�˼Ƥ��A½��P�аO���Ȱ�';
+  else if(game.settings.mode==='survival'&&!survivalCanMark(game))message=game.players[state.you]?.status!=='active'?'�A�w�����A�i�H�����[�ԽL��':'�s�u���_�A���b���զ^�y';
+  else if(state.pendingAction)message='���b����½�浲�G�A�еy��';
+  else if(state.tool)message='���b��ܹD��ؼСA�����D���i½��';
+  else if(!hasIndependentBoards(game)&&game.turn!==state.you)message='�٨S����A�A�i�H�����I���p�H�O��';
+  else if(hasIndependentBoards(game)&&board.cooldownUntil>Date.now()+(state.clockOffset||0))message='����ߡA�y���@�U�A���I½��';
+  else if(pressedBlocked)message='��~���U���٤���½��A�Щ�}�᭫�s���I';
   if(message&&(state.lastInputNotice!==message||Date.now()-(state.lastInputNoticeAt||0)>900)){state.lastInputNotice=message;state.lastInputNoticeAt=Date.now();toast(message);}
 }
 function revealGestureCell(index,context){
@@ -449,11 +451,11 @@ function neighborCatCount(puzzle,index) {
 }
 function teachingHint(game) {
   const {size,regions}=game.puzzle, groups=[];
-  for (const type of ['行','列','區域']) for (let id=0;id<size;id++) {
+  for (const type of ['��','�C','�ϰ�']) for (let id=0;id<size;id++) {
     const members=[];
     for (let index=0;index<size*size;index++) {
       const row=Math.floor(index/size), column=index%size;
-      if ((type==='行'&&row===id)||(type==='列'&&column===id)||(type==='區域'&&regions[index]===id)) members.push(index);
+      if ((type==='��'&&row===id)||(type==='�C'&&column===id)||(type==='�ϰ�'&&regions[index]===id)) members.push(index);
     }
     if (members.some(index=>game.found.includes(index))) continue;
     const candidates=members.filter(index=>!game.misses.includes(index)&&!excluded(game,index));
@@ -461,8 +463,8 @@ function teachingHint(game) {
   }
   groups.sort((a,b)=>a.count-b.count);
   const best=groups[0];
-  if (!best) return '先利用已找到的貓，逐一檢查同行、同列、同區與八鄰排除。';
-  return `${best.type} ${best.id+1} 目前剩 ${best.count} 個可選格；用行、列、區域與八鄰規則逐一核對。`;
+  if (!best) return '���Q�Τw��쪺�ߡA�v�@�ˬd�P��B�P�C�B�P�ϻP�K�F�ư��C';
+  return `${best.type} ${best.id+1} �ثe�� ${best.count} �ӥi���F�Φ�B�C�B�ϰ�P�K�F�W�h�v�@�ֹ�C`;
 }
 
 function rememberAction(game,id) {
@@ -525,7 +527,7 @@ function onMessage(message) {
   if(state.role==='host'){
     const game=state.game;if(!game)return;
     if(data.type==='hello'){
-      game.players[1].nickname=String(data.nickname||'貓友').slice(0,16);
+      game.players[1].nickname=String(data.nickname||'�ߤ�').slice(0,16);
       game.players[1].avatar=Math.max(0,Math.min(AVATARS.length-1,+data.avatar||0));
       game.players[1].connected=true;
       if(game.settings.mode==='battle'){
@@ -591,14 +593,14 @@ function onOpen() {
   state.suppressLegacyAudio=true;
   state.lastPong=Date.now();state.bestClockRtt=Infinity;state.clockSyncedAt=null;state.suppressBattleFX=true;if(state.game?.settings.mode!=='battle')state.disconnectAt=null;
   if (state.role==='guest') state.suppressNextTurnSound=true;
-  $('#connection').textContent='P2P 已連線';
+  $('#connection').textContent='P2P �w�s�u';
   if (state.role==='host') { state.game.players[1].connected=true; broadcast(); }
-  else send({type:'hello',nickname:$('#nick').value||'小花貓',avatar:state.avatar});
+  else send({type:'hello',nickname:$('#nick').value||'�p���',avatar:state.avatar});
 }
 function onClose() {
   cancelBoardGestures();
   stopGameAudio();state.suppressLegacyAudio=true;
-  $('#connection').textContent='連線中斷－盤面已保留';
+  $('#connection').textContent='�s�u���_�нL���w�O�d';
   if(state.game?.settings.mode==='battle'){if(['playing','countdown','paused'].includes(state.game.status)){if(state.role==='host')CatBattle.pause(state.game,Date.now());else if(state.game.status!=='paused'){state.game.pausedFrom=state.game.status;state.game.countdownRemaining=state.game.status==='countdown'?Math.max(0,state.game.startAt-(Date.now()+(state.clockOffset||0))):null;state.game.status='paused';state.game.pausedAt=Date.now()+(state.clockOffset||0);}state.disconnectAt??=Date.now();state.pendingAction=null;}}
   state.suppressBattleFX=true;if(typeof clearBattleFX==='function')clearBattleFX();
   if (state.game) { state.game.players[1-state.you].connected=false; saveLocal(); render(); }
@@ -609,7 +611,7 @@ function attachPeerConnection(connection) {
   connection.on('open',current(()=>{if(!survivalRouted)onOpen();}));
   connection.on('data',current(message=>{if(survivalRouted)return;if(message?.protocol==='cat-survival-v1'&&message.type==='offer'&&state.role==='guest'){survivalRouted=true;adoptSurvivalGuest(connection,message);return;}onMessage(message);}));
   connection.on('close',current(()=>{if(!survivalRouted)onClose();}));
-  connection.on('error',error=>toast(`連線錯誤：${error.type||error.message}`));
+  connection.on('error',error=>toast(`�s�u���~�G${error.type||error.message}`));
 }
 function attachDataChannel(channel) {
   state.transport={open:()=>channel.readyState==='open',send:value=>channel.send(JSON.stringify(value)),close:()=>channel.close()};
@@ -623,20 +625,20 @@ const SHORT_ROOM_RE=/^CAT-\d{4}$/;
 const normalizeRoom=value=>String(value||'').trim().toUpperCase().replace(/\s+/g,'');
 const randomRoom=()=>`CAT-${String(randomInt(10000)).padStart(4,'0')}`;
 const peerIdForRoom=room=>SHORT_ROOM_RE.test(room)?`cat-hide-seek-v1-${room.toLowerCase()}`:room;
-function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`房號 ${room}`}
+function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`�и� ${room}`}
 function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
   if(settingsFromUI().mode==='survival')return startSurvivalHost({room:forcedRoom});
   state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=false;
   if (!restored) { state.room=forcedRoom||randomRoom(); state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
   $('#roomInput').value='';
-  $('#setupStatus').textContent='正在向免費 PeerJS Cloud 登記房號…';
+  $('#setupStatus').textContent='���b�V�K�O PeerJS Cloud �n�O�и��K';
   const peer=new Peer(peerIdForRoom(state.room),peerOptions()); state.peer=peer;
-  peer.on('open',()=>{$('#setupStatus').textContent=`房號 ${state.room}，請傳給另一位玩家`;showRoom(state.room);$('#roomField').classList.add('room-ready');$('#host').disabled=true;$('#host').textContent='房間已建立'});
+  peer.on('open',()=>{$('#setupStatus').textContent=`�и� ${state.room}�A�жǵ��t�@�쪱�a`;showRoom(state.room);$('#roomField').classList.add('room-ready');$('#host').disabled=true;$('#host').textContent='�ж��w�إ�'});
   peer.on('connection',connection=>{if(state.transport?.open()){connection.close();return}attachPeerConnection(connection)});
   peer.on('error',error=>{
-    if(error.type==='unavailable-id'&&!forcedRoom&&SHORT_ROOM_RE.test(state.room)&&collisionAttempt<24){peer.destroy();$('#setupStatus').textContent='房號剛好重複，正在自動換一組…';state.room=randomRoom();startPeerHost(true,null,collisionAttempt+1);return}
-    const message=error.type==='unavailable-id'?'房號已被占用，請重新建立房間':error.type||error.message;
-    toast(`PeerJS：${message}`); $('#setupStatus').textContent=`連線服務錯誤：${message}`;
+    if(error.type==='unavailable-id'&&!forcedRoom&&SHORT_ROOM_RE.test(state.room)&&collisionAttempt<24){peer.destroy();$('#setupStatus').textContent='�и���n���ơA���b�۰ʴ��@�աK';state.room=randomRoom();startPeerHost(true,null,collisionAttempt+1);return}
+    const message=error.type==='unavailable-id'?'�и��w�Q�e�ΡA�Э��s�إߩж�':error.type||error.message;
+    toast(`PeerJS�G${message}`); $('#setupStatus').textContent=`�s�u�A�ȿ��~�G${message}`;
   });
 }
 function startPeerGuest() {
@@ -644,18 +646,18 @@ function startPeerGuest() {
   const room=normalizeRoom($('#roomInput').value);
   const saved=JSON.parse(sessionStorage.p2pGuest||'null');
   if(saved?.room!==room){state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]}
-  if (!ROOM_RE.test(room)) throw Error('請輸入房主顯示的 CAT- 房號');
+  if (!ROOM_RE.test(room)) throw Error('�п�J�ХD��ܪ� CAT- �и�');
   state.practice=false;state.role='guest'; state.you=1; state.room=room; state.manual=false;
-  $('#setupStatus').textContent='正在透過 PeerJS Cloud 尋找房主…';
+  $('#setupStatus').textContent='���b�z�L PeerJS Cloud �M��ХD�K';
   const peer=new Peer(undefined,peerOptions()); state.peer=peer;
   peer.on('open',()=>{if(state.game?.settings.mode==='survival')return;attachPeerConnection(peer.connect(peerIdForRoom(room),{reliable:true,serialization:'json'}));});
-  peer.on('error',error=>{toast(`PeerJS：${error.type||error.message}`); $('#setupStatus').textContent='房主不存在、尚未就緒或網路無法 P2P 連線';});
+  peer.on('error',error=>{toast(`PeerJS�G${error.type||error.message}`); $('#setupStatus').textContent='�ХD���s�b�B�|���N���κ����L�k P2P �s�u';});
 }
 
 function rtcPeer(role) {
   const connection=new RTCPeerConnection(ICE); state.rtc=connection;
   connection.onconnectionstatechange=()=>{
-    $('#connection').textContent=connection.connectionState==='connected'?'P2P 已連線':connection.connectionState==='failed'?'連線失敗：請改網路或檢查 NAT':connection.connectionState;
+    $('#connection').textContent=connection.connectionState==='connected'?'P2P �w�s�u':connection.connectionState==='failed'?'�s�u���ѡG�Ч�������ˬd NAT':connection.connectionState;
   };
   if (role==='host') attachDataChannel(connection.createDataChannel('cats',{ordered:true}));
   else connection.ondatachannel=event=>attachDataChannel(event.channel);
@@ -672,20 +674,20 @@ async function useOffer(code) { const pc=rtcPeer('guest'); await pc.setRemoteDes
 async function useAnswer(code) { await state.rtc.setRemoteDescription(decode(code)); }
 function showManual(title) { $('#manual').classList.remove('hidden'); $('#manualTitle').textContent=title; }
 async function manualHost(restored=false) {
-  if(settingsFromUI().mode==='survival')throw Error('大逃殺請使用好友房號建立房間');
+  if(settingsFromUI().mode==='survival')throw Error('�j�k���ШϥΦn�ͩи��إߩж�');
   state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=true;
-  if (!restored) { state.room='手動連線'; state.game=newGame(+$('#size').value); }
-  $('#outCode').value=await makeOffer(); showManual('步驟 1：把邀請碼傳給對方，再貼回覆碼');
-  $('#setupStatus').textContent='等待對方回覆碼';
+  if (!restored) { state.room='��ʳs�u'; state.game=newGame(+$('#size').value); }
+  $('#outCode').value=await makeOffer(); showManual('�B�J 1�G���ܽнX�ǵ����A�A�K�^�нX');
+  $('#setupStatus').textContent='���ݹ��^�нX';
 }
 function manualJoin() {
-  state.practice=false;state.role='guest'; state.you=1; state.manual=true; state.room='手動連線';
-  showManual('貼上房主邀請碼，產生回覆碼後傳回房主'); $('#setupStatus').textContent='請貼上邀請碼';
+  state.practice=false;state.role='guest'; state.you=1; state.manual=true; state.room='��ʳs�u';
+  showManual('�K�W�ХD�ܽнX�A���ͦ^�нX��Ǧ^�ХD'); $('#setupStatus').textContent='�жK�W�ܽнX';
 }
 async function resumeHost() {
   const saved=JSON.parse(sessionStorage.p2pHost||'null');
-  if(saved?.game?.settings?.mode==='battle'){if(!saved.game.boards?.every(board=>board.puzzle.solution))throw Error('沒有可恢復的房主局面');state.game=saved.game;state.suppressBattleFX=true;state.suppressLegacyAudio=true;CatBattle.pause(state.game,Date.now());state.game.players[0].connected=true;state.game.players[1].connected=false;state.disconnectAt=state.game.pausedAt||Date.now();syncSettingsUI(state.game.settings);state.room=randomRoom();state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));startPeerHost(true);return}
-  if (!saved?.game?.puzzle?.solution) throw Error('沒有可恢復的房主局面');
+  if(saved?.game?.settings?.mode==='battle'){if(!saved.game.boards?.every(board=>board.puzzle.solution))throw Error('�S���i��_���ХD����');state.game=saved.game;state.suppressBattleFX=true;state.suppressLegacyAudio=true;CatBattle.pause(state.game,Date.now());state.game.players[0].connected=true;state.game.players[1].connected=false;state.disconnectAt=state.game.pausedAt||Date.now();syncSettingsUI(state.game.settings);state.room=randomRoom();state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));startPeerHost(true);return}
+  if (!saved?.game?.puzzle?.solution) throw Error('�S���i��_���ХD����');
   state.suppressLegacyAudio=true;state.game=saved.game; state.game.settings=cleanSettings(state.game.settings||{}); state.game.clues=state.game.clues||{};
   state.game.players.forEach((player,index)=>{if(player.avatar===undefined)player.avatar=index;if(player.cats===undefined)player.cats=player.score||0;if(player.fish===undefined)player.fish=0});
   state.game.foundBy=state.game.foundBy||{};state.game.sharedFish=state.game.sharedFish||0;state.game.sharedIntel=state.game.sharedIntel||[];state.game.itemUsedThisTurn=Boolean(state.game.itemUsedThisTurn);state.game.shield=state.game.shield||null;
@@ -714,11 +716,11 @@ function prepareGameAudio(matchId,status){
 function playCaptureSound(id,combo=1){state.captureSoundEvents??=new Set();if(state.captureSoundEvents.has(id))return false;state.captureSoundEvents.add(id);if(state.captureSoundEvents.size>128)state.captureSoundEvents.delete(state.captureSoundEvents.values().next().value);soundCue('meow',{id,combo});if(combo>1)soundCue('combo',{id,combo,delay:.14});return true;}
 function playUICue(){return soundCue('ui',{id:`ui:${++state.uiSoundSequence}`});}
 function syncAudioControls(){
-  for(const id of ['#mute','#battleMute']){const button=$(id);if(button){button.textContent=state.muted?'🔇':'🔊';button.setAttribute('aria-pressed',String(state.muted));button.setAttribute('aria-label',state.muted?'開啟音效':'關閉音效');}}
+  for(const id of ['#mute','#battleMute']){const button=$(id);if(button){button.textContent=state.muted?'??':'??';button.setAttribute('aria-pressed',String(state.muted));button.setAttribute('aria-label',state.muted?'�}�ҭ���':'��������');}}
   const volume=$('#soundVolume'),output=$('#soundVolumeValue');
-  if(volume){volume.value=String(Math.round(state.volume*100));volume.setAttribute('aria-valuetext',`音量 ${Math.round(state.volume*100)}%`);}
+  if(volume){volume.value=String(Math.round(state.volume*100));volume.setAttribute('aria-valuetext',`���q ${Math.round(state.volume*100)}%`);}
   if(output)output.textContent=`${Math.round(state.volume*100)}%`;
-  const sampleStatus=$('#meowLoadStatus'),audioState=state.sound?.getState();if(sampleStatus){sampleStatus.textContent=audioState?.loadedSamples?`已載入 ${audioState.loadedSamples} 組貓叫，隨機播放且不連續重複。`:audioState?.samplesStatus==='failed'?'貓叫錄音載入失敗，目前使用合成備用音效；請重新整理再試。':audioState?.samplesStatus==='loading'?'貓叫錄音載入中…':'首次操作後載入貓叫錄音；載入前會使用合成備用音效。';}
+  const sampleStatus=$('#meowLoadStatus'),audioState=state.sound?.getState();if(sampleStatus){sampleStatus.textContent=audioState?.loadedSamples?`�w���J ${audioState.loadedSamples} �տߥs�A�H������B���s�򭫽ơC`:audioState?.samplesStatus==='failed'?'�ߥs�������J���ѡA�ثe�ϥΦX���ƥέ��ġF�Э��s��z�A�աC':audioState?.samplesStatus==='loading'?'�ߥs�������J���K':'�����ާ@����J�ߥs�����F���J�e�|�ϥΦX���ƥέ��ġC';}
 }
 function observeLegacyAudio(game){
   const matchId=game.puzzle.id,initial=state.legacyAudioMatch!==matchId;
@@ -760,13 +762,13 @@ function playVisualEvent(event) {
   if(cell)cell.classList.add('reveal-pop');
   if(event.type==='cat'&&cell){
     const target=$(`#p${event.who} .basket`),from=cell.getBoundingClientRect(),to=target?.getBoundingClientRect();
-    if(to){const flyer=document.createElement('div');flyer.className='fly-cat';flyer.textContent='🐱';flyer.style.left=`${from.left}px`;flyer.style.top=`${from.top}px`;flyer.style.setProperty('--dx',`${to.left+to.width/2-from.left}px`);flyer.style.setProperty('--dy',`${to.top+to.height/2-from.top}px`);document.body.appendChild(flyer);setTimeout(()=>flyer.remove(),800)}
-    if(event.streak>1){const burst=document.createElement('div');burst.className='streak-burst';burst.textContent=`連抓 ${event.streak} 隻！`;$('#fxLayer').appendChild(burst);setTimeout(()=>burst.remove(),800)}
+    if(to){const flyer=document.createElement('div');flyer.className='fly-cat';flyer.textContent='??';flyer.style.left=`${from.left}px`;flyer.style.top=`${from.top}px`;flyer.style.setProperty('--dx',`${to.left+to.width/2-from.left}px`);flyer.style.setProperty('--dy',`${to.top+to.height/2-from.top}px`);document.body.appendChild(flyer);setTimeout(()=>flyer.remove(),800)}
+    if(event.streak>1){const burst=document.createElement('div');burst.className='streak-burst';burst.textContent=`�s�� ${event.streak} ���I`;$('#fxLayer').appendChild(burst);setTimeout(()=>burst.remove(),800)}
   }
 }
 function showTurnBanner(isMine){
   const banner=$('#turnBanner');if(!banner)return;
-  clearTimeout(state.turnBannerTimer);banner.textContent=isMine?'輪到你了！':'輪到對方';banner.className=`show ${isMine?'mine':'other'}`;
+  clearTimeout(state.turnBannerTimer);banner.textContent=isMine?'����A�F�I':'������';banner.className=`show ${isMine?'mine':'other'}`;
   state.turnBannerTimer=setTimeout(()=>banner.className='',1050);
 }
 function renderV2() {
@@ -783,25 +785,25 @@ function renderV2() {
   const unseen=game.lastEvent?.at>state.observed.eventAt;
   syncBoardGestures();observeLegacyAudio(game);
   $('#setup').classList.add('hidden');$('#game').classList.remove('hidden');
-  $('#room').textContent=`房號 ${state.room||'手動連線'}`;
+  $('#room').textContent=`�и� ${state.room||'��ʳs�u'}`;
   const info=MODE_INFO[game.settings.mode];
-  const capText=game.settings.streakLimitEnabled?`連抓 ${game.settings.streakLimit}`:'不限連抓';
-  $('#modeBadge').textContent=`${info.label}｜${game.settings.turnSecondsA}/${game.settings.turnSecondsB} 秒｜${capText}`;
-  $('#turnText').textContent=game.status==='finished'?'本局完成':game.turn===state.you?'輪到你囉！':`換 ${game.players[game.turn].nickname}`;
-  $('#message').textContent=game.hint||(game.hintVotes?.length?`${game.players[game.hintVotes[0]].nickname} 正在等待共同提示同意`:'')||(game.lastEmote?`${game.players[game.lastEmote.from].nickname}：${game.lastEmote.value}`:'')||(game.streak>1?`連抓 ${game.streak} 隻！`:'');
+  const capText=game.settings.streakLimitEnabled?`�s�� ${game.settings.streakLimit}`:'�����s��';
+  $('#modeBadge').textContent=`${info.label}�U${game.settings.turnSecondsA}/${game.settings.turnSecondsB} ���U${capText}`;
+  $('#turnText').textContent=game.status==='finished'?'��������':game.turn===state.you?'����A�o�I':`�� ${game.players[game.turn].nickname}`;
+  $('#message').textContent=game.hint||(game.hintVotes?.length?`${game.players[game.hintVotes[0]].nickname} ���b���ݦ@�P���ܦP�N`:'')||(game.lastEmote?`${game.players[game.lastEmote.from].nickname}�G${game.lastEmote.value}`:'')||(game.streak>1?`�s�� ${game.streak} ���I`:'');
   for(let playerIndex=0;playerIndex<2;playerIndex++){
     const player=game.players[playerIndex],avatar=AVATARS[player.avatar]||AVATARS[playerIndex],element=$(`#p${playerIndex}`);
     const isCurrent=game.turn===playerIndex&&game.status==='playing',isInactive=game.status==='playing'&&!isCurrent;
     element.className=`player-card ${isCurrent?'current':''} ${isInactive?'inactive':''} ${game.shield?.owner===playerIndex?'shield-on':''}`;
     element.setAttribute('aria-current',isCurrent?'true':'false');
-    const scoreText=game.settings.mode==='treasure'?`${player.score} 分 · ${player.cats} 隻`:String(player.cats);
-    const fishText=game.settings.mode==='items'?` · 🐟 ${player.fish}/4`:game.settings.mode==='coop'?` · 共用 🐟 ${game.sharedFish}/4`:'';
-    const intelText=visibleIntel.slice(-2).map(intel=>intel.type==='magnifier'?`◎ 周圍有 ${intel.count} 隻貓`:`🧶 選取格${intel.hasCat?'有':'沒有'}貓`).join('<br>');
+    const scoreText=game.settings.mode==='treasure'?`${player.score} �� �P ${player.cats} ��`:String(player.cats);
+    const fishText=game.settings.mode==='items'?` �P ?? ${player.fish}/4`:game.settings.mode==='coop'?` �P �@�� ?? ${game.sharedFish}/4`:'';
+    const intelText=visibleIntel.slice(-2).map(intel=>intel.type==='magnifier'?`�� �P�� ${intel.count} ����`:`?? �����${intel.hasCat?'��':'�S��'}��`).join('<br>');
     const captures=game.found.filter(index=>+game.foundBy[index]===playerIndex),fallback=Math.max(0,player.cats-captures.length);
-    const basketCats=[...captures.map((index,i)=>`<span class="basket-cat" title="已找到的貓" style="animation-delay:${Math.min(i*.02,.3)}s">${catCharacter(catVariant(game,index),'basket-character')}</span>`),...Array.from({length:fallback},(_,i)=>`<span class="basket-cat">${catCharacter((playerIndex*3+i)%8,'basket-character')}</span>`)];
-    element.innerHTML=`<div class="turn-label" aria-hidden="true">目前回合</div><div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${playerAvatar(player.avatar||0,'avatar-character')}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'（你）':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'共同進度':'個人成績'}${fishText} · ${player.connected?'已連線':'暫時離線'}</small><div class="basket" aria-label="貓咪籃子">${basketCats.join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
+    const basketCats=[...captures.map((index,i)=>`<span class="basket-cat" title="�w��쪺��" style="animation-delay:${Math.min(i*.02,.3)}s">${catCharacter(catVariant(game,index),'basket-character')}</span>`),...Array.from({length:fallback},(_,i)=>`<span class="basket-cat">${catCharacter((playerIndex*3+i)%8,'basket-character')}</span>`)];
+    element.innerHTML=`<div class="turn-label" aria-hidden="true">�ثe�^�X</div><div class="avatar avatar-${player.avatar||0}" title="${escapeHTML(avatar.name)}">${playerAvatar(player.avatar||0,'avatar-character')}</div><div class="player-name">${escapeHTML(player.nickname)}${playerIndex===state.you?'�]�A�^':''}</div><div class="score">${scoreText}</div><small>${game.settings.mode==='coop'?'�@�P�i��':'�ӤH���Z'}${fishText} �P ${player.connected?'�w�s�u':'�Ȯ����u'}</small><div class="basket" aria-label="�߫}�x�l">${basketCats.join('')}</div>${intelText?`<div class="intel-list">${intelText}</div>`:''}`;
   }
-  const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'本輪已使用道具':state.tool==='magnifier'?'道具目標：點一下選未翻中心格':state.tool==='yarn'?`道具目標：點一下選取，已選 ${state.yarnTargets.length}/3 格`:game.shield?'護墊待命中':'';
+  const tools=itemMode(game),balance=fishBalance(game,state.you);$('#toolbox').classList.toggle('hidden',!tools);$('#fishCount').textContent=balance;$('#itemStatus').textContent=game.itemUsedThisTurn?'�����w�ϥιD��':state.tool==='magnifier'?'�D��ؼСG�I�@�U�良½���߮�':state.tool==='yarn'?`�D��ؼСG�I�@�U����A�w�� ${state.yarnTargets.length}/3 ��`:game.shield?'�@�ԫݩR��':'';
   document.querySelectorAll('#toolbox [data-item]').forEach(button=>{const cost={magnifier:2,yarn:2,shield:3,hourglass:2}[button.dataset.item];button.disabled=!tools||game.turn!==state.you||game.itemUsedThisTurn||balance<cost;button.classList.toggle('selected',state.tool===button.dataset.item)});$('#confirmYarn').classList.toggle('hidden',state.tool!=='yarn');$('#cancelItem').classList.toggle('hidden',!state.tool);
   const board=$('#board'),size=game.puzzle.size,mobile=innerWidth<=700,smallSize=size===6;
   const baseSize=mobile?(smallSize?Math.min(50,(innerWidth-38)/size):Math.max(18,Math.min(24,(innerWidth-18)/Math.min(size,20)))):Math.max(14,Math.min(smallSize?62:36,(innerHeight-368)/size,(innerWidth-508)/size));
@@ -813,7 +815,7 @@ function renderV2() {
   for(let index=0;index<size*size;index++){
     const cell=rebuild?document.createElement('button'):board.children[index],region=game.puzzle.regions[index],row=Math.floor(index/size),column=index%size;
     if(rebuild){cell.type='button';cell.className='cell';cell.dataset.index=index;cell.setAttribute('role','gridcell');wireBoardCell(cell,index);board.appendChild(cell);}
-    cell.dataset.region=region;cell.title=`行 ${row+1}｜列 ${column+1}｜區域 ${region+1}`;cell.style.setProperty('--bg',palette[region]);
+    cell.dataset.region=region;cell.title=`�� ${row+1}�U�C ${column+1}�U�ϰ� ${region+1}`;cell.style.setProperty('--bg',palette[region]);
     cell.classList.toggle('er',column===size-1||game.puzzle.regions[index+1]!==region);
     cell.classList.toggle('eb',row===size-1||game.puzzle.regions[index+size]!==region);
     const found=game.found.includes(index),miss=game.misses.includes(index),note=!found&&!miss&&state.notes.has(index);
@@ -821,11 +823,11 @@ function renderV2() {
     for(const [name,on] of [['cat',found],['opened',miss],['note',note],['treasure-cat',treasure]])cell.classList.toggle(name,on);
     const visual=found?`cat:${treasure}`:miss?'opened':note?'note':'hidden';
     if(cell.dataset.renderState!==visual){
-      if(found)cell.innerHTML=catCharacter(catVariant(game,index),'board-character');else cell.textContent=miss||note?'×':'';
+      if(found)cell.innerHTML=catCharacter(catVariant(game,index),'board-character');else cell.textContent=miss||note?'��':'';
       cell.dataset.renderState=visual;
     }
-    const suffix=found?`，已找到${treasure?'鈴鐺':''}貓`:miss?'，已翻開的空格，確認沒有貓':note?'，私人筆記，尚未確認':'';
-    cell.setAttribute('aria-label',`第 ${row+1} 行，第 ${column+1} 列，區域 ${region+1}${suffix}`);
+    const suffix=found?`�A�w���${treasure?'�a�L':''}��`:miss?'�A�w½�}���Ů�A�T�{�S����':note?'�A�p�H���O�A�|���T�{':'';
+    cell.setAttribute('aria-label',`�� ${row+1} ��A�� ${column+1} �C�A�ϰ� ${region+1}${suffix}`);
     cell.classList.toggle('probed',probed.has(index)&&!found&&!miss);
     cell.classList.toggle('yarn-picked',state.yarnTargets.includes(index));
     cell.classList.toggle('latest-result',game.lastEvent?.index===index);
@@ -835,8 +837,8 @@ function renderV2() {
   }
   $('#pass').disabled=game.turn!==state.you;
   if(game.status==='finished'&&!$('#result').open){
-    $('#resultTitle').textContent=game.winner==='coop'?'共同成功！全部貓都回家了':game.winner==='tie'?'平手！':game.winner===state.you?'你贏了！':'下一局再加油！';
-    $('#resultScore').textContent=game.winner==='coop'?`你們一起找到 ${game.found.length} 隻｜個人紀念 ${game.players[0].cats}＋${game.players[1].cats}`:game.settings.mode==='treasure'?`${game.players[0].score} 分（${game.players[0].cats} 隻） ： ${game.players[1].score} 分（${game.players[1].cats} 隻）`:`${game.players[0].cats}：${game.players[1].cats}`;$('#result').showModal();
+    $('#resultTitle').textContent=game.winner==='coop'?'�@�P���\�I�����߳��^�a�F':game.winner==='tie'?'����I':game.winner===state.you?'�AĹ�F�I':'�U�@���A�[�o�I';
+    $('#resultScore').textContent=game.winner==='coop'?`�A�̤@�_��� ${game.found.length} ���U�ӤH���� ${game.players[0].cats}��${game.players[1].cats}`:game.settings.mode==='treasure'?`${game.players[0].score} ���]${game.players[0].cats} ���^ �G ${game.players[1].score} ���]${game.players[1].cats} ���^`:`${game.players[0].cats}�G${game.players[1].cats}`;$('#result').showModal();
   }
   if(game.status!=='finished'&&$('#result').open)$('#result').close();
   state.observed={found:game.found.length,misses:game.misses.length,finished:game.status==='finished',turn:game.turn,status:game.status,eventAt:Math.max(state.observed.eventAt,game.lastEvent?.at||0)};
@@ -858,10 +860,10 @@ function renderAvatarChoices(){
 }
 function setEntryFlow(kind){
   const activeFlow=state.role==='guest'?'join':state.role,active=state.peer?.open&&activeFlow;
-  if(active&&kind!==activeFlow){toast('目前房間仍在連線中，已保留原本房間');kind=activeFlow}
-  $('#setup').dataset.flow=kind;$('#entryChoice').classList.add('hidden');$('#entryFlow').classList.remove('hidden');$('#flowTitle').textContent=kind==='host'?'建立房間':'加入房間';
+  if(active&&kind!==activeFlow){toast('�ثe�ж����b�s�u���A�w�O�d�쥻�ж�');kind=activeFlow}
+  $('#setup').dataset.flow=kind;$('#entryChoice').classList.add('hidden');$('#entryFlow').classList.remove('hidden');$('#flowTitle').textContent=kind==='host'?'�إߩж�':'�[�J�ж�';
   const roomReady=kind==='join'||Boolean(state.room&&state.peer?.open);$('#roomField').classList.toggle('room-ready',roomReady);
-  $('#host').disabled=Boolean(kind==='host'&&state.peer?.open);$('#host').textContent=state.peer?.open&&state.role==='host'?'房間已建立':'🐾 建立房間';
+  $('#host').disabled=Boolean(kind==='host'&&state.peer?.open);$('#host').textContent=state.peer?.open&&state.role==='host'?'�ж��w�إ�':'?? �إߩж�';
   updateModeDescription();
 }
 function showEntryChoice(){
@@ -877,26 +879,26 @@ function randomNickname(){
 }
 if(localStorage.catNickname)$('#nick').value=localStorage.catNickname.slice(0,16);
 renderAvatarChoices();updateModeDescription();updateCapUI();$('#chooseHost').onclick=()=>setEntryFlow('host');$('#chooseJoin').onclick=()=>setEntryFlow('join');$('#backToEntry').onclick=showEntryChoice;$('#gameMode').onchange=()=>{updateModeDescription();playUICue()};$('#capEnabled').onchange=updateCapUI;$('#randomNick').onclick=()=>{randomNickname();playUICue()};$('#nick').oninput=()=>{localStorage.catNickname=$('#nick').value.slice(0,16)};
-if(window.CAT_MATCH_ENABLED!==true){$('#quickMatch').classList.add('hidden');$('#quickMatch').disabled=true;$('#quickMatch').textContent='⚡ 快速配對（未啟用）';$('#quickMatch').title='此靜態版本未設定配對服務，請使用房號或邀請連結'}
+if(window.CAT_MATCH_ENABLED!==true){$('#quickMatch').classList.add('hidden');$('#quickMatch').disabled=true;$('#quickMatch').textContent='? �ֳt�t��]���ҥΡ^';$('#quickMatch').title='���R�A�������]�w�t��A�ȡA�ШϥΩи����ܽгs��'}
 
 function sendItem(payload){
   const game=state.game;
-  if(!game||!itemMode(game)||game.status!=='playing'||game.turn!==state.you||game.itemUsedThisTurn){toast('現在不能使用道具');return false}
+  if(!game||!itemMode(game)||game.status!=='playing'||game.turn!==state.you||game.itemUsedThisTurn){toast('�{�b����ϥιD��');return false}
   const costs={magnifier:2,yarn:2,shield:3,hourglass:2},cost=costs[payload.item];
-  if(!cost||fishBalance(game,state.you)<cost){toast('小魚乾不足');return false}
-  if(payload.item==='magnifier'&&!unresolved(game,+payload.target)){toast('請選尚未翻開的格子');return false}
+  if(!cost||fishBalance(game,state.you)<cost){toast('�p��������');return false}
+  if(payload.item==='magnifier'&&!unresolved(game,+payload.target)){toast('�п�|��½�}����l');return false}
   if(payload.item==='yarn'){
     const targets=[...new Set((payload.targets||[]).map(Number))];
-    if(targets.length<2||targets.length>3||targets.some(index=>!unresolved(game,index))||!connectedTargets(game.puzzle.size,targets)){toast('毛線球要圈選 2～3 個相連的未解格');return false}
+    if(targets.length<2||targets.length>3||targets.some(index=>!unresolved(game,index))||!connectedTargets(game.puzzle.size,targets)){toast('��u�y�n��� 2��3 �Ӭ۳s�����Ѯ�');return false}
     const region=game.puzzle.regions[targets[0]];
-    if(targets.some(index=>game.puzzle.regions[index]!==region)){toast('毛線球的格子必須在同一區');return false}
+    if(targets.some(index=>game.puzzle.regions[index]!==region)){toast('��u�y����l�����b�P�@��');return false}
     const remaining=game.puzzle.regions.reduce((list,value,index)=>value===region&&unresolved(game,index)?[...list,index]:list,[]);
-    if(targets.length>=remaining.length){toast('不能直接圈完整個剩餘區域');return false}
+    if(targets.length>=remaining.length){toast('���ઽ���駹��ӳѾl�ϰ�');return false}
     payload={...payload,targets};
   }
   const action={type:'item',...payload,turnId:game.turnId,actionId:crypto.randomUUID()};
   const accepted=state.role==='host'?applyItem(0,action):(send({type:'action',action}),true);
-  if(!accepted){toast('道具目標已過期，沒有扣除小魚乾');return false}
+  if(!accepted){toast('�D��ؼФw�L���A�S�������p����');return false}
   state.tool=null;state.yarnTargets=[];render();return true;
 }
 
@@ -922,38 +924,38 @@ $('#manualJoin').onclick=manualJoin;
 $('#resume').onclick=()=>resumeHost().catch(error=>toast(error.message));
 $('#quickMatch').onclick=async()=>{
   if(state.matchAbort){state.matchAbort.abort();return}
-  const controller=new AbortController();state.matchAbort=controller;$('#quickMatch').textContent='取消等待';$('#setupStatus').textContent='正在等待相同棋盤、模式、時間與連抓規則的玩家…';
+  const controller=new AbortController();state.matchAbort=controller;$('#quickMatch').textContent='��������';$('#setupStatus').textContent='���b���ݬۦP�ѽL�B�Ҧ��B�ɶ��P�s��W�h�����a�K';
   try{
     const key=btoa(JSON.stringify(settingsFromUI())),response=await fetch(`/match?key=${encodeURIComponent(key)}`,{signal:controller.signal});
     if(!response.ok)throw Error(`HTTP ${response.status}`);const match=await response.json();
-    if(!ROOM_RE.test(normalizeRoom(match.room))||!['host','guest'].includes(match.role))throw Error('配對服務回應無效');
+    if(!ROOM_RE.test(normalizeRoom(match.room))||!['host','guest'].includes(match.role))throw Error('�t��A�Ȧ^���L��');
     setEntryFlow(match.role==='host'?'host':'join');$('#roomInput').value=match.room;
     if(match.role==='host')startPeerHost(false,match.room);else startPeerGuest();
   }catch(error){
-    if(error.name==='AbortError')$('#setupStatus').textContent='已取消快速配對';
-    else $('#setupStatus').textContent='快速配對服務目前未啟用，仍可使用房號邀請';
-  }finally{state.matchAbort=null;$('#quickMatch').textContent='⚡ 快速配對'}
+    if(error.name==='AbortError')$('#setupStatus').textContent='�w�����ֳt�t��';
+    else $('#setupStatus').textContent='�ֳt�t��A�ȥثe���ҥΡA���i�ϥΩи��ܽ�';
+  }finally{state.matchAbort=null;$('#quickMatch').textContent='? �ֳt�t��'}
 };
 $('#copyInvite').onclick=async()=>{
   const room=normalizeRoom(state.room||$('#roomInput').value);
-  if(!ROOM_RE.test(room)){toast('請先建立房間或輸入房號');return}
+  if(!ROOM_RE.test(room)){toast('�Х��إߩж��ο�J�и�');return}
   const invite=new URL(location.href);invite.search='';invite.searchParams.set('room',room);
-  try{await navigator.clipboard.writeText(invite.href);toast('已複製邀請連結')}catch{toast(invite.href)}
+  try{await navigator.clipboard.writeText(invite.href);toast('�w�ƻs�ܽгs��')}catch{toast(invite.href)}
 };
 async function copyRoomCode(button){
   const room=normalizeRoom(state.room||$('#roomInput').value);
-  if(!ROOM_RE.test(room)){toast('請先建立房間或輸入房號');return}
-  try{await navigator.clipboard.writeText(room);const original=button.textContent;button.textContent='已複製';toast(`已複製房號 ${room}`);setTimeout(()=>button.textContent=original,1400)}catch{toast(`房號 ${room}`)}
+  if(!ROOM_RE.test(room)){toast('�Х��إߩж��ο�J�и�');return}
+  try{await navigator.clipboard.writeText(room);const original=button.textContent;button.textContent='�w�ƻs';toast(`�w�ƻs�и� ${room}`);setTimeout(()=>button.textContent=original,1400)}catch{toast(`�и� ${room}`)}
 }
 $('#copyRoom').onclick=event=>copyRoomCode(event.currentTarget);
 $('#copyGameRoom').onclick=event=>copyRoomCode(event.currentTarget);
 $('#applyCode').onclick=async()=>{
   try {
-    if (state.role==='host') { await useAnswer($('#inCode').value); $('#setupStatus').textContent='已套用回覆，正在建立連線'; }
-    else { $('#outCode').value=await useOffer($('#inCode').value); $('#setupStatus').textContent='請把上方回覆碼傳回房主'; }
-  } catch (error) { toast(`代碼無效：${error.message}`); }
+    if (state.role==='host') { await useAnswer($('#inCode').value); $('#setupStatus').textContent='�w�M�Φ^�СA���b�إ߳s�u'; }
+    else { $('#outCode').value=await useOffer($('#inCode').value); $('#setupStatus').textContent='�Ч�W��^�нX�Ǧ^�ХD'; }
+  } catch (error) { toast(`�N�X�L�ġG${error.message}`); }
 };
-$('#copyCode').onclick=()=>navigator.clipboard.writeText($('#outCode').value).then(()=>toast('已複製'));
+$('#copyCode').onclick=()=>navigator.clipboard.writeText($('#outCode').value).then(()=>toast('�w�ƻs'));
 $('#pass').onclick=()=>{
   const action={type:'pass',turnId:state.game.turnId,actionId:crypto.randomUUID()}; state.role==='host'?act(0,action):send({type:'action',action});
 };
@@ -998,13 +1000,14 @@ function rematchVote(who) {
     rematchVotes.clear(); broadcast(); $('#result').close();
   }
 }
-$('#rematch').onclick=()=>{if(state.role==='host')rematchVote(0);else send({type:'rematch'});toast('等待另一方同意再戰')};
+$('#rematch').onclick=()=>{if(state.role==='host')rematchVote(0);else send({type:'rematch'});toast('���ݥt�@��P�N�A��')};
 
 const hasSavedHost=Boolean(sessionStorage.p2pHost);if(hasSavedHost)$('#resume').classList.remove('hidden');
 const guestSaved=JSON.parse(sessionStorage.p2pGuest||'null');
-if (guestSaved?.room?.startsWith('CAT-')) { $('#roomInput').value=guestSaved.room; $('#setupStatus').textContent='找到上次房號，可按「加入房間」重新連線'; }
+if (guestSaved?.room?.startsWith('CAT-')) { $('#roomInput').value=guestSaved.room; $('#setupStatus').textContent='���W���и��A�i���u�[�J�ж��v���s�s�u'; }
 const invitedRoom=normalizeRoom(new URLSearchParams(location.search).get('room'));
-if(ROOM_RE.test(invitedRoom)){ $('#roomInput').value=invitedRoom; $('#setupStatus').textContent='邀請房號已填入，請按「加入房間」'; }
+if(ROOM_RE.test(invitedRoom)){ $('#roomInput').value=invitedRoom; $('#setupStatus').textContent='�ܽЩи��w��J�A�Ы��u�[�J�ж��v'; }
 if(ROOM_RE.test(invitedRoom))setEntryFlow('join');else if(hasSavedHost)setEntryFlow('host');else if(guestSaved?.room?.startsWith('CAT-'))setEntryFlow('join');
 try { state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-guest')||'[]')); } catch {}
 try { state.intel=JSON.parse(sessionStorage.getItem('p2pIntel-guest')||'[]'); } catch {}
+

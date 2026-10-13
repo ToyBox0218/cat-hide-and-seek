@@ -91,12 +91,12 @@ function fakePeerRoom(count=4,{seed=0x1873,roomCode='CAT-1234'}={}) {
   return {host,clients,connections,unreachable,peerInstances,holdTypes,held,add,flush,tick,start,release,close};
 }
 
-test('survival is the sixth optional mode and loads after its existing shared controllers', () => {
+test('survival is one of the two retained connected modes and loads after its shared controllers', () => {
   const html = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
   const options = [...html.match(/<select id="gameMode">([\s\S]*?)<\/select>/)[1].matchAll(/<option value="([^"]+)"([^>]*)>/g)];
-  assert.deepEqual(options.map(match=>match[1]).sort(), ['basic','battle','coop','items','survival','treasure']);
+  assert.deepEqual(options.map(match=>match[1]).sort(), ['battle','survival']);
   assert.deepEqual(options.filter(match=>/\bselected\b/.test(match[2])).map(match=>match[1]), ['battle']);
-  assert.match(html, /六種模式/);
+  assert.match(html, /���ؼҦ�/);
   const scripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1]);
   for (const [before,after] of [['battle-engine.js','survival-engine.js'],['survival-engine.js','survival-session.js'],['survival-session.js','app.js'],['cell-gestures.js','app.js'],['board-strokes.js','app.js'],['app.js','survival-app.js'],['battle-ui.js','survival-ui.js'],['survival-app.js','survival-ui.js']]) {
     assert.ok(scripts.includes(before)&&scripts.includes(after)&&scripts.indexOf(before)<scripts.indexOf(after),`${before} must precede ${after}`);
@@ -109,11 +109,11 @@ test('survival authored shell has unique IDs and contains every quota and gestur
   const ids = [...(html+'\n'+ui).matchAll(/\bid="([A-Za-z][\w-]*)"/g)].map(match=>match[1]);
   assert.equal(new Set(ids).size,ids.length,'setup and dynamically authored survival shell cannot reuse IDs');
   for (const required of ['survivalLobby','survivalBoard','survivalLock','survivalGestureHint','survivalScoreList','survivalFollow','survivalSpectatorNotice','survivalResult']) assert.ok(ids.includes(required));
-  assert.match(ui,/單點.*私人標記.*快速雙點.*長按拖曳.*右鍵不操作/);
-  for (const quota of [4,10,16,24]) assert.match(ui,new RegExp(`<strong>${quota} <small>隻`));
-  assert.match(html+'\n'+ui,/2／4／6／8 秒/,'the shared help retains the escalating miss-lock rule');
+  assert.match(ui,/���I.*�p�H�аO.*�ֳt���I.*�����즲.*�k�䤣�ާ@/);
+  for (const quota of [4,10,16,24]) assert.match(ui,new RegExp(`<strong>${quota} <small>��`));
+  assert.match(html+'\n'+ui,/2��4��6��8 ��/,'the shared help retains the escalating miss-lock rule');
   assert.doesNotMatch(html+'\n'+ui,/id="survival(?:Capacity|ReadyButton)"/);
-  assert.match(ui,/立即開始/);assert.match(ui,/180 秒/);
+  assert.match(ui,/�ߧY�}�l/);assert.match(ui,/180 ��/);
   assert.doesNotMatch(ui, /class="[^"\n]*(?:battle-hp|battle-combo|attack-damage)/);
 });
 
@@ -121,22 +121,22 @@ for (const count of [2,3,4]) test(`fake DOM survival lobby has ${count} players,
   const {h,authority,engine,sync} = fixture({count,status:'lobby'});
   noSurvivalSecrets(h.state.game);
   assert.equal(h.get('#survivalSeats').innerHTML.match(/class="survival-seat /g).length,4);
-  assert.equal(h.get('#survivalCapacityBadge').textContent,`${count}／4 位`);
+  assert.equal(h.get('#survivalCapacityBadge').textContent,`${count}��4 ��`);
   assert.equal(h.get('#survivalStartButton').disabled,false);
   assert.equal(h.get('#survivalStartButton').classList.contains('hidden'),false);
   assert.equal(h.get('#survivalLobbyClock').textContent,'3:00');
-  assert.match(h.get('#survivalLobbyNotice').textContent,new RegExp(`${count} 位貓友已入座`));
+  assert.match(h.get('#survivalLobbyNotice').textContent,new RegExp(`${count} ��ߤͤw�J�y`));
   for(const player of authority.players.slice(1))engine.setConnected(authority,player.id,false,h.now());sync();
   assert.equal(h.get('#survivalStartButton').disabled,true);
   assert.equal(h.get('#survivalStartButton').classList.contains('hidden'),true);
-  assert.equal(h.get('#survivalLobbyClock').textContent,'不計時');
-  assert.match(h.get('#survivalLobbyNotice').textContent,/不足 2 人/);
+  assert.equal(h.get('#survivalLobbyClock').textContent,'���p��');
+  assert.match(h.get('#survivalLobbyNotice').textContent,/���� 2 �H/);
 });
 
 test('fake DOM survival host waits alone and guests never get the host immediate start control', () => {
   const {h,authority,engine,sync} = fixture({count:1,status:'lobby'});
   assert.equal(h.get('#survivalStartButton').disabled,true);
-  assert.equal(h.get('#survivalLobbyClock').textContent,'不計時');
+  assert.equal(h.get('#survivalLobbyClock').textContent,'���p��');
   engine.addPlayer(authority,{id:'p2',nickname:'Friend',connected:true,ready:true},h.now());sync();
   h.state.role='guest'; h.state.you=1; h.state.survivalPlayerId=authority.players[1].id; sync();
   assert.equal(h.get('#survivalStartButton').classList.contains('hidden'),true);
@@ -159,12 +159,12 @@ test('fake DOM scoreboard uses cumulative cats and errors with private notes onl
   authority.boards[0].number=4; h.state.notes.add(5); sync();
   assert.equal(h.get('#survivalMainScore').textContent,'17');
   assert.equal(h.get('#survivalMainErrors').textContent,'3');
-  assert.match(h.get('#survivalBoardNumber').textContent,/第 4 盤/);
+  assert.match(h.get('#survivalBoardNumber').textContent,/�� 4 �L/);
   assert.equal(grid().children.length,36);
   assert.equal(grid().children[5].classList.contains('note'),true);
   assert.equal(h.get('#survivalMini').children.length,36);
   assert.equal(h.get('#survivalMini').children.some(cell=>cell.classList.contains('note')),false);
-  assert.match(h.get('#survivalScoreList').innerHTML,/>17<\/b><small>／3/);
+  assert.match(h.get('#survivalScoreList').innerHTML,/>17<\/b><small>��3/);
   noSurvivalSecrets(h.state.game);
 });
 
@@ -173,12 +173,12 @@ test('fake DOM last minute removes quota elimination UI and keeps the five-minut
   authority.players.forEach(player=>{player.score=24;});
   h.advance(240000); engine.advance(authority,h.now()); sync();
   assert.equal(h.state.game.status,'playing');
-  assert.equal(h.get('#survivalMinuteLabel').textContent,'最後一分鐘');
+  assert.equal(h.get('#survivalMinuteLabel').textContent,'�̫�@����');
   assert.equal(h.get('#survivalClock').textContent,'1:00');
   assert.equal(h.get('#survivalQuotaCard').classList.contains('is-final'),true);
   assert.equal(h.get('#survivalQuotaMeter').classList.contains('hidden'),true);
-  assert.match(h.get('#survivalQuotaTime').textContent,/不再設配額/);
-  assert.match(h.get('#survivalQuotaRemaining').textContent,/比貓數，再比猜錯較少/);
+  assert.match(h.get('#survivalQuotaTime').textContent,/���A�]�t�B/);
+  assert.match(h.get('#survivalQuotaRemaining').textContent,/��߼ơA�A��q������/);
 });
 
 test('fake DOM quota warnings use cumulative progress and the current host minute', () => {
@@ -186,20 +186,20 @@ test('fake DOM quota warnings use cumulative progress and the current host minut
   authority.players.forEach(player=>{player.score=6;});
   h.advance(60000); engine.advance(authority,h.now()); sync();
   assert.match(h.get('#survivalQuotaTarget').textContent,/6\s*\/\s*10/);
-  assert.match(h.get('#survivalQuotaRemaining').textContent,/還差 4 隻/);
+  assert.match(h.get('#survivalQuotaRemaining').textContent,/�ٮt 4 ��/);
   assert.equal(h.get('#survivalQuotaMeter').getAttribute('aria-valuenow'),'6');
   assert.equal(h.get('#survivalQuotaMeter').getAttribute('aria-valuemax'),'10');
   h.advance(40000); h.updateSurvivalTimers();
   assert.equal(h.get('#survivalQuotaWarning').classList.contains('hidden'),false);
-  assert.match(h.get('#survivalQuotaWarning').textContent,/20 秒.*差 4 隻/);
+  assert.match(h.get('#survivalQuotaWarning').textContent,/20 ��.*�t 4 ��/);
   h.advance(5000); h.updateSurvivalTimers();
-  assert.match(h.get('#survivalQuotaWarning').textContent,/15 秒.*差 4 隻/);
+  assert.match(h.get('#survivalQuotaWarning').textContent,/15 ��.*�t 4 ��/);
 });
 
 test('fake DOM eliminated players can switch read-only views without exposing private notes', () => {
   const {h,authority,sync,grid} = fixture();
   h.state.notes.add(5); authority.players[0].status='eliminated'; authority.players[0].reason='quota'; sync();
-  assert.match(h.get('#survivalSpectatorNotice').textContent,/觀戰.*未達/);
+  assert.match(h.get('#survivalSpectatorNotice').textContent,/�[��.*���F/);
   assert.equal(grid().getAttribute('aria-readonly'),'true');
   assert.equal(grid().children.every(cell=>cell.tagName==='SPAN'&&cell.getAttribute('aria-disabled')==='true'),true);
   assert.equal(grid().children.some(cell=>cell.classList.contains('note')),false);
@@ -217,12 +217,12 @@ test('fake DOM shared champions and no-survivor results are explicit', () => {
   authority.players.forEach(player=>{player.score=30;player.errors=2;});
   h.advance(300000); engine.advance(authority,h.now()); sync();
   assert.equal(h.get('#survivalResult').classList.contains('hidden'),false);
-  assert.match(h.get('#survivalResultTitle').textContent,/4 位貓友，共享冠軍/);
-  assert.match(h.get('#survivalResultCopy').textContent,/貓數與猜錯次數完全相同/);
+  assert.match(h.get('#survivalResultTitle').textContent,/4 ��ߤ͡A�@�ɫa�x/);
+  assert.match(h.get('#survivalResultCopy').textContent,/�߼ƻP�q�����Ƨ����ۦP/);
   assert.equal(h.get('#survivalWinners').innerHTML.match(/survival-winner-avatar/g).length,4);
   const none=fixture();none.h.advance(60000);none.engine.advance(none.authority,none.h.now());none.sync();
   assert.equal(none.h.state.game.status,'finished');
-  assert.equal(none.h.get('#survivalResultTitle').textContent,'這一局，沒有冠軍');
+  assert.equal(none.h.get('#survivalResultTitle').textContent,'�o�@���A�S���a�x');
 });
 
 test('fake DOM reconnect blocks controls without resetting the running clock or declaring a winner', () => {
@@ -231,11 +231,11 @@ test('fake DOM reconnect blocks controls without resetting the running clock or 
   assert.equal(h.survivalCanMark(h.state.game),false);
   assert.equal(grid().children.every(cell=>cell.disabled),true);
   assert.equal(h.get('#survivalLock').classList.contains('hidden'),false);
-  assert.match(h.get('#survivalConnectionNotice').textContent,/場上時間仍會繼續/);
+  assert.match(h.get('#survivalConnectionNotice').textContent,/���W�ɶ����|�~��/);
   assert.equal(h.get('#survivalRetry').classList.contains('hidden'),false);
   h.advance(5000);h.updateSurvivalTimers();
   assert.equal(h.get('#survivalClock').textContent,'4:55');
-  assert.match(h.get('#survivalConnectionNotice').textContent,/10 秒/);
+  assert.match(h.get('#survivalConnectionNotice').textContent,/10 ��/);
   assert.equal(h.state.game.winner,null);
 });
 
@@ -326,7 +326,7 @@ test('survival miss locks disable single, double, keyboard and drag until the au
   assert.equal(board.cooldownDuration,2000);assert.equal(h.survivalMissLocked(h.state.game),true);
   assert.equal(grid().children.every(cell=>cell.disabled),true);
   assert.equal(h.get('#survivalLock').classList.contains('hidden'),false);
-  assert.match(h.get('#survivalLockCopy').textContent,/翻格與私人標記都暫停/);
+  assert.match(h.get('#survivalLockCopy').textContent,/½��P�p�H�аO���Ȱ�/);
   singleClick(h,grid().children[target]);doubleClick(grid().children[target]);
   const cell=grid().children[target];cell.dispatchEvent({type:'keydown',key:'Enter',repeat:false});cell.dispatchEvent({type:'click',detail:0});
   dragMarks(h,grid,{from:0,to:5});h.tick(GESTURE_WAIT);
@@ -406,10 +406,10 @@ test('fake PeerJS app enforces capacity and rejects new players once the match s
   try{
     const extra=room.add();room.tick(100);
     assert.equal(room.host.state.game.players.length,4);
-    assert.equal(extra.state.survivalLinkStatus,'closed');assert.match(extra.get('#setupStatus').textContent,/已滿/);
+    assert.equal(extra.state.survivalLinkStatus,'closed');assert.match(extra.get('#setupStatus').textContent,/�w��/);
     assert.equal(room.host.survivalStart(),true);room.flush();room.tick(3000);
     const late=room.add();room.tick(100);
-    assert.equal(room.host.state.game.players.length,4);assert.equal(late.state.survivalLinkStatus,'closed');assert.match(late.get('#setupStatus').textContent,/已開始/);
+    assert.equal(room.host.state.game.players.length,4);assert.equal(late.state.survivalLinkStatus,'closed');assert.match(late.get('#setupStatus').textContent,/�w�}�l/);
   }finally{room.close();}
 });
 
@@ -453,7 +453,7 @@ test('fake PeerJS app host departure aborts guests without selecting a champion'
     room.start();room.host.disposeSurvivalRoom('host-left');room.flush();
     for(const guest of room.clients.slice(1)){
       assert.equal(guest.state.game.status,'aborted');assert.equal(guest.state.game.winner,null);assert.deepEqual(json(guest.state.game.winnerIds),[]);
-      assert.equal(guest.survivalCanMark(),false);assert.match(guest.get('#survivalResultCopy').textContent,/不判勝負/);
+      assert.equal(guest.survivalCanMark(),false);assert.match(guest.get('#survivalResultCopy').textContent,/���P�ӭt/);
     }
   }finally{room.close();}
 });
@@ -494,9 +494,9 @@ test('fake PeerJS app ignores a stale-game credential and maps invalid or occupi
     const credential=JSON.parse(returning.context.sessionStorage.getItem('catSurvivalSeats'))['CAT-1234'];
     assert.equal(credential.gameId,room.host.state.game.id);
     const invalid=room.add({session:{catSurvivalSeats:JSON.stringify({'CAT-1234':{gameId:room.host.state.game.id,credential:'a'.repeat(48)}})}});room.tick(100);
-    assert.equal(invalid.state.survivalLinkStatus,'closed');assert.match(invalid.get('#setupStatus').textContent,/無法恢復原座位/);
+    assert.equal(invalid.state.survivalLinkStatus,'closed');assert.match(invalid.get('#setupStatus').textContent,/�L�k��_��y��/);
     const occupied=room.add({session:{catSurvivalSeats:returning.context.sessionStorage.getItem('catSurvivalSeats')}});room.tick(100);
-    assert.equal(occupied.state.survivalLinkStatus,'closed');assert.match(occupied.get('#setupStatus').textContent,/另一個連線/);
+    assert.equal(occupied.state.survivalLinkStatus,'closed');assert.match(occupied.get('#setupStatus').textContent,/�t�@�ӳs�u/);
     assert.equal(room.host.state.game.players.length,2);
   }finally{room.close();}
 });
@@ -518,7 +518,7 @@ test('fake PeerJS app failed automatic reconnects stop at 15 seconds and late re
     assert.equal(guest.state.survivalPlayerId,seat);assert.equal(guest.state.game.players[1].status,'retired');
     assert.equal(guest.context.sessionStorage.getItem('catSurvivalSeats'),credential);
     assert.equal(guest.survivalCanMark(),false);assert.equal(guest.get('#survivalBoard').getAttribute('aria-readonly'),'true');
-    assert.match(guest.get('#survivalSpectatorNotice').textContent,/觀戰/);
+    assert.match(guest.get('#survivalSpectatorNotice').textContent,/�[��/);
   }finally{room.close();}
 });
 
@@ -546,7 +546,7 @@ for(const retry of ['join','retry'])test(`fake PeerJS app expired lobby seat for
     room.unreachable.delete(hostPeer);
     if(retry==='join')guest.startPeerGuest();else assert.equal(guest.survivalReconnect(),true);
     room.flush();room.tick(100);
-    assert.equal(guest.state.survivalLinkStatus,'closed');assert.match(guest.get('#setupStatus').textContent,/原座位已釋出/);
+    assert.equal(guest.state.survivalLinkStatus,'closed');assert.match(guest.get('#setupStatus').textContent,/��y��w���X/);
     assert.equal(guest.state.survivalReconnectUntil,null);assert.equal(guest.state.survivalReconnectTimer,null);assert.equal(guest.state.survivalRecoveryTimer,null);
     const remaining=JSON.parse(guest.context.sessionStorage.getItem('catSurvivalSeats'));
     assert.equal(remaining['CAT-1234'],undefined);assert.deepEqual(remaining['CAT-9876'],saved['CAT-9876']);
@@ -580,7 +580,7 @@ for(const failure of ['network-error','disconnected','offline'])test(`fake PeerJ
     room.flush();room.tick(15100);
     for(const client of room.clients){
       assert.equal(client.state.game.status,'aborted');assert.equal(client.state.game.winner,null);assert.deepEqual(json(client.state.game.winnerIds),[]);
-      assert.equal(client.survivalCanMark(),false);assert.match(client.get('#survivalResultCopy').textContent,/不判勝負/);
+      assert.equal(client.survivalCanMark(),false);assert.match(client.get('#survivalResultCopy').textContent,/���P�ӭt/);
       assert.equal(client.state.game.events.some(event=>event.type==='finish'&&event.reason==='last-survivor'),false);
     }
   }finally{room.close();}
@@ -635,7 +635,7 @@ test('fake PeerJS app host can wait alone indefinitely without a lobby or match 
     assert.equal(game.status,'lobby');assert.equal(game.eligibleCount,1);
     for(const field of ['lobbyStartedAt','lobbyDeadline','startAt','startedAt','endAt'])assert.equal(game[field],null);
     assert.equal(game.winner,null);assert.deepEqual(json(game.winnerIds),[]);
-    assert.equal(room.host.get('#survivalLobbyClock').textContent,'不計時');
+    assert.equal(room.host.get('#survivalLobbyClock').textContent,'���p��');
     assert.equal(room.host.get('#survivalStartButton').classList.contains('hidden'),true);
   }finally{room.close();}
 });
@@ -652,7 +652,7 @@ test('fake PeerJS app second confirmed player starts one live 180-second countdo
     room.tick(1000);
     assert.equal(room.host.get('#survivalLobbyClock').textContent,'2:59');assert.equal(second.get('#survivalLobbyClock').textContent,'2:59');
     for(const count of [3,4]){room.add();room.tick(100);assert.equal(room.host.state.game.eligibleCount,count);assert.equal(room.host.state.game.lobbyStartedAt,started);assert.equal(room.host.state.game.lobbyDeadline,deadline);}
-    for(const h of room.clients){assert.equal(h.state.game.lobbyDeadline,deadline);assert.match(h.get('#survivalLobbyNotice').textContent,/新加入的貓友不會重設倒數/);}
+    for(const h of room.clients){assert.equal(h.state.game.lobbyDeadline,deadline);assert.match(h.get('#survivalLobbyNotice').textContent,/�s�[�J���ߤͤ��|���]�˼�/);}
     assert.equal(room.connections.flatMap(connection=>connection.sent).filter(message=>message.type==='ready').length,0,'no user-driven readiness packet is required');
   }finally{room.close();}
 });
@@ -663,7 +663,7 @@ test('fake PeerJS app fewer than two confirmed players cancels the lobby timer a
     const guest=room.clients[1],hostPeer=room.host.state.peer.id,deadline=room.host.state.game.lobbyDeadline;
     room.tick(1200);room.unreachable.add(hostPeer);room.connections.find(connection=>connection.peer===hostPeer&&connection.open).close();room.flush();room.tick(100);
     assert.equal(room.host.state.game.status,'lobby');assert.equal(room.host.state.game.eligibleCount,1);assert.equal(room.host.state.game.lobbyDeadline,null);assert.equal(room.host.state.game.lobbyStartedAt,null);
-    assert.equal(room.host.get('#survivalLobbyClock').textContent,'不計時');assert.equal(room.host.get('#survivalStartButton').classList.contains('hidden'),true);
+    assert.equal(room.host.get('#survivalLobbyClock').textContent,'���p��');assert.equal(room.host.get('#survivalStartButton').classList.contains('hidden'),true);
     room.tick(1000);room.unreachable.delete(hostPeer);assert.equal(guest.survivalReconnect(),true);room.flush();room.tick(100);
     const game=room.host.state.game;
     assert.equal(game.eligibleCount,2);assert.equal(game.lobbyDeadline-game.lobbyStartedAt,180000);assert.ok(game.lobbyDeadline>deadline);
@@ -714,3 +714,4 @@ for(const start of ['immediate','automatic'])test(`fake PeerJS app ${start} star
     assert.equal(room.host.state.game.players.some(player=>player.id===late.state.survivalPlayerId),false);
   }finally{room.close();}
 });
+
