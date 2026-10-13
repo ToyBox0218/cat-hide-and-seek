@@ -10,7 +10,7 @@ async function connect(){
     await wait(250);
   }
   if(!pages?.length)throw new Error('No DevTools page target became available.');
-  const target=pages.find(page=>page.type==='page'&&page.url.includes('127.0.0.1:3010'))||pages.find(page=>page.type==='page');
+  const target=pages.find(page=>page.type==='page'&&(page.url.includes('127.0.0.1:3010')||page.url.includes('toybox0218.github.io/cat-hide-and-seek')))||pages.find(page=>page.type==='page');
   const socket=new WebSocket(target.webSocketDebuggerUrl),pending=new Map();let nextId=0;
   await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
   socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(message.id&&pending.has(message.id)){const {resolve,reject}=pending.get(message.id);pending.delete(message.id);message.error?reject(new Error(JSON.stringify(message.error))):resolve(message.result);}});
