@@ -17,9 +17,19 @@ test('public connected-mode picker contains only 1V1 and four-seat survival',()=
   assert.match(picker,/4 人大逃殺/);assert.match(picker,/最多四人/);
 });
 
-test('classic client persists boards and has a dedicated narrow-screen layout',()=>{
+test('classic client reuses connected board primitives with isolated responsive styling',()=>{
   const app=fs.readFileSync(path.join(ROOT,'classic-app.js'),'utf8'),css=fs.readFileSync(path.join(ROOT,'classic.css'),'utf8');
   assert.match(app,/catClassicProgressV1/);assert.match(app,/progress\.boards/);assert.match(app,/progress\.completed/);
   assert.match(app,/CatClassic\.nextHint/);assert.match(app,/classicReplay/);assert.match(app,/classicNext/);
-  assert.match(css,/@media\(max-width:720px\)/);assert.match(css,/\.classic-layout\{grid-template-columns:minmax\(0,1fr\)/);assert.match(css,/width:min\(92vw,590px\)/);
+  assert.match(app,/className='cell classic-cell'/);assert.match(app,/class="cat-art/);assert.match(app,/CatCellGestures\.create/);assert.match(app,/classList\.add\('battle-header'\)/);assert.match(app,/classList\.add\('board-card'\)/);assert.match(app,/classList\.add\('battle-board'\)/);
+  assert.match(css,/@media\(max-width:760px\)/);assert.match(css,/\.classic-layout\{grid-template-columns:minmax\(0,1fr\)/);assert.match(css,/\.classic-game \.classic-board \.classic-cell/);assert.match(css,/body\.is-classic/);
+});
+
+test('classic lifecycle cancels gestures and hints never mutate or schedule a move',()=>{
+  const app=fs.readFileSync(path.join(ROOT,'classic-app.js'),'utf8');
+  const hint=app.match(/function showHint\(\)\{([\s\S]*?)\n\}/)[1];
+  assert.doesNotMatch(hint,/state\.cats\.(?:add|delete)|state\.crosses\.(?:add|delete)|save\(|setTimeout/);
+  assert.match(app,/function hide\(\)\{cancelGestures\(\);state\.viewEpoch\+\+/);
+  assert.match(app,/function load\([^]*?cancelGestures\(\);state\.viewEpoch\+\+/);
+  assert.match(app,/已恢復.*個標記/);assert.match(app,/全新關卡/);
 });
