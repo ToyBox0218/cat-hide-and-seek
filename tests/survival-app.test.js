@@ -91,10 +91,10 @@ function fakePeerRoom(count=4,{seed=0x1873,roomCode='CAT-1234'}={}) {
   return {host,clients,connections,unreachable,peerInstances,holdTypes,held,add,flush,tick,start,release,close};
 }
 
-test('survival is the sixth optional mode and loads after its existing shared controllers', () => {
+test('survival is one of the two retained connected modes and loads after its shared controllers', () => {
   const html = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
   const options = [...html.match(/<select id="gameMode">([\s\S]*?)<\/select>/)[1].matchAll(/<option value="([^"]+)"([^>]*)>/g)];
-  assert.deepEqual(options.map(match=>match[1]).sort(), ['basic','battle','coop','items','survival','treasure']);
+  assert.deepEqual(options.map(match=>match[1]).sort(), ['battle','survival']);
   assert.deepEqual(options.filter(match=>/\bselected\b/.test(match[2])).map(match=>match[1]), ['battle']);
   assert.match(html, /六種模式/);
   const scripts = [...html.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1]);

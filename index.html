@@ -6,10 +6,12 @@
   <title>貓咪捉迷藏｜P2P 雙人尋貓</title>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./survival.css">
+  <link rel="stylesheet" href="./classic.css">
 </head>
 <body><main>
   <button id="helpButton" class="help-fab" aria-label="打開玩法與音效設定">？ 玩法／音效</button>
   <section id="setup" class="panel setup-card">
+    <div class="primary-modes" aria-label="主要遊戲模式"><button id="chooseClassic" type="button"><strong>🐾 經典單人</strong><small>300 關原創貓數獨 · 推理提示</small></button><p>連線模式保留 1V1 與最多四人的大逃殺。</p></div>
     <header class="brand"><div class="logo">🐾</div><div><small>一間小屋 · 兩位貓友</small><h1>貓咪捉迷藏</h1><p>兩個瀏覽器，一起找出躲起來的貓！</p></div></header>
     <div id="entryChoice" class="entry-choice"><h2>今天要怎麼玩？</h2><div class="entry-buttons"><button id="chooseHost" type="button">🐾 建立房間<small>選盤面與回合設定</small></button><button id="chooseJoin" type="button">🚪 加入房間<small>輸入好友給你的房號</small></button></div><div class="quick-actions"><button id="previewBattle" class="hidden" type="button">先試玩大對決 <small>單人練習，不會連線</small></button><button id="quickMatch">⚡ 快速配對</button></div></div>
     <div id="entryFlow" class="hidden"><div class="flow-heading"><button id="backToEntry" type="button" aria-label="返回入口選擇">← 返回</button><h2 id="flowTitle"></h2></div>
@@ -17,12 +19,8 @@
       <label>暱稱<span class="nick-row"><input id="nick" maxlength="16" value="奶油虎斑" autocomplete="off"><button id="randomNick" type="button" title="隨機產生暱稱" aria-label="隨機產生暱稱">🎲</button></span></label>
       <label class="host-only">棋盤<select id="size"><option value="6" selected>6×6 小盤</option><option value="12">12×12 入門</option><option value="20">20×20 標準</option><option value="24">24×24 大盤</option></select></label>
       <label class="wide host-only">遊戲模式<select id="gameMode">
-        <option value="basic">🔎 基本對戰｜找到最多貓獲勝</option>
-        <option value="items">🐟 魚乾道具戰｜翻空格集魚乾</option>
-        <option value="treasure">🔔 寶藏派對｜鈴鐺貓值 2 分</option>
-        <option value="coop">🤝 默契合作｜共享魚乾與道具</option>
         <option value="battle" selected>🐾 貓咪大對決｜即時連鎖攻防</option>
-        <option value="survival">🐈 貓咪大逃殺｜2–4 位好友生存賽</option>
+        <option value="survival">🏆 4 人大逃殺｜2–4 人好友，最多四人</option>
       </select><small id="modeDescription">同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>
@@ -41,6 +39,11 @@
     <div class="actions"><button id="manualHost" class="host-only">手動建立</button><button id="manualJoin" class="join-only">手動加入</button></div>
     <div id="manual" class="hidden"><h2 id="manualTitle"></h2><textarea id="outCode" readonly placeholder="這裡會產生要傳給對方的碼"></textarea><button id="copyCode">複製上方代碼</button><textarea id="inCode" placeholder="貼上對方傳回的碼"></textarea><button id="applyCode">套用代碼</button></div>
     </div><p id="setupStatus" class="status" aria-live="polite"></p></div>
+  </section>
+
+  <section id="classicGame" class="classic-game hidden" aria-label="經典單人貓數獨">
+    <header class="classic-header"><button id="classicExit" type="button">← 返回模式</button><div><small>CLASSIC SOLO</small><h1>經典單人 · 貓數獨</h1></div><strong id="classicProgress">1 / 300</strong></header>
+    <div class="classic-layout"><aside class="classic-panel"><label for="classicLevel">選擇關卡</label><input id="classicLevel" type="range" min="1" max="300" value="1"><div class="classic-meta"><span id="classicTier">入門</span><span id="classicSize">4×4</span></div><p>每一橫排、直欄、色區恰好一隻貓；貓不能相鄰，斜角也不行。</p><div class="classic-actions"><button id="classicHint" type="button">💡 提示下一步</button><button id="classicReplay" type="button">↻ 重玩本關</button></div><p id="classicMessage" role="status" aria-live="polite">點一下標記 ×，點兩下放置貓。</p></aside><div class="classic-board-card"><div id="classicBoard" class="classic-board" role="grid" aria-label="經典單人棋盤"></div><p id="classicHintText" class="classic-hint-text" aria-live="polite"></p><div class="classic-footer"><button id="classicPrev" type="button">上一關</button><span id="classicCompletion">尚未完成</span><button id="classicNext" type="button">下一關</button></div></div></div>
   </section>
 
   <section id="game" class="hidden">
@@ -70,5 +73,5 @@
   <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 </main>
-<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./region-palette.js"></script><script>window.CAT_MEOW_SAMPLES=["./assets/audio/cat-meow-soft.wav","./assets/audio/cat-meow-food.wav","./assets/audio/cat-meow-purr.wav"];</script><script src="./game-audio.js"></script><script src="./battle-engine.js"></script><script src="./cell-gestures.js"></script><script src="./board-strokes.js"></script><script src="./survival-engine.js"></script><script src="./survival-session.js"></script><script src="./app.js"></script><script src="./battle-ui.js"></script><script src="./survival-app.js"></script><script src="./survival-ui.js"></script>
+<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./region-palette.js"></script><script>window.CAT_MEOW_SAMPLES=["./assets/audio/cat-meow-soft.wav","./assets/audio/cat-meow-food.wav","./assets/audio/cat-meow-purr.wav"];</script><script src="./game-audio.js"></script><script src="./battle-engine.js"></script><script src="./cell-gestures.js"></script><script src="./board-strokes.js"></script><script src="./survival-engine.js"></script><script src="./survival-session.js"></script><script src="./classic-engine.js"></script><script src="./classic-levels.js"></script><script src="./app.js"></script><script src="./battle-ui.js"></script><script src="./survival-app.js"></script><script src="./survival-ui.js"></script><script src="./classic-app.js"></script>
 </body></html>

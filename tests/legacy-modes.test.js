@@ -1124,12 +1124,12 @@ test('battle rematch replaces both boards only after both votes and resets HP, c
   assert.equal(h.state.notes.size, 0);
 });
 
-test('public entry defaults to battle while every legacy mode and generic create/join flow remain selectable', () => {
+test('public entry exposes only battle and survival while keeping generic create/join flow', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const picker = html.match(/<select id="gameMode">([\s\S]*?)<\/select>/)[1];
   const options = [...picker.matchAll(/<option value="([^"]+)"([^>]*)>/g)];
   assert.deepEqual(options.filter(([, , attributes]) => /\bselected\b/.test(attributes)).map(([, mode]) => mode), ['battle']);
-  assert.deepEqual(options.map(([, mode]) => mode).sort(), ['basic', 'battle', 'coop', 'items', 'survival', 'treasure']);
+  assert.deepEqual(options.map(([, mode]) => mode).sort(), ['battle', 'survival']);
   const sizes = html.match(/<select id="size">([\s\S]*?)<\/select>/)[1];
   assert.match(sizes, /<option value="6" selected>/);
   assert.equal((sizes.match(/ selected/g) || []).length, 1);

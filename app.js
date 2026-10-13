@@ -98,6 +98,8 @@ function makePuzzle(size) {
 const cleanSettings = input => ({
   size:['battle','survival'].includes(input.mode)?6:([6,12,20,24].includes(+input.size)?+input.size:20),
   maxHP:Math.max(50,Math.min(500,+input.maxHP||150)),
+  // Retain decoder compatibility for old saved rooms, while the current UI
+  // exposes only battle and survival.
   mode:['basic','items','treasure','coop','battle','survival'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
   ...(input.mode==='survival'?{capacity:4,tabbyEnabled:input.tabbyEnabled!==false}:{}),
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),

@@ -117,7 +117,7 @@ function suiChooseFollow(game){
 
 function suiSyncBoard(grid,board,game,who,interactive,mini=false){
   if(!grid||!board?.puzzle)return;
-  const size=board.puzzle.size||6,puzzle=board.puzzle,found=new Set(suiArray(board.found)),misses=new Set(suiArray(board.misses)),tabbies=new Set(suiArray(board.revealedTabbies)),blast=new Set(suiArray(board.blastRevealed));
+  const size=board.puzzle.size||6,puzzle=board.puzzle,found=new Set(suiArray(board.found)),misses=new Set(suiArray(board.misses));
   const key=`${puzzle.id}:${interactive?'input':'read'}`;
   if(grid.dataset.viewKey!==key){
     // Advancing a board is atomic; the old public event overlay finishes above it.
@@ -137,12 +137,11 @@ function suiSyncBoard(grid,board,game,who,interactive,mini=false){
   }
   const lock=board.cooldownKind==='miss'&&board.cooldownUntil>suiNow();
   for(const cell of grid.children){
-    const index=Number(cell.dataset.index),hit=found.has(index),miss=misses.has(index),note=interactive&&state.notes.has(index),tabby=hit&&tabbies.has(index);
-    const kind=hit?'cat':miss?'opened':note?'note':'hidden',renderKey=`${kind}:${tabby}:${blast.has(index)&&(hit||miss)}`;
+    const index=Number(cell.dataset.index),hit=found.has(index),miss=misses.has(index),note=interactive&&state.notes.has(index),tabby=false;
+    const kind=hit?'cat':miss?'opened':note?'note':'hidden',renderKey=kind;
     if(cell.dataset.renderState!==renderKey){
       cell.dataset.renderState=renderKey;
       for(const name of ['cat','opened','note'])cell.classList.toggle(name,kind===name);
-      cell.classList.toggle('revealed-tabby',tabby);cell.classList.toggle('blast-revealed',blast.has(index)&&(hit||miss));
       if(hit)cell.innerHTML=mini?'<i aria-hidden="true">●</i>':tabby?suiTabbyArt():battleCat(stableHash(`${puzzle.id}:${index}`),'');
       else cell.textContent=miss||note?'×':'';
       if(!mini){const label={cat:tabby?'已找到虎斑貓':'已找到貓',opened:'已翻開的空格，確認沒有貓',note:'私人筆記，尚未確認',hidden:'尚未翻開'}[kind];cell.setAttribute('aria-label',`第 ${Math.floor(index/size)+1} 行，第 ${index%size+1} 列，區域 ${puzzle.regions[index]+1}，${label}`);}
