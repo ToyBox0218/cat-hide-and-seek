@@ -4,7 +4,7 @@ const $=selector=>document.querySelector(selector),levels=window.CAT_CLASSIC_LEV
 if(!levels.length||!window.CatClassic)return;
 const palette=window.CatPalette?.colors||['#f1ce79','#e297f6','#60d8fb','#60ce7e','#fbd8fb','#fb9792'];
 const storeKey='catClassicProgressV1';
-const state={level:0,cats:new Set(),crosses:new Set(),gestures:null,viewEpoch:0,sessionLabel:'全新關卡',newGameArmed:false};
+const state={level:0,cats:new Set(),crosses:new Set(),gestures:null,strokes:null,pointerRecords:new Map(),strokeGeometry:null,strokeDirty:false,strokeCapture:null,strokeClickSuppressedUntil:0,viewEpoch:0,sessionLabel:'全新關卡',newGameArmed:false};
 
 function saved(){try{const value=JSON.parse(localStorage.getItem(storeKey)||'{}');return value&&typeof value==='object'?value:{}}catch{return{}}}
 function cleanIndexes(values,limit){return Array.isArray(values)?[...new Set(values.filter(value=>Number.isInteger(value)&&value>=0&&value<limit))]:[]}
@@ -31,7 +31,12 @@ function puzzle(){return levels[state.level]}
 function tierName(tier){return['','新手暖身','基礎排除','交叉推理','長鏈挑戰','進階混合'][tier]}
 function gestureContext(){return`${state.viewEpoch}:${state.level}`}
 function canAct(index,context=gestureContext()){return context===gestureContext()&&!$('#classicGame').classList.contains('hidden')&&Number.isInteger(index)&&index>=0&&index<puzzle().size*puzzle().size}
-function cancelGestures(){state.gestures?.cancel()}
+function cancelGestures(reason='state-change'){
+  state.gestures?.cancel();state.strokes?.reset(reason);
+  for(const record of state.pointerRecords.values()){record.consumed=true;if(record.cell)cancelCellPress(record.cell)}
+  state.pointerRecords.clear();state.strokeGeometry=null;releaseStrokeCapture();$('#classicBoard')?.classList.remove('marking-stroke');
+  if(state.strokeDirty){state.strokeDirty=false;save()}
+}
 function setMessage(text){$('#classicMessage').textContent=text}
 function classicCat(index){return`<span class="cat-art ${index%2?'orange':'gray'} board-character" aria-hidden="true"></span>`}
 
@@ -42,7 +47,7 @@ function ensureChrome(){
   if(!$('#continueClassic'))start.insertAdjacentHTML('afterend','<button id="continueClassic" type="button"><strong>繼續進度</strong><small id="classicContinueSummary">目前沒有可繼續的進度</small></button>');
   if(!$('#classicSessionState'))panel.insertAdjacentHTML('afterbegin','<div class="classic-session-row"><span id="classicSessionState" role="status">全新關卡</span><strong id="classicPlacedCount">0 / 4</strong></div>');
   if(!card.querySelector('.classic-board-heading'))card.insertAdjacentHTML('afterbegin','<div class="classic-board-heading board-heading"><b>你的尋貓小屋</b><span id="classicBoardStatus">第 1 關 · 4×4</span></div>');
-  if(!$('#classicLegend'))board.insertAdjacentHTML('afterend','<div id="classicLegend" class="classic-legend"><span><i class="classic-swatch note">×</i> 單點標記</span><span><i class="classic-swatch cat"><span class="cat-art orange" aria-hidden="true"></span></i> 雙點放貓</span><span>提示只高亮，不會自動落子</span></div>');
+  if(!$('#classicLegend'))board.insertAdjacentHTML('afterend','<div id="classicLegend" class="classic-legend"><span><i class="classic-swatch note">×</i> 單點／長按拖曳標記</span><span><i class="classic-swatch cat"><span class="cat-art orange" aria-hidden="true"></span></i> 雙點放貓</span><span>提示只高亮，不會自動落子</span></div>');
 }
 
 function load(index,{reset=false,reason='navigate'}={}){
@@ -55,7 +60,7 @@ function load(index,{reset=false,reason='navigate'}={}){
   else if(clean.cats.length||clean.crosses.length)state.sessionLabel=`已恢復 ${clean.cats.length+clean.crosses.length} 個標記`;
   else state.sessionLabel=reason==='enter'?'全新關卡':'尚無標記';
   save();render();
-  setMessage(clean.repaired?'偵測到每格都是貓的異常舊資料，已從空白盤面恢復。':state.sessionLabel==='全新關卡'?'這是空白新局；單點標記 ×，雙點放置貓。':state.sessionLabel);
+  setMessage(clean.repaired?'偵測到每格都是貓的異常舊資料，已從空白盤面恢復。':state.sessionLabel==='全新關卡'?'這是空白新局；單點標記 ×，雙點放置貓，長按拖曳可連續標記 ×。':state.sessionLabel);
 }
 function isComplete(){const value=puzzle();return state.cats.size===value.size&&value.solution.every(index=>state.cats.has(index))}
 function mark(index,cat){
@@ -63,18 +68,64 @@ function mark(index,cat){
   else{state.cats.delete(index);state.crosses.has(index)?state.crosses.delete(index):state.crosses.add(index)}
   state.sessionLabel='進行中';save();render();
 }
+function setCross(index,marked,context=gestureContext(),persist=true){
+  if(!canAct(index,context)||state.cats.has(index)||state.crosses.has(index)===marked)return false;
+  marked?state.crosses.add(index):state.crosses.delete(index);state.sessionLabel='進行中';
+  const node=cell(index);if(node){node.classList.toggle('note',marked);node.classList.toggle('is-cross',marked);node.dataset.state=marked?'cross':'open';node.textContent=marked?'✕':'';const value=puzzle();node.setAttribute('aria-label',`第 ${Math.floor(index/value.size)+1} 排第 ${index%value.size+1} 格，色區 ${value.regions[index]+1}${marked?'，已排除':'，未標記'}`)}
+  $('#classicSessionState').textContent=state.sessionLabel;if(persist)save();else state.strokeDirty=true;return true;
+}
 function getGestures(){
   if(!state.gestures)state.gestures=CatCellGestures.create({cellCount:36,getContext:gestureContext,canAct,canReveal:canAct,
     onMark:(index,context)=>{const beforeCat=state.cats.has(index),beforeCross=state.crosses.has(index);if(!canAct(index,context))return false;mark(index,false);let used=false;return()=>{if(used||!canAct(index,context))return false;used=true;beforeCat?state.cats.add(index):state.cats.delete(index);beforeCross?state.crosses.add(index):state.crosses.delete(index);save();render();return true}},
     onReveal:(index,context)=>{if(!canAct(index,context))return false;mark(index,true);return true}});
   return state.gestures;
 }
+const inputNow=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
+function geometry(){
+  const board=$('#classicBoard');if(!board)return null;const bounds=board.getBoundingClientRect(),key=gestureContext(),old=state.strokeGeometry;
+  if(old&&old.board===board&&old.key===key&&['left','top','width','height'].every(name=>old.bounds[name]===bounds[name]))return old;
+  return state.strokeGeometry={board,key,bounds,cells:Array.from(board.children).map(node=>({index:+node.dataset.index,rect:node.getBoundingClientRect()}))};
+}
+function strokeCellAt(x,y){
+  const value=geometry();if(!value)return null;const hit=document.elementFromPoint?.(x,y)?.closest?.('.classic-cell');
+  if(hit&&value.board.contains(hit))return +hit.dataset.index;if(document.elementFromPoint)return null;
+  return value.cells.find(({rect})=>x>=rect.left&&x<rect.right&&y>=rect.top&&y<rect.bottom)?.index??null;
+}
+function indicesBetween(from,to,context){
+  if(context!==gestureContext())return[];const value=geometry();if(!value)return[];const dx=to.x-from.x,dy=to.y-from.y,hits=[];
+  for(const {index,rect} of value.cells){const inset=Math.min(.5,rect.width/8,rect.height/8),left=rect.left+inset,right=rect.right-inset,top=rect.top+inset,bottom=rect.bottom-inset;let enter=0,leave=1,valid=true;
+    for(const [start,delta,min,max] of [[from.x,dx,left,right],[from.y,dy,top,bottom]]){if(delta===0){if(start<min||start>max){valid=false;break}continue}const a=(min-start)/delta,b=(max-start)/delta;enter=Math.max(enter,Math.min(a,b));leave=Math.min(leave,Math.max(a,b));if(enter>leave){valid=false;break}}
+    if(valid)hits.push({index,enter});
+  }
+  return hits.sort((a,b)=>a.enter-b.enter).map(hit=>hit.index);
+}
+function releaseStrokeCapture(){const capture=state.strokeCapture;state.strokeCapture=null;if(capture)try{if(capture.cell.hasPointerCapture?.(capture.id))capture.cell.releasePointerCapture(capture.id)}catch{}}
+function getStrokes(){
+  if(!state.strokes)state.strokes=CatBoardStrokes.create({cellCount:36,getContext:gestureContext,canAct:context=>context===gestureContext()&&!$('#classicGame').classList.contains('hidden'),canMark:(index,context)=>canAct(index,context)&&!state.cats.has(index),onAdd:(index,context)=>setCross(index,true,context,false),indicesBetween,now:inputNow,
+    onStart:event=>{state.gestures?.cancel();const record=state.pointerRecords.get(event.id);if(record){record.consumed=true;cancelCellPress(record.cell)}$('#classicBoard')?.classList.add('marking-stroke');if(record?.cell)try{record.cell.setPointerCapture?.(event.id);state.strokeCapture={cell:record.cell,id:event.id}}catch{}},
+    onEnd:event=>{const record=state.pointerRecords.get(event.id);if(record)record.consumed=event.consumed;if(event.consumed){state.gestures?.cancel();state.strokeClickSuppressedUntil=Date.now()+600;if(record?.cell)cancelCellPress(record.cell)}$('#classicBoard')?.classList.remove('marking-stroke');releaseStrokeCapture();if(state.strokeDirty){state.strokeDirty=false;save()}}
+  });return state.strokes;
+}
+function pointerValues(event){return{pointerId:event.pointerId,pointerType:event.pointerType,button:event.button,buttons:event.buttons,isPrimary:event.isPrimary,clientX:event.clientX,clientY:event.clientY,timeStamp:event.timeStamp}}
+function strokeEvent(event,record){const x=Number.isFinite(event.clientX)?event.clientX:record?.x,y=Number.isFinite(event.clientY)?event.clientY:record?.y;let now=inputNow(),stamp=event.timeStamp;if(record&&Number.isFinite(stamp)&&Number.isFinite(record.stamp)&&stamp>=record.stamp&&(stamp>=1e12)===(record.stamp>=1e12))now=record.began+(stamp-record.stamp);return{id:event.pointerId??record?.id??1,type:event.pointerType||record?.type||'mouse',button:event.button??0,buttons:event.buttons,primary:event.isPrimary!==false,x,y,index:strokeCellAt(x,y),now}}
+function cancelCellPress(cell){if(cell?.classicPress)state.gestures?.cancelPress(cell.classicPress);if(cell){cell.classicPress=null;cell.classicCancelled=true}}
+function startStroke(cell,event){
+  if(event.button>0)return;const rect=cell.getBoundingClientRect(),id=event.pointerId??1,record={id,type:event.pointerType||'mouse',cell,consumed:false,x:Number.isFinite(event.clientX)?event.clientX:rect.left+rect.width/2,y:Number.isFinite(event.clientY)?event.clientY:rect.top+rect.height/2,began:inputNow(),stamp:event.timeStamp};
+  state.pointerRecords.set(id,record);cell.classicPointerState=record;const outcome=getStrokes().down({...strokeEvent(event,record),index:+cell.dataset.index});if(outcome.consumed){record.consumed=true;cancelCellPress(cell);state.gestures?.cancel()}
+}
+function moveStroke(event){if(!state.strokes||!state.pointerRecords.has(event.pointerId??1))return;const record=state.pointerRecords.get(event.pointerId??1),samples=event.getCoalescedEvents?.()||[];if(record.type!=='touch'&&event.buttons!==undefined&&!(event.buttons&1)){cancelStroke(event,'released');return}for(const sample of [...samples,event]){const outcome=state.strokes.move(strokeEvent({...pointerValues(sample),pointerId:event.pointerId,pointerType:event.pointerType},record));if(outcome.consumed){record.consumed=true;state.gestures?.cancel();cancelCellPress(record.cell)}}if(state.strokes.state().active&&event.cancelable)event.preventDefault()}
+function finishStroke(event,cellNode=null){const id=event.pointerId??cellNode?.classicPointerState?.id??1,current=state.pointerRecords.get(id);if(cellNode&&current&&current!==cellNode.classicPointerState)return;const record=current||cellNode?.classicPointerState;if(!state.strokes||!record)return;const outcome=state.strokes.up(strokeEvent({...pointerValues(event),pointerId:id},record));record.consumed=record.consumed||outcome.consumed;state.pointerRecords.delete(id)}
+function cancelStroke(event,reason='pointercancel'){const id=event.pointerId??1,record=state.pointerRecords.get(id);state.strokes?.pointerCancel({id},reason);if(record){record.consumed=true;cancelCellPress(record.cell)}state.pointerRecords.delete(id)}
+function observeExtraPointer(event){
+  if(event.button>0||!state.strokes?.state().pointerCount||state.pointerRecords.has(event.pointerId??1)||event.target?.closest?.('.classic-cell'))return;
+  const id=event.pointerId??1,record={id,type:event.pointerType||'mouse',cell:null,consumed:true,x:event.clientX,y:event.clientY,began:inputNow(),stamp:event.timeStamp};state.pointerRecords.set(id,record);state.strokes.down({...strokeEvent(event,record),index:null});state.gestures?.cancel();
+}
 function wireCell(cell,index){
   const gestures=getGestures();
-  cell.onpointerdown=event=>{if(event.button>0)return;cell.classicPress=gestures.press(index,{pointerType:event.pointerType||'mouse',timeStamp:event.timeStamp})};
-  cell.onpointercancel=()=>{if(cell.classicPress)gestures.cancelPress(cell.classicPress);cell.classicPress=null};cell.onblur=cell.onpointercancel;
+  cell.onpointerdown=event=>{if(event.button>0)return;cell.classicCancelled=false;if(event.isPrimary!==false)cell.classicPress=gestures.press(index,{pointerType:event.pointerType||'mouse',timeStamp:event.timeStamp});startStroke(cell,event)};
+  cell.onpointercancel=event=>{cancelCellPress(cell);cancelStroke(event)};cell.onlostpointercapture=event=>{if(state.strokeCapture?.cell===cell)cancelStroke(event,'lostcapture')};cell.onblur=()=>{cancelCellPress(cell);const pointer=cell.classicPointerState;if(pointer&&state.pointerRecords.get(pointer.id)===pointer)cancelStroke({pointerId:pointer.id},'cell-blur')};
   cell.onkeydown=event=>{if(!['Enter',' ','Spacebar'].includes(event.key)||event.repeat)return;cell.classicPress=gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp})};
-  cell.onclick=event=>{if(event.button>0)return;const intent=cell.classicPress;cell.classicPress=null;if(event.detail>0&&!intent)return;gestures.activate(intent||gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp}),{detail:event.detail||0,timeStamp:event.timeStamp})};
+  cell.onclick=event=>{if(event.button>0)return;if(cell.classicPointerState)finishStroke({...pointerValues(event),pointerId:cell.classicPointerState.id,pointerType:cell.classicPointerState.type},cell);const intent=cell.classicPress,pointer=cell.classicPointerState;cell.classicPress=null;cell.classicPointerState=null;if(pointer?.consumed||(!intent&&Date.now()<state.strokeClickSuppressedUntil)||cell.classicCancelled){cell.classicCancelled=false;return}if(event.detail>0&&!intent)return;gestures.activate(intent||gestures.press(index,{pointerType:'keyboard',timeStamp:event.timeStamp}),{detail:event.detail||0,timeStamp:event.timeStamp})};
 }
 function render(){
   const value=puzzle(),progress=saved(),completed=new Set(cleanIndexes(progress.completed,levels.length)),container=$('#classicBoard');
@@ -94,6 +145,15 @@ function showHint(){
   if(!hint){$('#classicHintText').textContent='目前沒有可用提示。';return}
   $('#classicHintText').textContent=hint.text;for(const index of hint.related||[])cell(index)?.classList.add('is-related');if(Number.isInteger(hint.index))cell(hint.index)?.classList.add(hint.kind==='error'?'is-conflict':'is-hint');setMessage('提示只標出可推理的下一步，請由你決定是否落子。');
 }
+
+document.addEventListener('pointerdown',observeExtraPointer);
+document.addEventListener('pointermove',moveStroke,{passive:false});
+document.addEventListener('pointerup',event=>finishStroke(event));
+document.addEventListener('pointercancel',event=>cancelStroke(event));
+document.addEventListener('scroll',()=>{if(state.strokes?.state().tracking)cancelGestures('scroll')},true);
+window.addEventListener('resize',()=>{if(state.strokes?.state().tracking)cancelGestures('resize');else state.strokeGeometry=null});
+window.addEventListener('blur',()=>cancelGestures('blur'));
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelGestures('hidden')});
 
 ensureChrome();
 updateEntry();$('#chooseClassic').onclick=startNew;$('#continueClassic').onclick=resume;$('#classicExit').onclick=hide;$('#classicLevel').oninput=event=>load(Number(event.target.value)-1);$('#classicPrev').onclick=()=>load(state.level-1);$('#classicNext').onclick=()=>load(state.level+1);$('#classicReplay').onclick=()=>{cancelGestures();if(confirm('清除本關標記並重新開始？'))load(state.level,{reset:true})};$('#classicHint').onclick=showHint;

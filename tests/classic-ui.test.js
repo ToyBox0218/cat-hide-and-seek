@@ -21,8 +21,8 @@ test('classic client reuses connected board primitives with isolated responsive 
   const app=fs.readFileSync(path.join(ROOT,'classic-app.js'),'utf8'),css=fs.readFileSync(path.join(ROOT,'classic.css'),'utf8');
   assert.match(app,/catClassicProgressV1/);assert.match(app,/progress\.boards/);assert.match(app,/progress\.completed/);
   assert.match(app,/CatClassic\.nextHint/);assert.match(app,/classicReplay/);assert.match(app,/classicNext/);
-  assert.match(app,/className='cell classic-cell'/);assert.match(app,/class="cat-art/);assert.match(app,/CatCellGestures\.create/);assert.match(app,/classList\.add\('battle-header'\)/);assert.match(app,/classList\.add\('board-card'\)/);assert.match(app,/classList\.add\('battle-board'\)/);
-  assert.match(css,/@media\(max-width:760px\)/);assert.match(css,/\.classic-layout\{grid-template-columns:minmax\(0,1fr\)/);assert.match(css,/\.classic-game \.classic-board \.classic-cell/);assert.match(css,/body\.is-classic/);
+  assert.match(app,/className='cell classic-cell'/);assert.match(app,/class="cat-art/);assert.match(app,/CatCellGestures\.create/);assert.match(app,/CatBoardStrokes\.create/);assert.match(app,/indicesBetween/);assert.match(app,/document\.addEventListener\('pointermove',moveStroke/);assert.match(app,/onAdd:\(index,context\)=>setCross\(index,true/);assert.match(app,/classList\.add\('battle-header'\)/);assert.match(app,/classList\.add\('board-card'\)/);assert.match(app,/classList\.add\('battle-board'\)/);
+  assert.match(css,/@media\(max-width:760px\)/);assert.match(css,/\.classic-layout\{grid-template-columns:minmax\(0,1fr\)/);assert.match(css,/\.classic-game \.classic-board \.classic-cell/);assert.match(css,/body\.is-classic/);assert.match(css,/\.classic-board\.marking-stroke/);assert.match(css,/touch-action:pinch-zoom/);
 });
 
 test('classic lifecycle cancels gestures and hints never mutate or schedule a move',()=>{
@@ -31,6 +31,7 @@ test('classic lifecycle cancels gestures and hints never mutate or schedule a mo
   assert.doesNotMatch(hint,/state\.cats\.(?:add|delete)|state\.crosses\.(?:add|delete)|save\(|setTimeout/);
   assert.match(app,/function hide\(\)\{cancelGestures\(\);state\.viewEpoch\+\+/);
   assert.match(app,/function load\([^]*?cancelGestures\(\);state\.viewEpoch\+\+/);
+  assert.match(app,/state\.strokes\?\.reset\(reason\)/);assert.match(app,/visibilitychange/);assert.match(app,/pointercancel/);assert.match(app,/lostcapture/);
   assert.match(app,/已恢復.*個標記/);assert.match(app,/全新關卡/);
 });
 
