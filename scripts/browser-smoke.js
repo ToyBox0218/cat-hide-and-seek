@@ -27,22 +27,32 @@ async function connect(){
     results.entry=await cdp.evaluate(`(()=>({
       title:document.title,
       modes:[...document.querySelectorAll('#gameMode option')].map(option=>option.value),
-      hasClassic:!!document.querySelector('#chooseClassic'),
+      hasClassic:!!document.querySelector('#chooseClassic'),hasContinue:!!document.querySelector('#continueClassic'),
       tabbyVisible:!!document.querySelector('#survivalTabby'),
       misleadingHelp:[...document.querySelectorAll('#helpDialog p')].some(node=>/虎斑|爆破|3×3|道具戰|寶藏貓|雙貓合作/.test(node.textContent))
     }))()`);
-    assert.deepEqual(results.entry.modes,['battle','survival']);assert.equal(results.entry.hasClassic,true);assert.equal(results.entry.tabbyVisible,false);assert.equal(results.entry.misleadingHelp,false);
+    assert.deepEqual(results.entry.modes,['battle','survival']);assert.equal(results.entry.hasClassic,true);assert.equal(results.entry.hasContinue,true);assert.equal(results.entry.tabbyVisible,false);assert.equal(results.entry.misleadingHelp,false);
 
     await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(150);
     results.classicStart=await cdp.evaluate(`(()=>{const cells=[...document.querySelectorAll('.classic-cell')];return{visible:!document.querySelector('#classicGame').classList.contains('hidden'),progress:document.querySelector('#classicProgress').textContent,cells:cells.length,cats:document.querySelectorAll('.classic-cell.is-cat').length,pseudoMarks:cells.filter(cell=>getComputedStyle(cell,'::before').content!=='none').length,backgrounds:[...new Set(cells.map(cell=>getComputedStyle(cell).backgroundColor))],regionEdges:cells.filter(cell=>[...cell.classList].some(name=>name.startsWith('region-edge-'))).length}})()`);
     assert.equal(results.classicStart.visible,true);assert.equal(results.classicStart.progress.trim(),'1 / 300');assert.equal(results.classicStart.cells,16);
-    assert.equal(results.classicStart.cats,0);assert.equal(results.classicStart.pseudoMarks,0);assert.ok(results.classicStart.backgrounds.length>=4,JSON.stringify(results.classicStart));assert.ok(results.classicStart.backgrounds.every(color=>color!=='rgba(0, 0, 0, 0)'),JSON.stringify(results.classicStart));assert.equal(results.classicStart.regionEdges,16);
+    assert.equal(results.classicStart.cats,0);assert.equal(results.classicStart.pseudoMarks,0);assert.ok(results.classicStart.backgrounds.length>=4,JSON.stringify(results.classicStart));assert.ok(results.classicStart.backgrounds.every(color=>color!=='rgba(0, 0, 0, 0)'),JSON.stringify(results.classicStart));assert.equal(results.classicStart.regionEdges,0);
 
-    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,completed:[7],boards:{0:{cats:Array.from({length:16},(_,index)=>index),crosses:[]}}}));location.reload();return true})()`);await wait(700);await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(100);
+    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,boards:{0:{cats:[1,5,7,9,11],crosses:[0]}}}));location.reload();return true})()`);await wait(700);
+    results.legacyEntry=await cdp.evaluate(`(()=>({setupVisible:!document.querySelector('#setup').classList.contains('hidden'),classicVisible:!document.querySelector('#classicGame').classList.contains('hidden'),continueDisabled:document.querySelector('#continueClassic').disabled,summary:document.querySelector('#classicContinueSummary').textContent}))()`);
+    assert.equal(results.legacyEntry.setupVisible,true);assert.equal(results.legacyEntry.classicVisible,false);assert.equal(results.legacyEntry.continueDisabled,false);assert.match(results.legacyEntry.summary,/6 個標記/);
+    await cdp.evaluate(`document.querySelector('#continueClassic').click()`);await wait(100);
+    results.legacyResume=await cdp.evaluate(`(()=>{const cells=[...document.querySelectorAll('.classic-cell')],groups={};for(const cell of cells)(groups[cell.dataset.region]??=[]).push(getComputedStyle(cell).backgroundColor);return{cats:cells.filter(cell=>cell.classList.contains('cat')).map(cell=>Number(cell.dataset.index)),crosses:cells.filter(cell=>cell.classList.contains('note')).map(cell=>Number(cell.dataset.index)),regionEdges:cells.filter(cell=>[...cell.classList].some(name=>name.startsWith('region-edge-'))).length,regionColorsPreserved:Object.values(groups).every(colors=>new Set(colors).size===1)}})()`);
+    assert.deepEqual(results.legacyResume.cats,[1,5,7,9,11]);assert.deepEqual(results.legacyResume.crosses,[0]);assert.equal(results.legacyResume.regionEdges,0);assert.equal(results.legacyResume.regionColorsPreserved,true);
+    await cdp.evaluate(`(()=>{document.querySelector('#classicExit').click();document.querySelector('#chooseClassic').click();document.querySelector('#chooseClassic').click();return true})()`);await wait(100);
+    results.explicitNew=await cdp.evaluate(`(()=>{const saved=JSON.parse(localStorage.getItem('catClassicProgressV1'));return{cats:document.querySelectorAll('.classic-cell.cat').length,crosses:document.querySelectorAll('.classic-cell.note').length,storedCats:saved.boards['0'].cats,storedCrosses:saved.boards['0'].crosses}})()`);
+    assert.deepEqual(results.explicitNew,{cats:0,crosses:0,storedCats:[],storedCrosses:[]});
+
+    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,completed:[7],boards:{0:{cats:Array.from({length:16},(_,index)=>index),crosses:[]}}}));location.reload();return true})()`);await wait(700);await cdp.evaluate(`document.querySelector('#continueClassic').click()`);await wait(100);
     results.staleSaveRecovery=await cdp.evaluate(`(()=>{const saved=JSON.parse(localStorage.getItem('catClassicProgressV1'));return{cats:document.querySelectorAll('.classic-cell.is-cat').length,savedCats:saved.boards['0'].cats.length,completed:saved.completed}})()`);
     assert.equal(results.staleSaveRecovery.cats,0);assert.equal(results.staleSaveRecovery.savedCats,0);assert.deepEqual(results.staleSaveRecovery.completed,[7]);
 
-    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,completed:[7],boards:{0:{cats:[0,1],crosses:[2]}}}));location.reload();return true})()`);await wait(700);await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(100);
+    await cdp.evaluate(`(()=>{localStorage.setItem('catClassicProgressV1',JSON.stringify({current:0,completed:[7],boards:{0:{cats:[0,1],crosses:[2]}}}));location.reload();return true})()`);await wait(700);await cdp.evaluate(`document.querySelector('#continueClassic').click()`);await wait(100);
     results.temporaryConflictPreserved=await cdp.evaluate(`(()=>{const saved=JSON.parse(localStorage.getItem('catClassicProgressV1'));return{cats:[...document.querySelectorAll('.classic-cell.is-cat')].map(cell=>Number(cell.dataset.index)),crosses:[...document.querySelectorAll('.classic-cell.is-cross')].map(cell=>Number(cell.dataset.index)),completed:saved.completed}})()`);
     assert.deepEqual(results.temporaryConflictPreserved,{cats:[0,1],crosses:[2],completed:[7]});
 
@@ -52,7 +62,7 @@ async function connect(){
 
     await cdp.evaluate(`(()=>{const slider=document.querySelector('#classicLevel');slider.value='31';slider.dispatchEvent(new Event('input',{bubbles:true}));const cell=document.querySelector('.classic-cell');cell.click();return true})()`);await wait(350);
     results.saved=await cdp.evaluate(`JSON.parse(localStorage.getItem('catClassicProgressV1'))`);assert.equal(results.saved.current,30);assert.ok(results.saved.boards['30'].crosses.length===1);
-    await cdp.send('Page.reload',{ignoreCache:true});await wait(700);await cdp.evaluate(`document.querySelector('#chooseClassic').click()`);await wait(100);
+    await cdp.send('Page.reload',{ignoreCache:true});await wait(700);await cdp.evaluate(`document.querySelector('#continueClassic').click()`);await wait(100);
     results.restored=await cdp.evaluate(`(()=>({progress:document.querySelector('#classicProgress').textContent,crosses:document.querySelectorAll('.classic-cell.is-cross').length}))()`);
     assert.equal(results.restored.progress.trim(),'31 / 300');assert.equal(results.restored.crosses,1);
 

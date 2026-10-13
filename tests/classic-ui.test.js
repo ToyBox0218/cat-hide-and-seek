@@ -33,3 +33,11 @@ test('classic lifecycle cancels gestures and hints never mutate or schedule a mo
   assert.match(app,/function load\([^]*?cancelGestures\(\);state\.viewEpoch\+\+/);
   assert.match(app,/已恢復.*個標記/);assert.match(app,/全新關卡/);
 });
+
+test('classic entry makes new game and resume explicit without guessing legacy mark ownership',()=>{
+  const app=fs.readFileSync(path.join(ROOT,'classic-app.js'),'utf8'),css=fs.readFileSync(path.join(ROOT,'classic.css'),'utf8');
+  assert.match(app,/id="continueClassic"/);assert.match(app,/function startNew\(\)/);assert.match(app,/function resume\(\)/);
+  assert.match(app,/localStorage\.removeItem\(storeKey\)/);assert.match(app,/確認清除並開始/);assert.match(app,/state\.newGameArmed/);
+  assert.match(app,/facts\.hasProgress/);assert.match(app,/目前沒有可繼續的進度/);
+  assert.match(css,/\.classic-entry\{/);assert.match(css,/\.classic-cell:is\(\.cat,\.note\)\{background-color:var\(--bg/);
+});
