@@ -1,11 +1,11 @@
 /* Five-minute, host-authoritative cat survival. No DOM, transport or hidden data in snapshots. */
 (function (root, factory) {
-  const node = typeof module === 'object' && module.exports;
+  const node = typeof module === 'object' && module.exports && typeof require === 'function';
   const api = factory(root, node ? require('./battle-engine.js') : root.CatBattle,
-    node ? require('node:crypto').webcrypto : null);
+    node ? require('node:crypto').webcrypto : null,node ? require('./puzzle-pools.js') : root.CatPuzzlePools);
   if (node) module.exports = api;
   else root.CatSurvival = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (root, Battle, nodeCrypto) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (root, Battle, nodeCrypto, PuzzlePools) {
   'use strict';
 
   const SIZE = 6, CELLS = 36, MIN_PLAYERS = 2, MAX_PLAYERS = 4;
@@ -35,7 +35,11 @@
   }
   function uniqueId(prefix) { return `${prefix}-${(++sequence).toString(36)}-${cryptoWord().toString(36)}`; }
   function settings(input) {
-    return {mode:'survival', size:SIZE, capacity:MAX_PLAYERS};
+    input=input||{};const difficulty=PuzzlePools&&PuzzlePools.TIERS.includes(input.difficulty)?input.difficulty:'normal';
+    return {mode:'survival', size:null, capacity:MAX_PLAYERS,difficulty,
+      packVersion:typeof input.packVersion==='string'?input.packVersion:null,
+      poolVersion:typeof input.poolVersion==='string'?input.poolVersion:null,
+      roundSeed:typeof input.roundSeed==='string'?input.roundSeed:null};
   }
   function isAuthority(game) { return !!game && contexts.has(game); }
   function time(game, at) {
@@ -91,24 +95,36 @@
     record(game, 'countdown', at, {removedIds});
     return true;
   }
+  function validSelectedPuzzle(puzzle){
+    const size=puzzle?.size,regions=puzzle?.regions,solution=puzzle?.solution;
+    if(!Number.isInteger(size)||size<4||size>15||!Array.isArray(regions)||regions.length!==size*size||!Array.isArray(solution)||solution.length!==size)return false;
+    if(new Set(regions).size!==size||regions.some(value=>!Number.isInteger(value)||value<0||value>=size))return false;
+    for(let left=0;left<solution.length;left++)for(let right=left+1;right<solution.length;right++){
+      const a=solution[left],b=solution[right],ar=Math.floor(a/size),ac=a%size,br=Math.floor(b/size),bc=b%size;
+      if(ar===br||ac===bc||regions[a]===regions[b]||Math.abs(ar-br)<=1&&Math.abs(ac-bc)<=1)return false;
+    }
+    return true;
+  }
   function makeBoard(game, number, previous) {
     const context = contexts.get(game);
-    const currentSolutions = game.boards.map(board => Battle.solutionPattern(board.puzzle.solution));
-    const puzzle = context.makePuzzle({
-      rng:context.rng || (() => cryptoWord() / 0x100000000),
-      avoidSolutions:context.history.patterns.slice(), avoidBoards:context.history.boards.slice(), currentSolutions
-    });
-    const validation = Battle.validatePuzzle(puzzle);
+    const lane=previous?previous.selection?.lane??game.boards.indexOf(previous):game.boards.length,selection=context.puzzleSequence?context.puzzleSequence.at(number-1,lane):null;
+    const currentSolutions = game.boards.map(board => Battle.solutionPattern(board.puzzle.solution,board.puzzle.size));
+    const puzzle = selection?selection.puzzle:context.makePuzzle({rng:context.rng || (() => cryptoWord() / 0x100000000),avoidSolutions:context.history.patterns.slice(), avoidBoards:context.history.boards.slice(), currentSolutions});
+    const validation = selection?{valid:validSelectedPuzzle(puzzle),errors:['Invalid catalog puzzle.']} : Battle.validatePuzzle(puzzle,{logical:true});
     if (!validation.valid) throw new Error(`Invalid survival puzzle: ${validation.errors.join(' ')}`);
-    const pattern = Battle.solutionPattern(puzzle.solution), key = Battle.boardKey(puzzle.regions);
-    if (currentSolutions.includes(pattern)) throw new Error('Survival boards must have different current answers.');
-    if (context.history.boards.includes(key)) throw new Error('Survival puzzle repeated a recent board.');
-    context.history.patterns.push(pattern); context.history.boards.push(key);
-    if (context.history.patterns.length > HISTORY_LIMIT) context.history.patterns.shift();
-    if (context.history.boards.length > HISTORY_LIMIT) context.history.boards.shift();
+    const pattern = Battle.solutionPattern(puzzle.solution,puzzle.size), key = Battle.boardKey(puzzle.regions);
+    if(!selection){
+      if (currentSolutions.includes(pattern)) throw new Error('Survival boards must have different current answers.');
+      if (context.history.boards.includes(key)) throw new Error('Survival puzzle repeated a recent board.');
+      context.history.patterns.push(pattern); context.history.boards.push(key);
+      if (context.history.patterns.length > HISTORY_LIMIT) context.history.patterns.shift();
+      if (context.history.boards.length > HISTORY_LIMIT) context.history.boards.shift();
+    }
     return {
-      puzzle:{id:uniqueId('survival-board'), size:SIZE, regions:puzzle.regions.slice(), solution:puzzle.solution.slice()},
+      puzzle:{id:uniqueId('survival-board'), size:puzzle.size, regions:puzzle.regions.slice(), solution:puzzle.solution.slice()},
+      selection:selection?{packVersion:selection.packVersion,poolVersion:selection.poolVersion,tier:selection.tier,epoch:selection.epoch,cursor:selection.cursor,lane:selection.lane,cohort:selection.cohort,size:selection.size,techniqueRank:selection.techniqueRank,reasoningLoad:selection.reasoningLoad,levelId:selection.levelId,puzzleFingerprint:selection.puzzleFingerprint,givensFingerprint:selection.givensFingerprint,scoringEligible:selection.scoringEligible}:null,
       found:[], misses:[], number, missStreak:previous ? previous.missStreak : 0,
+      feedbackStreak:previous ? previous.feedbackStreak || 0 : 0,
       cooldownUntil:previous ? previous.cooldownUntil : 0,
       cooldownStartedAt:previous ? previous.cooldownStartedAt : null,
       cooldownKind:previous ? previous.cooldownKind : null,
@@ -118,6 +134,7 @@
   function create(input, players, options) {
     if (!Battle || typeof Battle.generatePuzzle !== 'function') throw new Error('CatBattle must load before CatSurvival.');
     options = options || {};
+    if (typeof options.makePuzzle !== 'function' && (!PuzzlePools || typeof PuzzlePools.create !== 'function')) throw new Error('Multiplayer puzzle pools must load before CatSurvival.');
     const now = typeof options.now === 'function' ? options.now : null;
     const initialTime = now ? now() : options.now == null ? Date.now() : options.now;
     if (typeof initialTime !== 'number' || !Number.isFinite(initialTime) || initialTime < 0) throw new Error('Invalid survival creation time.');
@@ -127,9 +144,12 @@
       lobbyStartedAt:null, lobbyDeadline:null,
       endAt:null, endedAt:null, endReason:null, checkpoint:0, lastEvent:null, events:[], _lastNow:initialTime
     };
+    const roundSeed=typeof input?.roundSeed==='string'&&input.roundSeed?input.roundSeed:uniqueId('round'),puzzleSequence=typeof options.makePuzzle==='function'?null:PuzzlePools.create({tier:game.settings.difficulty,matchId:game.id,roundSeed,packVersion:input?.packVersion,poolVersion:input?.poolVersion});
+    if(puzzleSequence){game.settings.packVersion=puzzleSequence.packVersion;game.settings.poolVersion=puzzleSequence.poolVersion;game.settings.roundSeed=roundSeed;}
     contexts.set(game, {
       now, rng:typeof options.rng === 'function' ? options.rng : null,
       makePuzzle:typeof options.makePuzzle === 'function' ? options.makePuzzle : Battle.generatePuzzle,
+      puzzleSequence,
       history:{patterns:[], boards:[]}, boardActions:[], actionIds:[]
     });
     for (const profile of players || []) {
@@ -288,7 +308,7 @@
     if (action.boardId !== board.puzzle.id) return rejected('stale-board');
     const scopedId = JSON.stringify([id, action.actionId]);
     if (context.actionIds.includes(scopedId) || context.boardActions[who].has(action.actionId)) return rejected('duplicate');
-    if (!Number.isInteger(action.index) || action.index < 0 || action.index >= CELLS) return rejected('invalid-cell');
+    if (!Number.isInteger(action.index) || action.index < 0 || action.index >= board.puzzle.size*board.puzzle.size) return rejected('invalid-cell');
     if (board.found.includes(action.index) || board.misses.includes(action.index)) return rejected('resolved-cell');
     if (stamp < board.cooldownUntil) return rejected('cooldown');
 
@@ -301,17 +321,19 @@
     let type;
     if (!board.puzzle.solution.includes(action.index)) {
       type = 'miss'; player.errors++;
+      board.feedbackStreak = 0; fields.feedbackTier = 0;
       board.missStreak = Math.min(Number.MAX_SAFE_INTEGER, board.missStreak + 1);
       board.cooldownDuration = Math.min(MAX_MISS_COOLDOWN, MISS_COOLDOWN * board.missStreak);
       board.cooldownKind = 'miss'; board.misses.push(action.index); fields.misses.push(action.index);
     } else {
       type = 'hit'; board.missStreak = 0; board.cooldownDuration = HIT_COOLDOWN; board.cooldownKind = 'hit';
+      board.feedbackStreak = Math.min(5,(board.feedbackStreak || 0) + 1); fields.feedbackTier = board.feedbackStreak;
       board.found.push(action.index); player.score++; fields.found.push(action.index);
     }
     board.cooldownUntil = stamp + board.cooldownDuration;
     fields.score = player.score; fields.errors = player.errors;
     fields.missStreak = board.missStreak; fields.cooldownDuration = board.cooldownDuration;
-    if (board.found.length === SIZE) {
+    if (board.found.length === board.puzzle.size) {
       game.boards[who] = makeBoard(game, board.number + 1, board);
       context.boardActions[who] = new Set();
       // No replacement target on the next board until the next minute begins.
@@ -320,28 +342,31 @@
     const event = record(game, type, stamp, fields);
     return {accepted:true, event:publicEvent(event)};
   }
-  function publicEvent(event) {
+  function publicEvent(event,viewerId) {
     if (!event || typeof event !== 'object') return null;
     const result = {};
     for (const key of ['id','sequence','type','at','playerId','who','index','boardId','boardNumber','ready','connected',
-      'advanced','score','errors','missStreak','cooldownDuration','checkpoint','quota','reason']) {
+      'advanced','score','errors','feedbackTier','missStreak','cooldownDuration','checkpoint','quota','reason']) {
+      if(typeof viewerId==='string'&&event.playerId!==viewerId&&(key==='index'||key==='boardId'))continue;
       if (Object.prototype.hasOwnProperty.call(event,key) && ['string','number','boolean'].includes(typeof event[key])) result[key] = event[key];
     }
     for (const key of ['winnerIds','eliminatedIds','retiredIds','removedIds']) {
       if (Array.isArray(event[key])) result[key] = event[key].filter(value => typeof value === 'string');
     }
     for (const key of ['found','misses']) {
+      if(typeof viewerId==='string'&&event.playerId!==viewerId)continue;
       if (Array.isArray(event[key])) result[key] = event[key].filter(value => Number.isInteger(value) && value >= 0 && value < CELLS);
     }
     return result;
   }
-  function publicGame(game, at) {
+  function publicGame(game, at, viewerId) {
     if (!game) return null;
     const serverTime = time(game, at) ?? Math.max(game._lastNow || 0, Date.now());
     const elapsed = game.startedAt === null ? 0 : Math.max(0, Math.min(MATCH_DURATION, (game.endedAt === null ? serverTime : game.endedAt) - game.startedAt));
     // Explicit nested projections keep future authority fields private by default.
+    const viewer=typeof viewerId==='string'?game.players.findIndex(player=>player.id===viewerId):-1;
     return {
-      id:game.id, settings:settings(game.settings), status:game.status, revision:game.revision,
+      id:game.id, viewerId:viewer>=0?viewerId:null, settings:settings(game.settings), status:game.status, revision:game.revision,
       winner:game.winner, winnerIds:game.winnerIds.slice(), countdownStartedAt:game.countdownStartedAt,
       lobbyStartedAt:game.lobbyStartedAt, lobbyDeadline:game.lobbyDeadline, eligibleCount:eligibleCount(game),
       startAt:game.startAt, startedAt:game.startedAt, endAt:game.endAt, endedAt:game.endedAt, endReason:game.endReason,
@@ -353,13 +378,14 @@
         id:player.id, nickname:player.nickname, avatar:player.avatar, score:player.score, errors:player.errors,
         connected:player.connected, ready:player.ready, status:player.status, reason:player.reason, disconnectDeadline:player.disconnectDeadline
       })),
-      boards:game.boards.map(board => ({
-        puzzle:{id:board.puzzle.id, size:SIZE, regions:board.puzzle.regions.slice()},
-        found:board.found.slice(), misses:board.misses.slice(), number:board.number, missStreak:board.missStreak,
+      boards:game.boards.map((board,who) => ({
+        puzzle:viewer>=0&&who!==viewer?{size:board.puzzle.size}:{id:board.puzzle.id,size:board.puzzle.size,regions:board.puzzle.regions.slice()},
+        selection:viewer>=0&&who!==viewer?null:board.selection?{packVersion:board.selection.packVersion,poolVersion:board.selection.poolVersion,tier:board.selection.tier,epoch:board.selection.epoch,cursor:board.selection.cursor,lane:board.selection.lane,cohort:board.selection.cohort,size:board.selection.size,techniqueRank:board.selection.techniqueRank,reasoningLoad:board.selection.reasoningLoad,levelId:board.selection.levelId,puzzleFingerprint:board.selection.puzzleFingerprint,givensFingerprint:board.selection.givensFingerprint,scoringEligible:board.selection.scoringEligible}:null,
+        found:viewer>=0&&who!==viewer?[]:board.found.slice(), misses:viewer>=0&&who!==viewer?[]:board.misses.slice(),foundCount:board.found.length,missesCount:board.misses.length,number:board.number, feedbackStreak:board.feedbackStreak || 0, missStreak:board.missStreak,
         cooldownUntil:board.cooldownUntil, cooldownKind:board.cooldownKind,
         cooldownDuration:board.cooldownDuration, cooldownStartedAt:board.cooldownStartedAt
       })),
-      lastEvent:publicEvent(game.lastEvent), events:game.events.slice(-EVENT_HISTORY_LIMIT).map(publicEvent)
+      lastEvent:publicEvent(game.lastEvent,viewerId), events:game.events.slice(-EVENT_HISTORY_LIMIT).map(event=>publicEvent(event,viewerId))
     };
   }
   return Object.freeze({create, addPlayer, setReady, setConnected, start, advance, act, abort, publicGame, settings,

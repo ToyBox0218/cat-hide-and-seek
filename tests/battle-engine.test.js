@@ -18,7 +18,7 @@ function guess(value, who, index, now, actionId) {
     index,actionId:actionId || `test-${++actionSequence}`},now);
 }
 function cat(value,who = 0) { return value.boards[who].puzzle.solution.find(index => !value.boards[who].found.includes(index)); }
-function empty(value,who = 0) { return Array.from({length:36},(_,i) => i).find(index => !value.boards[who].puzzle.solution.includes(index) && !value.boards[who].misses.includes(index)); }
+function empty(value,who = 0) { const size=value.boards[who].puzzle.size;return Array.from({length:size*size},(_,i) => i).find(index => !value.boards[who].puzzle.solution.includes(index) && !value.boards[who].misses.includes(index)); }
 function seeded(seed) { return () => { seed = Math.imul(seed,1664525)+1013904223; return (seed >>> 0)/0x100000000; }; }
 
 // Independent reference solver: row-by-row DFS, not the engine's permutation table.
@@ -54,6 +54,8 @@ function assertConnectedRegions(puzzle) {
 
 test('UMD loads in a browser without Node or a DOM', () => {
   const context = {Math,Date,Map,Set,Uint32Array}; vm.createContext(context);
+  vm.runInContext(fs.readFileSync(require.resolve('../multiplayer-levels.js'),'utf8'),context);
+  vm.runInContext(fs.readFileSync(require.resolve('../puzzle-pools.js'),'utf8'),context);
   vm.runInContext(fs.readFileSync(require.resolve('../battle-engine.js'),'utf8'),context);
   assert.equal(typeof context.CatBattle.create,'function');
   assert.equal(context.CatBattle.create().boards.length,2);
@@ -79,20 +81,25 @@ test('1,080 generated puzzles are connected, minimum-three regions, valid and un
   assert.equal(firstCycle.size,90); assert.ok(geometries.size > 800);
 });
 
-test('fresh opponents receive different answers and layouts across 100 games', () => {
+test('fresh opponents receive distinct puzzles from the same fairness cohort', () => {
   for (let sample = 0; sample < 100; sample++) {
     const value = Battle.create();
-    assert.notEqual(Battle.solutionPattern(value.boards[0].puzzle.solution),Battle.solutionPattern(value.boards[1].puzzle.solution));
-    assert.notEqual(Battle.boardKey(value.boards[0].puzzle.regions),Battle.boardKey(value.boards[1].puzzle.regions));
+    assert.notEqual(value.boards[0].selection.levelId,value.boards[1].selection.levelId);
+    assert.equal(value.boards[0].selection.cohort,value.boards[1].selection.cohort);
+    assert.equal(value.boards[0].selection.techniqueRank,value.boards[1].selection.techniqueRank);
+    assert.equal(value.boards[0].puzzle.size,value.boards[1].puzzle.size);
+    assert.notEqual(value.boards[0].puzzle.id,value.boards[1].puzzle.id);
+    assert.notDeepEqual(value.boards[0].selection,value.boards[1].selection);
     assert.equal(value.status,'lobby');
   }
 });
 
-test('settings are always battle 6×6 and HP defaults / limits are authoritative', () => {
+test('settings use a mixed-size puzzle sequence and HP defaults / limits are authoritative', () => {
   assert.equal(Battle.create().players[0].maxHP,150);
   for (const [requested,expected] of [[-10,50],[0,50],[1,50],[49,50],[50,50],[225,225],[499,499],[900,500]]) {
     const value = Battle.create({maxHP:requested,size:24,mode:'items',hitCooldown:0});
-    assert.deepEqual(value.settings,{mode:'battle',size:6,maxHP:expected,hp:expected});
+    assert.deepEqual({mode:value.settings.mode,size:value.settings.size,maxHP:value.settings.maxHP,hp:value.settings.hp,difficulty:value.settings.difficulty},{mode:'battle',size:null,maxHP:expected,hp:expected,difficulty:'normal'});
+    assert.equal(typeof value.settings.packVersion,'string');assert.equal(typeof value.settings.poolVersion,'string');assert.equal(typeof value.settings.roundSeed,'string');
     assert.deepEqual(value.players.map(p => [p.hp,p.maxHP]),[[expected,expected],[expected,expected]]);
   }
   assert.equal(Battle.create({hp:'abc'}).settings.hp,150);
@@ -198,23 +205,23 @@ test('disconnection and expired countdown pause never create a negative or prema
 });
 
 test('damage progresses 5, 10, 15 … 35, 40 and combo/HP persist into next board', () => {
-  const value = game(), original = value.boards[0].puzzle.id, opponentBoard = value.boards[1].puzzle.id;
+  const value = game(), original = value.boards[0].puzzle.id, opponentBoard = value.boards[1].puzzle.id,boardSize=value.boards[0].puzzle.size,totalHits=boardSize+2;
   let damage = 0;
-  for (let hit = 1; hit <= 8; hit++) {
+  for (let hit = 1; hit <= totalHits; hit++) {
     const result = guess(value,0,cat(value),PLAY_AT+hit*300);
     assert.equal(result.accepted,true); assert.equal(result.event.damage,5*hit);
     damage += 5*hit; assert.equal(value.players[1].hp,500-damage);
     assert.equal(value.players[0].hp,500); assert.equal(value.boards[0].combo,hit);
     assert.equal(value.boards[1].puzzle.id,opponentBoard);
-    if (hit === 6) {
+    if (hit === boardSize) {
       assert.equal(result.event.advanced,true); assert.equal(value.boards[0].number,2);
       assert.notEqual(value.boards[0].puzzle.id,original); assert.deepEqual(value.boards[0].found,[]);
-      assert.deepEqual(value.boards[0].misses,[]); assert.equal(value.boards[0].cooldownUntil,PLAY_AT+2100);
-      assert.equal(value.boards[0].cooldownKind,'hit'); assert.equal(value.boards[0].cooldownStartedAt,PLAY_AT+1800);
+      assert.deepEqual(value.boards[0].misses,[]); assert.equal(value.boards[0].cooldownUntil,PLAY_AT+(hit+1)*300);
+      assert.equal(value.boards[0].cooldownKind,'hit'); assert.equal(value.boards[0].cooldownStartedAt,PLAY_AT+hit*300);
       assert.equal(value.boards[0].missStreak,0); assert.equal(value.boards[0].cooldownDuration,300);
     }
   }
-  assert.equal(value.players[1].hp,320); assert.equal(value.boards[0].found.length,2);
+  assert.equal(value.players[1].hp,500-5*totalHits*(totalHits+1)/2); assert.equal(value.boards[0].found.length,2);
 });
 
 test('players act simultaneously with separate boards and cooldowns', () => {
@@ -315,7 +322,7 @@ test('duplicate, resolved, stale, invalid and rejected actions never change a pe
 test('the clearing hit resets penalty streak while combo, HP and hit lock cross boards', () => {
   const value = game(), originalBoard = value.boards[0].puzzle.id;
   let at = PLAY_AT;
-  for (let i = 0; i < 5; i++) { guess(value,0,cat(value),at); at += 300; }
+  for (let i = 0; i < value.boards[0].puzzle.solution.length-1; i++) { guess(value,0,cat(value),at); at += 300; }
   assert.equal(guess(value,0,empty(value),at).event.cooldownDuration,2000); at += 2000;
   assert.equal(guess(value,0,empty(value),at).event.cooldownDuration,4000); at += 4000;
   const health = value.players[1].hp, hit = guess(value,0,cat(value),at);
@@ -329,13 +336,13 @@ test('the clearing hit resets penalty streak while combo, HP and hit lock cross 
 
 test('clearing all empty cells does not replace a board or award a victory', () => {
   const value = game(), original = value.boards[0].puzzle.id;
-  const empties = Array.from({length:36},(_,i) => i).filter(i => !value.boards[0].puzzle.solution.includes(i));
+  const cells=value.boards[0].puzzle.size**2,empties = Array.from({length:cells},(_,i) => i).filter(i => !value.boards[0].puzzle.solution.includes(i));
   let at = PLAY_AT;
   empties.forEach(index => {
     assert.equal(guess(value,0,index,at).accepted,true); at = value.boards[0].cooldownUntil;
   });
   assert.equal(value.boards[0].puzzle.id,original); assert.equal(value.boards[0].number,1);
-  assert.equal(value.boards[0].found.length,0); assert.equal(value.boards[0].misses.length,30);
+  assert.equal(value.boards[0].found.length,0); assert.equal(value.boards[0].misses.length,cells-value.boards[0].puzzle.size);
   assert.equal(value.status,'playing'); assert.equal(value.players[1].hp,500);
 });
 
@@ -353,12 +360,12 @@ test('first lethal arrival wins; HP clamps to zero and later competing hits cann
 });
 
 test('invalid messages, invalid actors and missing board/action IDs never change authority state', () => {
-  const value = game(), boardId = value.boards[0].puzzle.id, index = cat(value);
+  const value = game(), boardId = value.boards[0].puzzle.id, index = cat(value), cellCount = value.boards[0].puzzle.size ** 2;
   const baseline = JSON.stringify(value);
   const badActions = [null,{}, {type:'item',actionId:'a',boardId,index}, {type:'guess',boardId,index},
     {type:'guess',actionId:'',boardId,index}, {type:'guess',actionId:'x'.repeat(129),boardId,index},
     {type:'guess',actionId:'a',index}, {type:'guess',actionId:'a',boardId:'old',index},
-    ...[-1,36,2.5,'2',NaN,Infinity,null].map(cell => ({type:'guess',actionId:'a',boardId,index:cell}))];
+    ...[-1,cellCount,2.5,'2',NaN,Infinity,null].map(cell => ({type:'guess',actionId:'a',boardId,index:cell}))];
   for (const action of badActions) assert.equal(Battle.act(value,0,action,PLAY_AT+1000).accepted,false);
   for (const who of [-1,2,'0',null,undefined]) assert.equal(Battle.act(value,who,{type:'guess',actionId:'a',boardId,index},PLAY_AT+1000).accepted,false);
   for (const time of [NaN,Infinity,-1,'1000']) assert.equal(Battle.act(value,0,{type:'guess',actionId:'a',boardId,index},time).accepted,false);
@@ -380,7 +387,7 @@ test('duplicate IDs, repeated cells, and replay after board replacement cannot d
   assert.equal(Battle.act(value,0,first,PLAY_AT+300).reason,'duplicate');
   assert.equal(Battle.act(value,0,{...first,index:cat(value)},PLAY_AT+300).reason,'duplicate');
   assert.equal(Battle.act(value,0,{...first,actionId:'other'},PLAY_AT+300).reason,'resolved-cell');
-  for (let i = 1; i < 6; i++) guess(value,0,cat(value),PLAY_AT+i*300);
+  for (let i = 1; i < value.boards[0].puzzle.solution.length; i++) guess(value,0,cat(value),PLAY_AT+i*300);
   assert.notEqual(value.boards[0].puzzle.id,oldId);
   const hp = value.players[1].hp;
   assert.equal(Battle.act(value,0,first,PLAY_AT+2000).reason,'stale-board'); assert.equal(value.players[1].hp,hp);
@@ -553,14 +560,14 @@ test('public snapshot whitelists nested fields and has no solutions, histories, 
   value.boards[0].puzzle.secret = 'private'; value.lastEvent.solution = [1,2,3];
   const pub = Battle.publicGame(value,43210), json = JSON.stringify(pub);
   assert.equal(pub.serverTime,43210); assert.equal(pub.boards.length,2);
-  for (const forbidden of ['solution','actionIds','_boardActions','_history','_paused','_lastNow','private','notes','secret']) assert.ok(!json.includes(forbidden),forbidden);
+  for (const forbidden of ['solution','actionIds','_boardActions','_history','_paused','_lastNow','notes','secret']) assert.ok(!json.includes(forbidden),forbidden);
   assert.deepEqual(pub.boards[0].found,value.boards[0].found); assert.deepEqual(pub.boards[1].puzzle.regions,value.boards[1].puzzle.regions);
   pub.boards[0].puzzle.regions[0] = 99; pub.boards[0].found.push(99); pub.players[0].hp = 0;
   assert.notEqual(value.boards[0].puzzle.regions[0],99); assert.ok(!value.boards[0].found.includes(99)); assert.equal(value.players[0].hp,500);
   assert.equal(Battle.act(Battle.publicGame(value),0,{type:'guess',actionId:'x',boardId:value.boards[0].puzzle.id,index:cat(value)},PLAY_AT+2000).reason,'not-authority');
 });
 
-test('validator rejects disconnected / too-small regions, touching cats, and ambiguous boards', () => {
+test('validator rejects disconnected or missing regions, touching cats, and ambiguous boards', () => {
   const valid = Battle.generatePuzzle({rng:seeded(44)});
   const missing = {...valid,regions:valid.regions.slice(1)}; assert.equal(Battle.validatePuzzle(missing).valid,false);
   const badLabels = {...valid,regions:valid.regions.map(() => 0)}; assert.equal(Battle.validatePuzzle(badLabels).valid,false);
@@ -654,14 +661,23 @@ test('a deterministic RNG still cannot repeat recent geometry after exhausting 9
   }
 });
 
-test('rematches can inherit puzzle history without inheriting progress or private action data', () => {
+test('rematches start a fresh authoritative sequence without inheriting progress or private action data', () => {
   const previous = game(); guess(previous,0,cat(previous),PLAY_AT,'old-action');
   guess(previous,1,empty(previous,1),PLAY_AT);
   const previousPatterns = previous._history.patterns.slice(), next = Battle.create(previous.settings,previous.players,previous);
   assert.equal(next.status,'lobby'); assert.deepEqual(next.players.map(p => p.hp),[500,500]);
   assert.deepEqual(next.boards.map(b => b.combo),[0,0]); assert.deepEqual(next.actionIds,[]);
   assert.deepEqual(next.boards.map(b => [b.missStreak,b.cooldownDuration]),[[0,0],[0,0]]);
-  assert.ok(next.boards.every(b => !previousPatterns.includes(Battle.solutionPattern(b.puzzle.solution))));
-  assert.equal(next._history.patterns.length,previousPatterns.length+2);
+  assert.notEqual(next.boards[0].selection.levelId,next.boards[1].selection.levelId);
+  assert.equal(next.boards[0].selection.cohort,next.boards[1].selection.cohort);
+  assert.equal(next._history.patterns.length,previousPatterns.length);
   assert.equal(previous._history.patterns.length,previousPatterns.length);
+});
+
+test('per-recipient battle snapshots expose only the viewer board and aggregate opponent progress',()=>{
+  const value=game(),target=cat(value,1);guess(value,1,target,PLAY_AT,'private-hit');
+  const host=Battle.publicGame(value,PLAY_AT,0),guest=Battle.publicGame(value,PLAY_AT,1);
+  assert.ok(Array.isArray(host.boards[0].puzzle.regions));assert.equal(host.boards[1].puzzle.regions,undefined);assert.equal(host.boards[1].selection,null);
+  assert.deepEqual(host.boards[1].found,[-1]);assert.equal(host.boards[1].foundCount,1);assert.equal(host.lastEvent.index,undefined);
+  assert.ok(Array.isArray(guest.boards[1].puzzle.regions));assert.equal(guest.boards[0].puzzle.regions,undefined);
 });

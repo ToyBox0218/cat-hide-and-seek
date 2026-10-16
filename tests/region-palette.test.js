@@ -152,3 +152,12 @@ test('invalid region data fails explicitly rather than recycling or silently ass
   const sparse = stripes(6); delete sparse.regions[0];
   assert.throws(() => Palette.build(sparse), /complete/);
 });
+
+test('mixed multiplayer region counts receive complete deterministic palettes', () => {
+  for (const size of [4,5,7,8,9,10,11,13,14,15]) {
+    const puzzle=stripes(size), palette=Palette.build(puzzle);
+    assert.equal(palette.length,size);
+    assert.equal(new Set(palette).size,size);
+    assert.deepEqual(palette,Palette.build(JSON.parse(JSON.stringify(puzzle))));
+  }
+});

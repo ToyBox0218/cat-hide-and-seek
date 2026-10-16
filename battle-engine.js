@@ -1,9 +1,10 @@
 /* Cat battle authority and independently generated 6×6 puzzles. No DOM or transport. */
 (function (root, factory) {
-  const api = factory(root);
+  const node = typeof module === 'object' && module.exports && typeof require === 'function';
+  const api = factory(root, node ? require('./puzzle-pools.js') : root.CatPuzzlePools);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CatBattle = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (root, PuzzlePools) {
   'use strict';
 
   const SIZE = 6, CELLS = SIZE * SIZE, HIT_COOLDOWN = 300, MISS_COOLDOWN = 2000, OPENING_COUNTDOWN = 3000;
@@ -121,7 +122,7 @@
     return copy;
   }
   function uniqueId(prefix) { return `${prefix}-${Date.now().toString(36)}-${(++sequence).toString(36)}-${Math.floor(random()*0x100000000).toString(36)}`; }
-  function pattern(solution) { return solution.slice().sort((a,b) => a-b).map(index => index % SIZE).join(''); }
+  function pattern(solution,size=SIZE) { return solution.slice().sort((a,b) => a-b).map(index => index % size).join(','); }
   function boardKey(regions) {
     const labels = new Map();
     return regions.map(region => {
@@ -296,7 +297,7 @@
     }
     return seen.size === cells.length;
   }
-  function validatePuzzle(puzzle) {
+  function validatePuzzle(puzzle,options) {
     const errors = [];
     if (!puzzle || puzzle.size !== SIZE || !Array.isArray(puzzle.regions) || puzzle.regions.length !== CELLS) {
       return {valid:false, errors:['Puzzle must have a 6×6 region grid.'], solutionCount:0};
@@ -306,7 +307,7 @@
       return {valid:false, errors:['Region labels must be integers 0–5.'], solutionCount:0};
     }
     for (let region = 0; region < SIZE; region++) {
-      if (regions.filter(value => value === region).length < 3) errors.push(`Region ${region} has fewer than three cells.`);
+      if (regions.filter(value => value === region).length < 1) errors.push(`Region ${region} is empty.`);
       if (!regionConnected(regions,region)) errors.push(`Region ${region} is disconnected.`);
     }
     const solution = puzzle.solution;
@@ -325,7 +326,7 @@
     }
     const solutionCount = countSolutions(regions,2);
     if (solutionCount !== 1) errors.push('Puzzle does not have exactly one solution.');
-    else if (!solveLogically(regions).solved) errors.push('Puzzle lacks a non-guess logical deduction proof.');
+    else if (options?.logical!==false&&!solveLogically(regions).solved) errors.push('Puzzle lacks a non-guess logical deduction proof.');
     return {valid:errors.length === 0, errors, solutionCount};
   }
   function varyRegions(base, rng) {
@@ -409,19 +410,20 @@
     input = input || {};
     const requested = Number(input.maxHP == null ? input.hp : input.maxHP);
     const maxHP = Number.isFinite(requested) ? Math.round(Math.max(50,Math.min(500,requested))) : 150;
-    return {mode:'battle', size:SIZE, maxHP, hp:maxHP};
+    const difficulty=PuzzlePools&&PuzzlePools.TIERS.includes(input.difficulty)?input.difficulty:'normal';
+    return {mode:'battle', size:null, maxHP, hp:maxHP, difficulty,
+      packVersion:typeof input.packVersion==='string'?input.packVersion:null,
+      poolVersion:typeof input.poolVersion==='string'?input.poolVersion:null,
+      roundSeed:typeof input.roundSeed==='string'?input.roundSeed:null};
   }
-  function makeBoard(game, number, combo) {
-    const currentSolutions = game.boards.filter(Boolean).map(board => pattern(board.puzzle.solution));
-    const puzzle = generatePuzzle({avoidSolutions:game._history.patterns, avoidBoards:game._history.boards, currentSolutions});
-    game._history.patterns.push(pattern(puzzle.solution));
-    game._history.boards.push(boardKey(puzzle.regions));
-    if (game._history.patterns.length > HISTORY_LIMIT) game._history.patterns.shift();
-    if (game._history.boards.length > HISTORY_LIMIT) game._history.boards.shift();
+  function makeBoard(game, number, combo, who) {
+    const selection=game._puzzleSequence.at(number-1,who),source=selection.puzzle,puzzle={...source,id:`${source.id}:p${who}`};
     return {puzzle, found:[], misses:[], number, combo, missStreak:0,
+      selection:{packVersion:selection.packVersion,poolVersion:selection.poolVersion,tier:selection.tier,epoch:selection.epoch,cursor:selection.cursor,lane:selection.lane,cohort:selection.cohort,size:selection.size,techniqueRank:selection.techniqueRank,reasoningLoad:selection.reasoningLoad,levelId:selection.levelId,puzzleFingerprint:selection.puzzleFingerprint,givensFingerprint:selection.givensFingerprint,scoringEligible:selection.scoringEligible},
       cooldownUntil:0, cooldownStartedAt:null, cooldownKind:null, cooldownDuration:0};
   }
   function create(input, players, previousGame) {
+    if(!PuzzlePools||typeof PuzzlePools.create!=='function')throw new Error('Multiplayer puzzle pools must load before CatBattle.');
     const clean = settings(input), game = {
       id:uniqueId('battle'), settings:clean,
       players:[0,1].map(who => {
@@ -434,12 +436,15 @@
       lastEvent:null, actionIds:[], _boardActions:[[],[]], _history:{patterns:[],boards:[]},
       _pausedCooldowns:null, _pausedFrom:null, _pausedCountdown:null, _lastNow:0
     };
+    const roundSeed=typeof input?.roundSeed==='string'&&input.roundSeed?input.roundSeed:uniqueId('round');
+    game._puzzleSequence=PuzzlePools.create({tier:clean.difficulty,matchId:game.id,roundSeed,packVersion:input?.packVersion,poolVersion:input?.poolVersion});
+    game.settings.packVersion=game._puzzleSequence.packVersion;game.settings.poolVersion=game._puzzleSequence.poolVersion;game.settings.roundSeed=roundSeed;
     if (previousGame && previousGame._history) {
       const previous = previousGame._history;
       game._history.patterns = (Array.isArray(previous.patterns) ? previous.patterns : []).filter(key => getCatalog().has(key)).slice(-HISTORY_LIMIT);
       game._history.boards = (Array.isArray(previous.boards) ? previous.boards : []).filter(key => typeof key === 'string' && /^[0-5]{36}$/.test(key)).slice(-HISTORY_LIMIT);
     }
-    game.boards.push(makeBoard(game,1,0)); game.boards.push(makeBoard(game,1,0));
+    game.boards.push(makeBoard(game,1,0,0)); game.boards.push(makeBoard(game,1,0,1));
     return game;
   }
   function time(game, now) {
@@ -533,7 +538,7 @@
     if (action.boardId !== board.puzzle.id) return rejected('stale-board');
     const scopedId = `${who}:${action.actionId}`;
     if (game.actionIds.includes(scopedId) || game._boardActions[who].includes(action.actionId)) return rejected('duplicate');
-    if (!Number.isInteger(action.index) || action.index < 0 || action.index >= CELLS) return rejected('invalid-cell');
+    if (!Number.isInteger(action.index) || action.index < 0 || action.index >= board.puzzle.size*board.puzzle.size) return rejected('invalid-cell');
     // Only opened cells are resolved. Deductions never prevent a player's guess.
     if (board.found.includes(action.index) || board.misses.includes(action.index)) return rejected('resolved-cell');
     const at = time(game,now); if (at === null) return rejected('invalid-time');
@@ -563,8 +568,8 @@
       Object.assign(event,{type:'hit', damage, combo:board.combo, advanced:false});
       if (opponent.hp === 0) {
         game.status = 'finished'; game.winner = who; game.endedAt = at; event.winner = who;
-      } else if (board.found.length === SIZE) {
-        const next = makeBoard(game,board.number+1,board.combo);
+      } else if (board.found.length === board.puzzle.size) {
+        const next = makeBoard(game,board.number+1,board.combo,who);
         next.cooldownUntil = board.cooldownUntil; next.cooldownStartedAt = board.cooldownStartedAt;
         next.cooldownKind = board.cooldownKind; next.cooldownDuration = board.cooldownDuration;
         game.boards[who] = next;
@@ -575,21 +580,22 @@
     game.lastEvent = event;
     return {accepted:true, event:{...event}};
   }
-  function publicEvent(event) {
+  function publicEvent(event,viewerWho) {
     if (!event || typeof event !== 'object') return null;
     const result = {};
     for (const key of ['id','sequence','type','who','index','boardId','boardNumber','at','damage','combo','advanced','winner','reason','missStreak','cooldownDuration']) {
+      if(Number.isInteger(viewerWho)&&event.who!==viewerWho&&(key==='index'||key==='boardId'))continue;
       if (Object.prototype.hasOwnProperty.call(event,key) && ['string','number','boolean'].includes(typeof event[key])) result[key] = event[key];
     }
     return result;
   }
-  function publicGame(game, now) {
+  function publicGame(game, now, viewerWho) {
     if (!game) return null;
     const serverTime = time(game,now) ?? time(game,Date.now());
     // Deliberately no object spreads from private state: adding future authority
     // fields cannot accidentally disclose answers, histories, notes or action IDs.
     return {
-      id:game.id, settings:settings(game.settings), status:game.status, winner:game.winner,
+      id:game.id, viewer:Number.isInteger(viewerWho)?viewerWho:null, settings:settings(game.settings), status:game.status, winner:game.winner,
       revision:game.revision, startedAt:game.startedAt, pausedAt:game.pausedAt, endedAt:game.endedAt, serverTime,
       startAt:Number.isFinite(game.startAt) ? game.startAt : null,
       countdownStartedAt:Number.isFinite(game.countdownStartedAt) ? game.countdownStartedAt : null,
@@ -599,15 +605,17 @@
         game.status === 'countdown' && Number.isFinite(game.startAt) ? Math.max(0,game.startAt-serverTime) : 0,
       players:game.players.map(player => ({nickname:player.nickname, avatar:player.avatar, hp:player.hp,
         maxHP:player.maxHP, cats:player.cats, connected:player.connected})),
-      boards:game.boards.map(board => ({
-        puzzle:{id:board.puzzle.id, size:SIZE, regions:board.puzzle.regions.slice()},
-        found:board.found.slice(), misses:board.misses.slice(), number:board.number,
+      boards:game.boards.map((board,who) => ({
+        puzzle:Number.isInteger(viewerWho)&&who!==viewerWho?{size:board.puzzle.size}:{id:board.puzzle.id,size:board.puzzle.size,regions:board.puzzle.regions.slice()},
+        selection:Number.isInteger(viewerWho)&&who!==viewerWho?null:{packVersion:board.selection.packVersion,poolVersion:board.selection.poolVersion,tier:board.selection.tier,epoch:board.selection.epoch,cursor:board.selection.cursor,lane:board.selection.lane,cohort:board.selection.cohort,size:board.selection.size,techniqueRank:board.selection.techniqueRank,reasoningLoad:board.selection.reasoningLoad,levelId:board.selection.levelId,puzzleFingerprint:board.selection.puzzleFingerprint,givensFingerprint:board.selection.givensFingerprint,scoringEligible:board.selection.scoringEligible},
+        found:Number.isInteger(viewerWho)&&who!==viewerWho?Array(board.found.length).fill(-1):board.found.slice(), misses:Number.isInteger(viewerWho)&&who!==viewerWho?Array(board.misses.length).fill(-1):board.misses.slice(),
+        foundCount:board.found.length,missesCount:board.misses.length,number:board.number,
         combo:board.combo, missStreak:missStreak(board), cooldownUntil:board.cooldownUntil,
         cooldownDuration:cooldownDuration(board),
         cooldownStartedAt:Number.isFinite(board.cooldownStartedAt) ? board.cooldownStartedAt : null,
         cooldownKind:['hit','miss'].includes(board.cooldownKind) ? board.cooldownKind : null
       })),
-      lastEvent:publicEvent(game.lastEvent)
+      lastEvent:publicEvent(game.lastEvent,viewerWho)
     };
   }
   return Object.freeze({create, start, advance, pause, reconnect, abort, act, publicGame, generatePuzzle, validatePuzzle,

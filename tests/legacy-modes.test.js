@@ -206,7 +206,7 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
   context.window = context; documentOwner = context.document;
   for (const node of nodes.values()) node.ownerDocument = context.document;
   context.document.body.ownerDocument = context.document;
-  for (const filename of ['region-palette.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js', 'board-pointer-adapter.js']) {
+  for (const filename of ['region-palette.js', 'status-presenter.js', 'game-audio.js', 'cell-gestures.js', 'board-strokes.js', 'board-pointer-adapter.js']) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   }
   const audio = { calls: [], options: [], controllers: [], getState: () => audio.controllers.at(-1)?.getState() };
@@ -221,7 +221,7 @@ function harness({ mode = 'basic', size = 6, width = 1280, seed = 0x1873, battle
       } : value]));
     } };
   }
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-engine.js'), 'utf8'), context, { filename: 'battle-engine.js' });
+  for (const filename of ['multiplayer-levels.js','puzzle-pools.js','battle-engine.js']) vm.runInContext(fs.readFileSync(path.join(ROOT,filename),'utf8'),context,{filename});
   if (survival) for (const filename of ['survival-engine.js', 'survival-session.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, filename), 'utf8'), context, { filename });
   vm.runInContext(fs.readFileSync(APP_PATH, 'utf8'), context, { filename: APP_PATH });
   if (battleUI || survivalUI) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'battle-ui.js'), 'utf8'), context, { filename: 'battle-ui.js' });
@@ -783,14 +783,15 @@ function battleAction(h, who, extra = {}) {
     index: h.state.game.boards[who].puzzle.solution[0], ...extra });
 }
 
-test('battle newGame routes to the engine with independent six-cell-answer boards and lobby startup', () => {
+test('battle newGame routes to two independent matched-but-different authoritative puzzles', () => {
   const h = harness({ mode: 'battle', size: 24, battle: true });
   const game = h.newGame(24); h.state.game = game;
-  assert.equal(game.settings.mode, 'battle'); assert.equal(game.settings.size, 6); assert.equal(game.status, 'lobby');
+  assert.equal(game.settings.mode, 'battle'); assert.equal(game.settings.size, null); assert.equal(game.status, 'lobby');
   assert.equal(game.boards.length, 2); assert.equal(game.players[0].nickname, 'Test Cat');
   assert.equal(game.players[1].connected, false);
   assert.notEqual(game.boards[0].puzzle.id, game.boards[1].puzzle.id);
   assert.notDeepEqual(json(game.boards[0].puzzle.solution), json(game.boards[1].puzzle.solution));
+  assert.notEqual(game.boards[0].selection.levelId,game.boards[1].selection.levelId);assert.equal(game.boards[0].selection.cohort,game.boards[1].selection.cohort);
   h.onMessage({ type: 'hello', nickname: 'Guest Cat', avatar: 4 });
   assert.equal(game.status, 'lobby');
   h.onMessage({ type: 'battleReady', gameId: game.id });
@@ -938,14 +939,13 @@ test('offline practice preserves the same single shared center guidance', () => 
   assert.equal(h.get('.battle-center').children.filter(node => node === h.get('#battleGestureHint')).length, 1);
 });
 
-test('battle UI renders opponent cells read-only and preserves manual notes during hit cooldown', () => {
+test('battle UI hides opponent cells behind aggregate progress and preserves manual notes during hit cooldown', () => {
   const h = harness({ mode: 'battle', battle: true, battleUI: true }), game = h.begin();
   h.renderBattle();
   const own = h.get('.battle-side.local').querySelector('.battle-board');
   const opponent = h.get('.battle-side.opponent').querySelector('.battle-board');
-  assert.equal(own.children.length, 36); assert.equal(opponent.children.length, 36);
+  assert.equal(own.children.length, 36); assert.equal(opponent.querySelectorAll('.cell').length, 0);assert.equal(opponent.classList.contains('is-private'),true);
   assert.equal(own.children.every(cell => cell.tagName === 'BUTTON' && typeof cell.onclick === 'function'), true);
-  assert.equal(opponent.children.every(cell => cell.tagName === 'SPAN' && cell.onclick === undefined && cell.getAttribute('aria-readonly') === 'true'), true);
   game.boards[0].cooldownUntil = h.now() + 1000; game.boards[0].cooldownKind = 'hit'; singleClick(h, own.children[0]);
   assert.equal(h.state.notes.has(0), true); assert.equal(sentActions(h), 0); assert.equal(game.boards[0].found.length, 0);
   h.battleChoose(game.boards[0].puzzle.solution[0]);
@@ -1038,7 +1038,7 @@ for (const practice of [false, true]) test(`${practice ? 'offline practice' : 'b
 test('battle snapshots, stable rerenders and reconnect preserve only actual misses and local private notes on both views', () => {
   const host = harness({ mode: 'battle', battle: true, battleUI: true }), game = host.begin();
   const fixtures = game.boards.map(board => {
-    const cat = board.puzzle.solution[0], [miss, note] = ruleRelatedEmptyCells(board.puzzle, cat);
+    const cat = board.puzzle.solution[0], [miss,note]=Array.from({length:board.puzzle.size**2},(_,index)=>index).filter(index=>!board.puzzle.solution.includes(index)).slice(0,2);
     return { cat, miss, note };
   });
   for (const who of [0, 1]) assert.equal(host.act(who, battleAction(host, who, { index: fixtures[who].cat })).accepted, true);
@@ -1046,29 +1046,29 @@ test('battle snapshots, stable rerenders and reconnect preserve only actual miss
   for (const who of [0, 1]) assert.equal(host.act(who, battleAction(host, who, { index: fixtures[who].miss })).accepted, true);
   host.advance(2000); host.state.notes.add(fixtures[0].note);
   host.renderBattle();
-  const snapshot = json(host.publicGame(game)); assertNoPrivateKeys(snapshot);
+  const snapshot = json(host.publicGame(game,undefined,1)); assertNoPrivateKeys(snapshot);
   const guest = harness({ mode: 'battle', battle: true, battleUI: true });
   guest.advance(5300); guest.state.role = 'guest'; guest.state.you = 1;
   guest.enableRendering(); guest.onMessage({ type: 'state', state: json(snapshot) });
   guest.state.notes.add(fixtures[1].note); guest.renderBattle();
   const verify = h => {
-    for (const side of ['local', 'opponent']) {
+    for (const side of ['local']) {
       const who = side === 'local' ? h.state.you : 1 - h.state.you;
       const grid = h.get(`.battle-side.${side}`).querySelector('.battle-board'), { cat, miss, note } = fixtures[who];
       assertConfirmedEmpty(grid.children[miss]);
       assert.equal(grid.children[cat].classList.contains('cat'), true);
-      for (let index = 0; index < 36; index++) if (![cat, miss].includes(index)) {
+      for (let index = 0; index < grid.children.length; index++) if (![cat, miss].includes(index)) {
         assertUnopenedCell(grid.children[index], { note: side === 'local' && index === note });
         assert.notEqual(grid.children[index].dataset.renderState, 'auto-x');
       }
-      if (side === 'opponent') assert.equal(grid.children.every(cell => cell.tagName === 'SPAN' && cell.getAttribute('aria-readonly') === 'true'), true);
     }
+    const opponent=h.get('.battle-side.opponent').querySelector('.battle-board');assert.equal(opponent.querySelectorAll('.cell').length,0);assert.equal(opponent.classList.contains('is-private'),true);
   };
   verify(host); verify(guest);
   for (let attempt = 0; attempt < 3; attempt++) { host.renderBattle(); guest.onMessage({ type: 'state', state: json(snapshot) }); verify(host); verify(guest); }
   host.onClose(); host.advance(10000); host.onMessage({ type: 'hello', nickname: 'Guest Cat' });
   host.onMessage({ type: 'battleReady', gameId: game.id }); host.renderBattle();
-  guest.onClose(); guest.onOpen(); guest.onMessage({ type: 'state', state: json(host.publicGame(game)) });
+  guest.onClose(); guest.onOpen(); guest.onMessage({ type: 'state', state: json(host.publicGame(game,undefined,1)) });
   assert.equal(game.status, 'playing'); assert.equal(guest.state.game.status, 'playing');
   verify(host); verify(guest);
 });
@@ -2290,7 +2290,7 @@ for (const mode of ['basic', 'items', 'treasure', 'coop', 'battle', 'practice'])
   doubleClick(grid().children[miss]);
   const before = json(h.publicGame(game)), sent = h.messages.length, notes = [...h.state.notes];
   const targets = [grid().children[cat], grid().children[miss], h.get('#battleHelp'), h.get('#helpDialog'), h.get('#nick'), h.context.document.body, h.context.document];
-  if (battle) targets.push(h.get('.battle-side.opponent').querySelector('.battle-board').children[0]);
+  if (battle) targets.push(h.get('.battle-side.opponent').querySelector('.battle-board'));
   for (const cell of targets) {
     const event = contextMenu(cell);
     assert.notEqual(event.defaultPrevented, true, 'non-playable or unrelated targets retain their native menu');
@@ -2664,7 +2664,7 @@ for (const mode of ['battle', 'practice']) test(`${mode} a stroke started during
 for (const mode of ['battle', 'practice']) test(`${mode} an opponent-board drag never starts a local stroke`, () => {
   const { h } = gestureFixture(mode), grid = () => h.get('.battle-side.opponent').querySelector('.battle-board');
   const before = stablePublic(h), sent = sentActions(h);
-  dragMarks(h, grid, { pointerType: 'touch' }); h.tick(GESTURE_WAIT);
+  assert.equal(grid().querySelectorAll('.cell').length,0);h.tick(GESTURE_WAIT);
   assert.equal(h.state.notes.size, 0); assert.equal(h.state.boardStrokes?.state().active || false, false);
   assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
 });
@@ -2876,7 +2876,8 @@ test('guest snapshots never replay historical audio, including duplicates, old r
   const receive = snapshot => { h.onMessage({ type: 'state', state: json(snapshot) }); h.renderBattle(); h.flushFrames(); };
   const initial = hit(0); receive(initial); assert.deepEqual(playedAudio(h), [], 'joining suppresses the stored last event');
   const fresh = hit(1); receive(fresh); const live = json(playedAudio(h)); assert.ok(live.some(sound => sound.kind === 'damage'));
-  assert.equal(live.some(sound => ['meow', 'found', 'combo'].includes(sound.kind)), false, 'opponent hits use incoming damage feedback without local success cues');
+  assert.equal(live.some(sound => sound.kind === 'meow' || sound.kind === 'combo'), false, 'opponent hits never use the local sampled success voice');
+  assert.equal(live.some(sound => sound.kind === 'found'), true, 'opponent hits use the distinct synthesized found cue');
   receive(fresh); receive(initial); assert.deepEqual(playedAudio(h), live);
   const repeated = json(fresh); repeated.revision++; receive(repeated); assert.deepEqual(playedAudio(h), live);
   h.onClose(); h.onOpen(); const reconnect = hit(2); receive(reconnect); assert.deepEqual(playedAudio(h), live);
@@ -2972,8 +2973,8 @@ test('sixth battle cat queues one board-clear accent and rematch resets the audi
   const voices = playedAudio(h).filter(sound => sound.kind === 'meow');
   assert.equal(voices.length, 6, 'every capture, including rollover, keeps its own cat voice');
   assert.equal(new Set(voices.map(sound => sound.id)).size, 6);
-  assert.deepEqual(voices.map(sound => sound.combo), [1, 2, 3, 4, 5, 6]);
-  assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'combo').map(sound => sound.combo), [2, 3, 4, 5, 6]);
+  assert.deepEqual(voices.map(sound => sound.combo), [1, 2, 3, 4, 5, 5]);
+  assert.deepEqual(playedAudio(h).filter(sound => sound.kind === 'combo').map(sound => sound.combo), [2, 3, 4, 5, 5]);
   const clear = playedAudio(h).filter(sound => sound.kind === 'boardClear');
   assert.equal(clear.length, 1); assert.ok(clear[0].id.includes(game.lastEvent.id));
   h.renderBattle(); assert.equal(playedAudio(h).filter(sound => sound.kind === 'boardClear').length, 1);
@@ -3115,17 +3116,18 @@ test('miss cooldown gives one timed unlock sound and pulse, while interrupted co
   }
 });
 
-for (const mode of ['battle', 'practice']) test(`${mode} a rapid third touch after sixth-cat rollover cannot mark the replacement board`, () => {
+for (const mode of ['battle', 'practice']) test(`${mode} a rapid third touch after board rollover cannot mark the replacement board`, () => {
   const { h, game, board, grid } = gestureFixture(mode), cats = [...board.puzzle.solution], oldId = board.puzzle.id;
-  for (const index of cats.slice(0, 5)) { h.act(0, battleAction(h, 0, { index })); h.tick(300); }
-  const index = cats[5]; doubleClick(grid().children[index], { pointerType: 'touch' });
-  assert.notEqual(game.boards[0].puzzle.id, oldId); assert.equal(game.boards[0].combo, 6);
-  const next = grid().children[index], before = stablePublic(h), sent = sentActions(h);
+  const index=cats.find(value=>value<16),setupCats=cats.filter(value=>value!==index);
+  for (const setupIndex of setupCats) { h.act(0, battleAction(h, 0, { index:setupIndex })); h.tick(300); }
+  doubleClick(grid().children[index], { pointerType: 'touch' });
+  assert.notEqual(game.boards[0].puzzle.id, oldId); assert.equal(game.boards[0].combo, cats.length);
+  const nextIndex=index,next = grid().children[nextIndex], before = stablePublic(h), sent = sentActions(h);
   h.tick(50);
   next.dispatchEvent({ type: 'pointerdown', button: 0, pointerType: 'touch', pointerId: 3 });
   next.dispatchEvent({ type: 'pointerup', button: 0, pointerType: 'touch', pointerId: 3 });
   next.dispatchEvent({ type: 'click', button: 0, detail: 1 });
   h.tick(GESTURE_WAIT);
-  assert.equal(h.state.notes.has(index), false); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
-  singleClick(h, grid().children[index]); assert.equal(h.state.notes.has(index), true, 'a later deliberate single remains available');
+  assert.equal(h.state.notes.has(nextIndex), false); assert.deepEqual(stablePublic(h), before); assert.equal(sentActions(h), sent);
+  singleClick(h, grid().children[nextIndex]); assert.equal(h.state.notes.has(nextIndex), true, 'a later deliberate single remains available');
 });

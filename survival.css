@@ -176,6 +176,8 @@ body.is-survival .help-fab { display: none !important; }
    the next board. */
 .survival-fx { position: absolute; inset: 0; z-index: 15; overflow: hidden; border-radius: inherit; pointer-events: none; }
 .survival-capture-glow, .survival-board-clear { animation: survivalBoardGlow 900ms ease-out both; }
+.survival-friend-hit { animation: survivalFriendHit 600ms ease-out both; }
+@keyframes survivalFriendHit { 45% { transform: translateY(-2px); box-shadow: 0 0 0 3px #f4c96d,0 7px 16px #6d4f2530; } }
 .survival-cheer { animation: survivalFriendCheer 900ms ease-out both; }
 .survival-score-pop { animation: survivalScorePop 1400ms ease-out both; }
 .survival-static-highlight { outline: 3px solid #bda16a; outline-offset: -3px; }

@@ -20,6 +20,9 @@
     '#fbbaa1', '#c4bf60', '#b5d3fb', '#60f6f6', '#fb97c9', '#ced8ba'
   ]);
   const INK = '#4d423b';
+  // These four sizes retain the audited palette-quality fixtures below. The
+  // allocator itself is generic and multiplayer now legitimately uses every
+  // region count from 4 through 15.
   const SUPPORTED_SIZES = Object.freeze([6, 12, 20, 24]);
   const CACHE_LIMIT = 64;
   const cache = new Map();
@@ -62,7 +65,7 @@
   const DISTANCES = COLORS.map(first => COLORS.map(second => distance(first, second)));
 
   function publicBoard(puzzle) {
-    if (!puzzle || !SUPPORTED_SIZES.includes(puzzle.size)) throw new RangeError('Supported region counts are 6, 12, 20, and 24');
+    if (!puzzle || !Number.isInteger(puzzle.size) || puzzle.size < 4 || puzzle.size > COLORS.length) throw new RangeError('Supported region counts are 4 through 24');
     const size = puzzle.size, regions = puzzle.regions;
     if (!Array.isArray(regions) || regions.length !== size * size ||
         Array.from(regions).some(region => !Number.isInteger(region) || region < 0 || region >= size) ||

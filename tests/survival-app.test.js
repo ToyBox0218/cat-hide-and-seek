@@ -45,7 +45,7 @@ function fixture({count=4, status='playing', who=0, tabbyEnabled=false, capacity
     start:()=>engine.start(authority,h.now()),
     close() {}
   };
-  function sync() { h.applySurvivalSnapshot(engine.publicGame(authority,h.now())); h.renderSurvival(); }
+  function sync() { h.applySurvivalSnapshot(engine.publicGame(authority,h.now(),authority.players[h.state.you]?.id)); h.renderSurvival(); }
   sync(); h.enableRendering();
   return {h, engine, authority, sync, submissions, grid:()=>h.get('#survivalBoard')};
 }
@@ -55,6 +55,16 @@ function noSurvivalSecrets(value) {
   const raw = JSON.stringify(value);
   assert.doesNotMatch(raw, /"(?:credential|token|opportunities|boardActions|hp|combo|damage)"\s*:/);
 }
+const playedAudio=h=>h.audio.calls.filter(call=>call.method==='play').map(call=>({kind:call.args[0],...call.args[1]}));
+
+test('survival feedback is authority-driven, per-player, capped and duplicate snapshots stay silent',()=>{
+  const {h,engine,authority,sync}=fixture({fakeAudio:true});h.audio.calls.length=0;
+  const hit=(who,id)=>engine.act(authority,authority.players[who].id,{type:'guess',index:authority.boards[who].puzzle.solution[authority.boards[who].found.length],boardId:authority.boards[who].puzzle.id,actionId:id},h.now());
+  assert.equal(hit(0,'self-1').event.feedbackTier,1);sync();let sounds=playedAudio(h);assert.equal(sounds.filter(sound=>sound.kind==='meow').length,1);assert.equal(sounds.find(sound=>sound.kind==='meow').combo,1);
+  sync();assert.deepEqual(playedAudio(h),sounds,'duplicate render cannot replay a confirmed event');
+  h.advance(300);assert.equal(hit(0,'self-2').event.feedbackTier,2);sync();sounds=playedAudio(h);assert.equal(sounds.filter(sound=>sound.kind==='meow').at(-1).combo,2);
+  assert.equal(hit(1,'remote-1').event.feedbackTier,1);sync();sounds=playedAudio(h);assert.equal(sounds.filter(sound=>sound.kind==='meow').length,2,'remote hit never uses the local sampled voice');assert.equal(sounds.some(sound=>sound.kind==='found'&&sound.combo===1),true);
+});
 
 // Deterministic in-process fake PeerJS endpoints. No network request, signalling
 // server, STUN/TURN, NAT traversal, browser rendering or human client is tested.
@@ -76,7 +86,7 @@ function fakePeerRoom(count=4,{seed=0x1873,roomCode='CAT-1234'}={}) {
   }
   function flush(){let turns=0;while(jobs.length){assert.ok(++turns<10000,'fake network must settle');jobs.shift()();}}
   function client(){const h=makeHarness({seed:seed+clients.length});h.context.Peer=Peer;h.enableRendering();clients.push(h);return h;}
-  const host=client();host.get('#survivalTabby').checked=false;
+  const host=client();
   host.startSurvivalHost({room:roomCode});flush();
   function add(options={}){
     const guest=client();if(options.session)for(const [key,value]of Object.entries(options.session))guest.context.sessionStorage.setItem(key,value);
@@ -154,15 +164,22 @@ test('fake DOM countdown displays the shared host deadline and blocks all input'
 });
 
 test('fake DOM scoreboard uses cumulative cats and errors with private notes only on the own board', () => {
-  const {h,authority,sync,grid} = fixture();
-  authority.players[0].score=17; authority.players[0].errors=3;
-  authority.boards[0].number=4; h.state.notes.add(5); sync();
+  const {h,authority,engine,sync,grid} = fixture();
+  for(let round=1;round<4;round++){
+    const board=authority.boards[0];
+    for(const index of board.puzzle.solution){
+      assert.equal(engine.act(authority,'p1',{type:'guess',index,boardId:board.puzzle.id,actionId:`size-${round}-${index}`},h.now()).accepted,true);
+      h.advance(300);
+    }
+  }
+  const expected=authority.boards[0].selection;
+  authority.players[0].score=17; authority.players[0].errors=3;sync();h.state.notes.add(5);h.renderSurvival();
   assert.equal(h.get('#survivalMainScore').textContent,'17');
   assert.equal(h.get('#survivalMainErrors').textContent,'3');
   assert.match(h.get('#survivalBoardNumber').textContent,/第 4 盤/);
-  assert.equal(grid().children.length,36);
+  assert.equal(grid().children.length,expected.size**2);
   assert.equal(grid().children[5].classList.contains('note'),true);
-  assert.equal(h.get('#survivalMini').children.length,36);
+  assert.equal(h.get('#survivalMini').querySelectorAll('.cell').length,0);
   assert.equal(h.get('#survivalMini').children.some(cell=>cell.classList.contains('note')),false);
   assert.match(h.get('#survivalScoreList').innerHTML,/>17<\/b><small>／3/);
   noSurvivalSecrets(h.state.game);
@@ -201,15 +218,15 @@ test('fake DOM eliminated players can switch read-only views without exposing pr
   h.state.notes.add(5); authority.players[0].status='eliminated'; authority.players[0].reason='quota'; sync();
   assert.match(h.get('#survivalSpectatorNotice').textContent,/觀戰.*未達/);
   assert.equal(grid().getAttribute('aria-readonly'),'true');
-  assert.equal(grid().children.every(cell=>cell.tagName==='SPAN'&&cell.getAttribute('aria-disabled')==='true'),true);
+  assert.equal(grid().children.length,0,'private opponent boards render aggregate progress only');
   assert.equal(grid().children.some(cell=>cell.classList.contains('note')),false);
   assert.equal(h.survivalCanMark(h.state.game),false);
   const before=json(h.state.game),notes=[...h.state.notes];
-  doubleClick(grid().children[5]); singleClick(h,grid().children[6]);
   assert.deepEqual(json(h.state.game),before); assert.deepEqual([...h.state.notes],notes);
   h.get('#survivalFollow').dispatchEvent({type:'change',target:{value:'2'}});
   assert.equal(h.get('#survivalMainName').textContent,'Friend 2');
   assert.equal(grid().dataset.player,'2');
+  assert.equal(grid().children.length,0);
 });
 
 test('fake DOM shared champions and no-survivor results are explicit', () => {

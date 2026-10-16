@@ -54,9 +54,9 @@ test('UMD runs in a browser with CatBattle and secure randomness, without DOM or
   assert.equal(value.status,'playing');
 });
 
-test('settings fix capacity at four and keep the five-minute rules without HP or combo', () => {
-  assert.deepEqual(Survival.settings(), {mode:'survival',size:6,capacity:4});
-  assert.deepEqual(Survival.settings({capacity:99,tabbyEnabled:false,hp:999,duration:999}), {mode:'survival',size:6,capacity:4});
+test('settings fix capacity at four and keep the five-minute rules without HP or score multipliers', () => {
+  assert.deepEqual(Survival.settings(), {mode:'survival',size:null,capacity:4,difficulty:'normal',packVersion:null,poolVersion:null,roundSeed:null});
+  assert.deepEqual(Survival.settings({capacity:99,tabbyEnabled:false,hp:999,duration:999}), {mode:'survival',size:null,capacity:4,difficulty:'normal',packVersion:null,poolVersion:null,roundSeed:null});
   assert.equal(Survival.settings({capacity:3}).capacity,4);
   assert.equal(Survival.settings({capacity:'6'}).capacity,4);
   assert.equal(Survival.settings({capacity:'invalid'}).capacity,4);
@@ -575,6 +575,19 @@ test('six rescues advance exactly once and preserve the 300 ms lock on the new i
   assert.equal(guess(value,0,cat(value),1800).accepted,true);
 });
 
+test('sensory hit streaks are capped, player-local, public, and never change scoring', () => {
+  const value=game();
+  for(let i=0;i<6;i++){
+    const result=guess(value,0,cat(value),i*300);
+    assert.equal(result.event.feedbackTier,Math.min(i+1,5));
+    assert.equal(result.event.score,i+1);
+  }
+  assert.equal(value.boards[0].feedbackStreak,5,'streak survives a board advance but stays capped');
+  const other=guess(value,1,cat(value,1),1800);assert.equal(other.event.feedbackTier,1);assert.equal(value.boards[0].feedbackStreak,5);
+  const miss=guess(value,1,empty(value,1),2100);assert.equal(miss.event.feedbackTier,0);assert.equal(value.boards[1].feedbackStreak,0);
+  const snapshot=Survival.publicGame(value,PLAY_AT+2100);assert.equal(snapshot.lastEvent.feedbackTier,0);assert.equal(snapshot.boards[0].feedbackStreak,5);
+});
+
 test('action IDs are player-scoped, duplicates and stale boards cannot score twice', () => {
   const value = game(), original = value.boards[0].puzzle.id, cell = cat(value);
   assert.equal(guess(value,0,cell,0,'shared').accepted,true);
@@ -890,4 +903,13 @@ test('aborting while waiting clears the lobby countdown and cannot auto-start la
   assert.equal(value.lobbyDeadline,null); assert.equal(value.lobbyStartedAt,null);
   assert.equal(Survival.advance(value,1000000),false);
   assert.equal(value.status,'aborted'); assert.equal(value.startAt,null);
+});
+
+test('per-recipient survival snapshots keep only the viewer board geometry and position-free opponent events',()=>{
+  const value=game(4),opponent=value.players[1],board=value.boards[1];
+  assert.equal(guess(value,1,board.puzzle.solution[0],PLAY_AT).accepted,true);
+  const view=Survival.publicGame(value,PLAY_AT,opponent.id),hostView=Survival.publicGame(value,PLAY_AT,value.players[0].id);
+  assert.ok(Array.isArray(view.boards[1].puzzle.regions));assert.equal(view.boards[0].puzzle.regions,undefined);
+  assert.equal(hostView.boards[1].selection,null);assert.equal(hostView.boards[1].foundCount,1);assert.deepEqual(hostView.boards[1].found,[]);
+  assert.equal(hostView.lastEvent.index,undefined);assert.equal(hostView.events.at(-1).index,undefined);
 });

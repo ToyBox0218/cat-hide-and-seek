@@ -38,6 +38,7 @@ function renderBattle(){
   state.battleBoardId=own.puzzle.id;
   if(state.pendingAction&&(state.pendingAction.boardId!==own.puzzle.id||own.found.includes(state.pendingAction.index)||own.misses.includes(state.pendingAction.index)||game.status!=='playing'))state.pendingAction=null;
   $('#battleConnection').textContent=state.practice?'本機練習 · 對手不會行動':game.status==='paused'?'已暫停 · 等待重連':game.status==='aborted'?'本局已中止':`${state.room} · ${game.status==='lobby'?'同步就緒中':game.status==='countdown'?'開賽讀秒':'P2P 連線'}`;
+  const difficultyNames={beginner:'入門',normal:'普通',advanced:'進階',challenge:'挑戰'};$('#battleConnection').textContent+=` · 題目：${difficultyNames[game.settings?.difficulty]||'普通'}`;
   $('#leavePractice').classList.toggle('hidden',!state.practice);$('#battleCopyRoom').classList.toggle('hidden',!!state.practice);
   syncAudioControls();
   $('#battleReconnect').classList.toggle('hidden',game.status!=='paused'||state.manual||state.role!=='guest');
@@ -45,25 +46,30 @@ function renderBattle(){
 
   const focused=document.activeElement?.closest('.battle-board .cell')?.dataset.index;
   for(const [side,who] of [['local',state.you],['opponent',1-state.you]]){
-    const board=game.boards[who],player=game.players[who],root=$(`.battle-side.${side}`),local=side==='local',maxHP=player.maxHP||game.settings.maxHP||150;
+    const board=game.boards[who],player=game.players[who],root=$(`.battle-side.${side}`),local=side==='local',maxHP=player.maxHP||game.settings.maxHP||150,size=board.puzzle.size||6,foundCount=Array.isArray(board.found)?board.found.length:board.foundCount||0,missesCount=Array.isArray(board.misses)?board.misses.length:board.missesCount||0;
     root.dataset.player=who;
     const viewKey=`${game.id}:${who}`;
     if(root.dataset.viewKey!==viewKey){root.dataset.viewKey=viewKey;root.innerHTML=`<div class="battle-player"><div class="portrait">${playerAvatar(player.avatar,'avatar-character')}</div><div class="player-identity"><b>${local?'你':state.practice?'練習貓友':'對手'}</b><span>${escapeHTML(player.nickname)}</span></div><div class="hp-meter" role="meter" aria-label="${local?'你的':'對手'}血量" aria-valuemin="0" aria-valuemax="${maxHP}" aria-valuenow="${player.hp}"><i class="hp-lag" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><i class="hp-fill" style="width:${Math.max(0,player.hp/maxHP*100)}%"></i><span>${player.hp} / ${maxHP}</span></div></div><div class="combo-badge"><span>🐾 連鎖 <b>${board.combo}</b></span><span>下次傷害 <strong>${5*(board.combo+1)}</strong></span></div><div class="board-card"><div class="capture-callout" role="status" aria-live="polite"></div><div class="board-heading"><b>${local?'你的尋貓小屋':'貓友的小屋'}</b><span>第 ${board.number} 盤 · ${local?'6×6': '僅觀看'}</span></div><div class="battle-board-stage"><div class="battle-lock hidden" role="status" aria-live="polite"><span class="lock-icon" aria-hidden="true">🔒</span><div class="lock-copy"><strong>找貓暫時鎖定</strong><span class="lock-seconds"></span></div><span class="lock-progress" aria-hidden="true"><i></i></span><span class="lock-note">翻格與標記都暫停</span></div><div class="battle-board" role="grid" ${local?'aria-describedby="battleGestureHint"':''} aria-label="${local?'你的尋貓棋盤':'對手唯讀棋盤'}" style="--n:6"></div></div></div><div class="cat-basket" aria-label="本盤已找到 ${board.found.length} 隻貓">${Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')}<b>${board.found.length} / 6</b></div>`;}
     syncBattleSideHeader(root,game,board,player,local,maxHP);
-    const grid=root.querySelector('.battle-board'),palette=regionPalette(board.puzzle);
+    if(!local){
+      const grid=root.querySelector('.battle-board');grid.classList.add('is-private');grid.removeAttribute('role');grid.setAttribute('aria-label','Opponent board hidden');grid.innerHTML=`<span class="private-board-copy">Found ${foundCount} / ${size} cats · ${missesCount} misses</span>`;
+      const basket=root.querySelector('.cat-basket');basket.setAttribute('aria-label',`Opponent found ${foundCount} cats`);basket.innerHTML=Array.from({length:size},(_,i)=>`<span class="basket-cat ${i<foundCount?'filled':'empty'}">${i<foundCount?'?':'?'}</span>`).join('')+`<b>${foundCount} / ${size}</b>`;
+      continue;
+    }
+    const grid=root.querySelector('.battle-board'),palette=regionPalette(board.puzzle);grid.style.setProperty('--n',size);
     if(grid.dataset.boardId!==board.puzzle.id){
       grid.dataset.boardId=board.puzzle.id;grid.innerHTML='';
-      for(let index=0;index<36;index++){
-        const cell=document.createElement(local?'button':'span'),region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
+      for(let index=0;index<size*size;index++){
+        const cell=document.createElement(local?'button':'span'),region=board.puzzle.regions[index],row=Math.floor(index/size),col=index%size;
         cell.className='cell';cell.dataset.index=index;cell.dataset.region=region;cell.dataset.gameId=game.id;cell.dataset.boardId=board.puzzle.id;cell.setAttribute('role','gridcell');cell.style.setProperty('--bg',palette[region]);
-        if(col===5||board.puzzle.regions[index+1]!==region)cell.classList.add('er');if(row===5||board.puzzle.regions[index+6]!==region)cell.classList.add('eb');
+        if(col===size-1||board.puzzle.regions[index+1]!==region)cell.classList.add('er');if(row===size-1||board.puzzle.regions[index+size]!==region)cell.classList.add('eb');
         if(local){cell.type='button';wireBoardCell(cell,index);}
         else{cell.setAttribute('aria-readonly','true');cell.setAttribute('aria-disabled','true');}
         grid.appendChild(cell);
       }
     }
     for(const cell of Array.from(grid.children)){
-      const index=+cell.dataset.index,region=board.puzzle.regions[index],row=Math.floor(index/6),col=index%6;
+      const index=+cell.dataset.index,region=board.puzzle.regions[index],row=Math.floor(index/size),col=index%size;
       const found=board.found.includes(index),miss=board.misses.includes(index);
       const cellState=found?'cat':miss?'opened':local&&state.notes.has(index)?'note':'hidden';
       if(cell.dataset.renderState!==cellState){
@@ -82,10 +88,12 @@ function renderBattle(){
       basket.dataset.foundKey=basketKey;basket.setAttribute('aria-label',`本盤已找到 ${board.found.length} 隻貓`);
       basket.innerHTML=Array.from({length:6},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?battleCat(stableHash(`${board.puzzle.id}:${board.found[i]}`)):'♧'}</span>`).join('')+`<b>${board.found.length} / 6</b>`;
     }
+    if(size!==6)basket.innerHTML=Array.from({length:size},(_,i)=>`<span class="basket-cat ${i<board.found.length?'filled':'empty'}">${i<board.found.length?'🐈':'·'}</span>`).join('')+`<b>${board.found.length} / ${size}</b>`;
+    root.querySelector('.board-heading span').textContent=`Board ${board.number} · ${size}×${size}`;
   }
 
   if(focused!==undefined)$(`.battle-side.local .cell[data-index="${focused}"]`)?.focus({preventScroll:true});
-  $('#battleNotice').textContent=battleMessage();
+  CatStatusPresenter.present($('#battleNotice'),battleMessage());
   observeBattleEvent(event,sourceRect);
   refreshBattleOverlays({silent:silentAudio});
   if(game.status==='finished'&&!$('#result').open){$('#resultTitle').textContent=game.winner===state.you?'你贏了！喵～':'下一局再加油！';$('#resultScore').textContent=`剩餘血量 ${game.players[state.you].hp}：${game.players[1-state.you].hp}｜最後一擊 ${game.lastEvent?.damage||0} 傷害`;$('#rematch').textContent=state.practice?'再練習一局':'雙方同意，再來一局';$('#result').showModal()}
@@ -125,15 +133,15 @@ function refreshBattleInputState(){
 
 function battleChoose(index){
   const game=state.game,board=game?.boards?.[state.you];
-  if(!board||!Number.isInteger(index)||index<0||index>=36||!battleNotesAllowed(game)||board.found.includes(index)||board.misses.includes(index)||game.status!=='playing'||state.pendingAction||board.cooldownUntil>battleNow())return;
+  if(!board||!Number.isInteger(index)||index<0||index>=board.puzzle.size*board.puzzle.size||!battleNotesAllowed(game)||board.found.includes(index)||board.misses.includes(index)||game.status!=='playing'||state.pendingAction||board.cooldownUntil>battleNow())return;
   const action={type:'guess',index,boardId:board.puzzle.id,actionId:crypto.randomUUID()};state.pendingAction=action;render();
   if(state.role==='host')act(0,action);else{send({type:'action',action});setTimeout(()=>{if(state.pendingAction?.actionId===action.actionId){state.pendingAction=null;toast('尚未收到確認，請檢查連線');render()}},4000)}
 }
 function battleKeydown(event){
   if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();
-  const index=+event.currentTarget.dataset.index,delta={ArrowUp:-6,ArrowDown:6,ArrowLeft:-1,ArrowRight:1}[event.key];let next=index+delta;
-  if((event.key==='ArrowLeft'&&index%6===0)||(event.key==='ArrowRight'&&index%6===5))return;
-  while(next>=0&&next<36){const cell=$(`.battle-side.local .cell[data-index="${next}"]`);if(!cell?.disabled){cell?.focus();return}next+=delta;}
+  const size=state.game?.boards?.[state.you]?.puzzle?.size||6,index=+event.currentTarget.dataset.index,delta={ArrowUp:-size,ArrowDown:size,ArrowLeft:-1,ArrowRight:1}[event.key];let next=index+delta;
+  if((event.key==='ArrowLeft'&&index%size===0)||(event.key==='ArrowRight'&&index%size===size-1))return;
+  while(next>=0&&next<size*size){const cell=$(`.battle-side.local .cell[data-index="${next}"]`);if(!cell?.disabled){cell?.focus();return}next+=delta;}
 }
 function battleEventCellRect(event){
   if(!event||event.type!=='hit'||!Number.isInteger(event.index))return null;
@@ -175,7 +183,9 @@ function observeBattleEvent(event,sourceRect){
 function playBattleEventSound(event){
   const game=state.game,id=event.id||`${game.id}:${event.sequence}:${event.at}`;
   if(event.type==='hit'){
-    if(event.who===state.you)playCaptureSound(id,event.combo);
+    const feedbackCombo=Math.min(5,Math.max(1,event.combo||1));
+    if(event.who===state.you)playCaptureSound(id,feedbackCombo);
+    else soundCue('found',{id:`opponent:${id}`,combo:feedbackCombo});
     soundCue('launch',{id,combo:event.combo,delay:.12});
     soundCue(event.who===state.you?'impact':'damage',{id,combo:event.combo,delay:.42});
     if(event.advanced&&event.who===state.you){soundCue('boardClear',{id,combo:event.combo,delay:.75});soundCue('newBoard',{id,delay:.98});}
@@ -268,7 +278,7 @@ function updateBattleTimers(){
   prepareGameAudio(game.id,game.status);syncBattleLockInput();
   if(['finished','aborted','paused'].includes(game.status))clearBattleFX();
   updateBattleUnlockFeedback();
-  refreshBattleOverlays({silent:Boolean(state.suppressBattleFX||document.hidden)});$('#battleNotice').textContent=battleMessage();
+  refreshBattleOverlays({silent:Boolean(state.suppressBattleFX||document.hidden)});CatStatusPresenter.present($('#battleNotice'),battleMessage());
   if(game.status==='playing'&&state.battleCooldownActive&&game.boards[state.you].cooldownUntil<=battleNow())refreshBattleInputState();
   if(['playing','countdown'].includes(game.status)&&!state.practice&&state.transport?.open()&&Date.now()-(state.lastPong||Date.now())>8000){onClose();state.transport.close();}
   if(game.status==='paused'&&state.disconnectAt&&Date.now()-state.disconnectAt>=60000){CatBattle.abort(game);if(state.role==='host')broadcast();else{saveLocal();render();}}

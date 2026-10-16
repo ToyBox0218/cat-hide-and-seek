@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>貓咪捉迷藏｜P2P 雙人尋貓</title>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./survival.css?v=20261013e">
-  <link rel="stylesheet" href="./classic.css?v=20261013e">
+  <link rel="stylesheet" href="./survival.css?v=20261015b">
+  <link rel="stylesheet" href="./classic.css?v=20261015b">
 </head>
 <body><main>
   <button id="helpButton" class="help-fab" aria-label="打開玩法與音效設定">？ 玩法／音效</button>
@@ -21,7 +21,7 @@
       <label class="wide host-only">遊戲模式<select id="gameMode">
         <option value="battle" selected>🐾 貓咪大對決｜即時連鎖攻防</option>
         <option value="survival">🏆 4 人大逃殺｜2–4 人好友，最多四人</option>
-      </select><small id="modeDescription">同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。</small></label>
+      </select><small id="modeDescription">同時解各自不同、同尺寸同難度的盤面；連續找到貓可累加攻擊，完成盤面後連鎖接續。</small></label>
     </div>
     <fieldset class="avatar-picker"><legend>選一隻代表你的貓</legend><div id="avatarChoices"></div></fieldset>
     <div class="settings turn-settings host-only hidden">
@@ -30,8 +30,8 @@
       <label><input id="capEnabled" type="checkbox"> 連抓上限</label>
       <label id="capField">上限隻數<input id="cap" type="number" min="1" max="24" value="3" disabled></label>
     </div>
-    <div id="battleSettings" class="settings host-only"><label>每位玩家血量<input id="battleHP" type="number" min="50" max="500" step="10" value="150"></label><p class="battle-settings-note">固定 6×6 · 同時找貓<br>每次連鎖傷害 +5，換盤延續連鎖。</p></div>
-    <div id="survivalSettings" class="settings host-only hidden"><p>2–4 位真人好友</p><label><input id="survivalTabby" type="checkbox" checked> 虎斑貓驚喜</label><p>第二位貓友完成連線後，開始 180 秒等候；房主可立即開始。正式比賽 5 分鐘。最後一分鐘比全場總分，同分比錯誤，可並列冠軍。</p></div>
+    <div id="battleSettings" class="settings host-only"><label>每位玩家血量<input id="battleHP" type="number" min="50" max="500" step="10" value="150"></label><p class="battle-settings-note">混合尺寸 · 雙方同尺寸同難度、不同題<br>每次連鎖傷害 +5，換盤延續連鎖。</p></div>
+    <div id="survivalSettings" class="settings host-only hidden"><p>2–4 位真人好友 · 混合尺寸公平配對</p><p>第二位貓友完成連線後，開始 180 秒等候；房主可立即開始。正式比賽 5 分鐘。最後一分鐘比全場總分，同分比錯誤，可並列冠軍。</p></div>
     <label id="roomField">加入用房號<span class="room-copy-row"><input id="roomInput" maxlength="24" placeholder="例如 CAT-1234"><button id="copyRoom" type="button">複製房號</button><button id="copyInvite" type="button">邀請連結</button></span></label>
     <div class="actions"><button id="host" class="host-only">🐾 建立房間</button><button id="join" class="join-only">🚪 加入房間</button><button id="resume" class="host-only hidden">↻ 恢復房主局面</button></div>
     <p class="privacy">房號連線使用免費 PeerJS Cloud 協調握手；對局資料在瀏覽器間直接傳送。沒有免費 TURN，部分嚴格網路可能失敗。</p>
@@ -75,5 +75,6 @@
   <dialog id="result"><h2 id="resultTitle"></h2><p id="resultScore"></p><button id="rematch">交換先手，再玩一局</button></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
 </main>
-<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./region-palette.js"></script><script>window.CAT_MEOW_SAMPLES=["./assets/audio/cat-meow-soft.wav","./assets/audio/cat-meow-food.wav","./assets/audio/cat-meow-purr.wav"];</script><script src="./game-audio.js"></script><script src="./battle-engine.js"></script><script src="./cell-gestures.js"></script><script src="./board-strokes.js"></script><script src="./board-pointer-adapter.js?v=20261013e"></script><script src="./survival-engine.js"></script><script src="./survival-session.js"></script><script src="./classic-engine.js"></script><script src="./classic-levels.js"></script><script src="./app.js?v=20261013e"></script><script src="./battle-ui.js"></script><script src="./survival-app.js?v=20261013e"></script><script src="./survival-ui.js?v=20261013e"></script><script src="./classic-app.js?v=20261013e"></script>
+<script src="./status-presenter.js?v=20261016a"></script>
+<script src="./match-config.js"></script><script src="./vendor/peerjs-1.5.5.min.js"></script><script src="./region-palette.js?v=20261016c"></script><script>window.CAT_MEOW_SAMPLES=["./assets/audio/cat-meow-soft.wav","./assets/audio/cat-meow-food.wav","./assets/audio/cat-meow-purr.wav"];</script><script src="./game-audio.js"></script><script src="./puzzle-pools.js?v=20261016b"></script><script src="./battle-engine.js?v=20261016b"></script><script src="./cell-gestures.js"></script><script src="./board-strokes.js"></script><script src="./board-pointer-adapter.js?v=20261013e"></script><script src="./survival-engine.js?v=20261016b"></script><script src="./survival-session.js?v=20261016b"></script><script src="./classic-engine.js?v=20261016b"></script><script src="./classic-levels.js?v=20261016b"></script><script src="./classic-progress.js?v=20261015b"></script><script src="./app.js?v=20261016c"></script><script src="./battle-ui.js?v=20261016b"></script><script src="./survival-app.js?v=20261016b"></script><script src="./survival-ui.js?v=20261016c"></script><script src="./classic-app.js?v=20261015b"></script>
 </body></html>

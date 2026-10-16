@@ -8,6 +8,7 @@ const survivalUI = {
 };
 const suiNow=()=>Date.now()+(state.clockOffset||0);
 const suiText=(selector,value)=>{const node=$(selector);if(node&&node.textContent!==String(value))node.textContent=String(value);};
+const suiStatus=(target,value,options)=>CatStatusPresenter.present(typeof target==='string'?$(target):target,value,options);
 const suiArray=value=>Array.isArray(value)?value:[];
 const suiAlive=player=>player?.status==='active';
 const suiOwn=game=>game.players?.[state.you];
@@ -63,6 +64,8 @@ function suiBuildShell(root,game){
         <aside class="survival-friends survival-paper" aria-label="貓友動態與觀戰"><div class="survival-section-heading"><h2>貓友動態</h2><span id="survivalPlayerCount" class="survival-pill"></span></div><p class="survival-friends-caption">貓數／猜錯 · 點選觀戰</p><div id="survivalScoreList" class="survival-score-list"></div><div class="survival-follow-control"><label for="survivalFollow">觀看貓友</label><select id="survivalFollow"></select></div><div id="survivalPreview" class="survival-preview"><div class="survival-preview-heading"><b id="survivalPreviewName"></b><span>唯讀</span></div><div id="survivalMini" class="survival-mini" role="img"></div><p id="survivalPreviewInfo"></p></div></aside>
       </div>
     </section>`;
+  const difficulty=document.createElement('span');difficulty.id='survivalDifficulty';difficulty.className='survival-pill';root.querySelector('.survival-connection-row')?.appendChild(difficulty);
+  const lobbyCopy=root.querySelector('.survival-soft');if(lobbyCopy)lobbyCopy.textContent='2–4 位好友 · 同尺寸同難度、各自不同題';
   $('#survivalCopy').onclick=()=>survivalCopyInvite();
   $('#survivalExit').onclick=()=>survivalLeave();
   $('#survivalRetry').onclick=()=>survivalReconnect();
@@ -77,6 +80,7 @@ function suiSyncMute(){const button=$('#survivalMute');if(!button)return;button.
 
 function suiRenderLobby(game){
   const players=game.players||[],capacity=4,lobby=game.status==='lobby';
+  const difficultyNames={beginner:'入門',normal:'普通',advanced:'進階',challenge:'挑戰'};suiText('#survivalDifficulty',`題目：${difficultyNames[game.settings?.difficulty]||'普通'}`);
   const seats=$('#survivalSeats'),key=JSON.stringify(players.map(p=>[p.id,p.nickname,p.avatar,p.connected,p.ready,p.status]));
   if(seats.dataset.key!==key||seats.dataset.capacity!==String(capacity)){
     seats.dataset.key=key;seats.dataset.capacity=String(capacity);
@@ -96,7 +100,7 @@ function suiUpdateLobbyTimer(game,now=suiNow()){
   suiText('#survivalLobbyWaitLabel',waiting?'自動開始倒數':'等候第二位貓友');
   suiText('#survivalLobbyClock',waiting?suiTime(game.lobbyDeadline-now):'不計時');
   suiText('#survivalLobbyWaitCopy',waiting?'倒數結束後自動開始。房主也可以按「立即開始」，直接進入開賽前 3 秒。':'房主可以繼續等待。至少 2 位貓友連線完成後，開始 180 秒倒數。');
-  suiText('#survivalLobbyNotice',!lobby?'即將一起出發，進入開賽前 3 秒。':eligible<2?'不足 2 人時不會開賽；湊齊 2 人後會重新開始完整的 180 秒倒數。':`${eligible} 位貓友已入座。新加入的貓友不會重設倒數。`);
+  suiStatus('#survivalLobbyNotice',!lobby?'即將一起出發，進入開賽前 3 秒。':eligible<2?'不足 2 人時不會開賽；湊齊 2 人後會重新開始完整的 180 秒倒數。':`${eligible} 位貓友已入座。新加入的貓友不會重設倒數。`);
 }
 
 function suiChooseFollow(game){
@@ -111,6 +115,12 @@ function suiChooseFollow(game){
 function suiSyncBoard(grid,board,game,who,interactive,mini=false){
   if(!grid||!board?.puzzle)return;
   const size=board.puzzle.size||6,puzzle=board.puzzle,found=new Set(suiArray(board.found)),misses=new Set(suiArray(board.misses));
+  if(!Array.isArray(puzzle.regions)){
+    const foundCount=Number.isInteger(board.foundCount)?board.foundCount:found.size,missesCount=Number.isInteger(board.missesCount)?board.missesCount:misses.size;
+    grid.dataset.viewKey=`private:${who}:${board.number||1}`;grid.dataset.boardId='';grid.dataset.player=String(who);
+    grid.classList.add('is-private');grid.style.setProperty('--n',1);grid.innerHTML=`<span class="private-board-copy">Found ${foundCount} / ${size} cats · ${missesCount} misses</span>`;grid.setAttribute('aria-label',`${game.players[who]?.nickname||'Player'} progress: ${foundCount} of ${size} cats found`);grid.setAttribute('aria-readonly','true');return;
+  }
+  grid.classList.remove('is-private');
   const key=`${puzzle.id}:${interactive?'input':'read'}`;
   if(grid.dataset.viewKey!==key){
     // Advancing a board is atomic; the old public event overlay finishes above it.
@@ -160,6 +170,7 @@ function suiRenderFriends(game,followIndex){
   select.value=String(followIndex);
   const player=players[followIndex],board=game.boards?.[followIndex];
   if(player&&board){suiText('#survivalPreviewName',player.nickname);suiText('#survivalPreviewInfo',`第 ${board.number||1} 盤 · 本盤 ${suiArray(board.found).length}／6 隻`);suiSyncBoard($('#survivalMini'),board,game,followIndex,false,true);}
+  if(player&&board){const count=Number.isInteger(board.foundCount)?board.foundCount:suiArray(board.found).length;suiText('#survivalPreviewInfo',`Board ${board.number||1} · ${count}/${board.puzzle.size||6} cats found`);}
   $('#survivalPreview').classList.toggle('hidden',!player||!board||!suiAlive(suiOwn(game))||game.status!=='playing');
 }
 
@@ -189,11 +200,11 @@ function renderSurvival(){
   else{
     const followIndex=suiChooseFollow(game),interactive=game.status==='playing'&&suiAlive(own),mainIndex=interactive?state.you:followIndex,player=players[mainIndex],board=game.boards?.[mainIndex];
     $('#survivalGestureHint').classList.toggle('hidden',!interactive);
-    const spectator=$('#survivalSpectatorNotice');spectator.classList.toggle('hidden',!own||suiAlive(own)||game.status!=='playing');
-    if(own&&!suiAlive(own))spectator.textContent=`觀戰中 · ${suiReason(own)}`;
+    const spectator=$('#survivalSpectatorNotice'),spectatorHidden=!own||suiAlive(own)||game.status!=='playing';suiStatus(spectator,spectatorHidden?'':`觀戰中 · ${suiReason(own)}`,{hidden:spectatorHidden});
     if(player&&board){
       const avatar=$('#survivalMainAvatar');if(avatar.dataset.avatar!==String(player.avatar)){avatar.dataset.avatar=String(player.avatar);avatar.innerHTML=playerAvatar(player.avatar,'avatar-character');}
-      suiText('#survivalMainLabel',interactive?'你的小屋':'觀戰 · 唯讀');suiText('#survivalMainName',player.nickname);suiText('#survivalMainScore',player.score||0);suiText('#survivalMainErrors',player.errors||0);suiText('#survivalBoardTitle',interactive?'你的尋貓小屋':`${player.nickname}的小屋`);suiText('#survivalBoardNumber',`第 ${board.number||1} 盤 · 6×6`);suiText('#survivalBoardProgress',`本盤 ${suiArray(board.found).length}／6`);
+      const boardSize=board.puzzle?.size||6,foundCount=Number.isInteger(board.foundCount)?board.foundCount:suiArray(board.found).length;
+      suiText('#survivalMainLabel',interactive?'你的小屋':'觀戰 · 唯讀');suiText('#survivalMainName',player.nickname);suiText('#survivalMainScore',player.score||0);suiText('#survivalMainErrors',player.errors||0);suiText('#survivalBoardTitle',interactive?'你的尋貓小屋':`${player.nickname}的小屋`);suiText('#survivalBoardNumber',`第 ${board.number||1} 盤 · ${boardSize}×${boardSize}`);suiText('#survivalBoardProgress',`本盤 ${foundCount}／${boardSize}`);
       suiSyncBoard($('#survivalBoard'),board,game,mainIndex,interactive);
       $('.survival-main-board').classList.toggle('is-spectating',!interactive);
     }
@@ -206,12 +217,13 @@ function updateSurvivalTimers(){
   const game=state.game,root=$('#survivalArena');if(!root||root.classList.contains('hidden')||game?.settings?.mode!=='survival')return;
   const now=suiNow(),own=suiOwn(game),reconnecting=state.survivalLinkStatus==='reconnecting',closed=['aborted','closed'].includes(state.survivalLinkStatus);
   const linkText=reconnecting?'重新連線中':game.status==='aborted'?'本局已中止':closed?'連線已結束':state.survivalLinkStatus==='joining'?'正在加入房間':game.status==='lobby'?'好友等候室':game.status==='countdown'?'開賽倒數':game.status==='finished'?'本局已完成':'好友同步對局';
-  suiText('#survivalConnection',linkText);$('#survivalConnection').classList.toggle('is-offline',reconnecting||closed);
+  suiStatus('#survivalConnection',linkText);$('#survivalConnection').classList.toggle('is-offline',reconnecting||closed);
   $('#survivalCopy').disabled=!['hosting','connected'].includes(state.survivalLinkStatus);
   $('#survivalRetry').classList.toggle('hidden',state.role==='host'||(!reconnecting&&!closed));
-  const connectionNotice=$('#survivalConnectionNotice');connectionNotice.classList.toggle('hidden',!reconnecting&&!closed);
-  if(reconnecting){const left=Number.isFinite(state.survivalReconnectUntil)?Math.max(0,Math.ceil((state.survivalReconnectUntil-now)/1000)):null;connectionNotice.textContent=`與房主重新連線中${left!==null?` · 剩餘 ${left} 秒`:''}。場上時間仍會繼續，連線恢復前無法操作。`;}
-  else if(closed)connectionNotice.textContent=state.survivalStatusMessage||'房間連線已結束，可以離開房間重新邀請貓友。';
+  const connectionNotice=$('#survivalConnectionNotice'),connectionHidden=!reconnecting&&!closed;
+  if(reconnecting){const left=Number.isFinite(state.survivalReconnectUntil)?Math.max(0,Math.ceil((state.survivalReconnectUntil-now)/1000)):null;suiStatus(connectionNotice,`與房主重新連線中${left!==null?` · 剩餘 ${left} 秒`:''}。場上時間仍會繼續，連線恢復前無法操作。`,{hidden:false});}
+  else if(closed)suiStatus(connectionNotice,state.survivalStatusMessage||'房間連線已結束，可以離開房間重新邀請貓友。',{hidden:false});
+  else suiStatus(connectionNotice,'',{hidden:connectionHidden});
   if(game.status==='countdown'){
     const count=Math.max(1,Math.ceil((game.startAt-now)/1000));suiText('#survivalCountdown strong',count);return;
   }
@@ -232,13 +244,13 @@ function updateSurvivalTimers(){
     if(urgent){
       suiText('#survivalQuotaWarning',`${localActive?'⚠':focus.nickname+' ·'} ${Math.ceil(left/1000)} 秒 · 差 ${needed} 隻`);
       const announcement=`${game.id}:${quota.minute}:${focus.id}`;
-      if(!document.hidden&&!survivalUI.announced.has(announcement)){suiRemember(survivalUI.announced,announcement,16);suiText('#survivalQuotaAnnouncement',`${localActive?'你':focus.nickname}距離配額結算剩 ${Math.ceil(left/1000)} 秒，還差 ${needed} 隻`);}
-    }else suiText('#survivalQuotaAnnouncement','');
+      if(!document.hidden&&!survivalUI.announced.has(announcement)){suiRemember(survivalUI.announced,announcement,16);suiStatus('#survivalQuotaAnnouncement',`${localActive?'你':focus.nickname}距離配額結算剩 ${Math.ceil(left/1000)} 秒，還差 ${needed} 隻`,{key:announcement});}
+    }else suiStatus('#survivalQuotaAnnouncement','');
     suiSyncQuotaDock(quota,score,left,urgent&&localActive&&suiConnected()&&!document.hidden);
     suiQuotaAttention(game,quota,now);
   }else{
     suiText('#survivalQuotaLabel',aborted?'全場紀錄':playing?'最後衝刺':'全場成績');suiText('#survivalQuotaTarget',aborted?'已中止':playing?'衝刺！':'已結算');suiText('#survivalQuotaTime',aborted?'成績保留':playing?'不再設配額':'貓數／猜錯');suiText('#survivalQuotaRemaining',aborted?'不判勝負':playing?'比貓數，再比猜錯較少':'同分同錯，共享冠軍');$('#survivalQuotaMeter').classList.add('hidden');warning.classList.add('hidden');quotaCard.classList.remove('is-urgent');
-    suiStopQuotaCutin();suiRemoveQuotaDock();survivalUI.quotaObservation=null;suiText('#survivalQuotaAnnouncement','');
+    suiStopQuotaCutin();suiRemoveQuotaDock();survivalUI.quotaObservation=null;suiStatus('#survivalQuotaAnnouncement','');
   }
   const grid=$('#survivalBoard'),who=Number(grid?.dataset.player),board=game.boards?.[who],interactive=grid?.dataset.viewKey?.endsWith(':input'),locked=Boolean(interactive&&playing&&board?.cooldownKind==='miss'&&board.cooldownUntil>now),blocked=Boolean(interactive&&!suiConnected());
   $('#survivalLock').classList.toggle('hidden',!locked&&!blocked);
@@ -248,7 +260,7 @@ function updateSurvivalTimers(){
   }
   // Only patch disabled state. Cell nodes and active pointer gestures survive timer ticks.
   if(interactive&&board)for(const cell of grid.children){const index=Number(cell.dataset.index);cell.disabled=locked||blocked||!playing||suiArray(board.found).includes(index)||suiArray(board.misses).includes(index);}
-  suiText('#survivalBoardNotice',aborted?'本局已中止，不判勝負；盤面僅供回看。':!playing?'選擇貓友回看盤面':!interactive?'':blocked?'重新連線中…':locked?'':state.pendingAction?'等待確認…':'');
+  suiStatus('#survivalBoardNotice',aborted?'本局已中止，不判勝負；盤面僅供回看。':!playing?'選擇貓友回看盤面':!interactive?'':blocked?'重新連線中…':locked?'':state.pendingAction?'等待確認…':'');
   survivalUI.lastLock=locked;
 }
 
@@ -310,10 +322,12 @@ function suiEffect(node,className,duration=950){
 }
 function suiObserveEvents(game,fresh){
   const silent=Boolean(fresh||state.suppressSurvivalFX||document.hidden||!suiConnected()),events=Array.isArray(game.events)?game.events:game.lastEvent?[game.lastEvent]:[];
+  let opponentCuePlayed=false;
   for(const event of events.slice(-32)){
     const id=suiEventId(event,game),seen=survivalUI.seen.has(id);suiRemember(survivalUI.seen,id);
     if(seen||silent||game.status!=='playing'||!Number.isFinite(event.at))continue;
-    if((event.type==='hit'||event.type==='found')&&event.who===state.you){playCaptureSound(id,1);suiEffect($('#survivalBoard'),'survival-capture-glow',600);}
+    if((event.type==='hit'||event.type==='found')&&event.who===state.you){playCaptureSound(id,Math.max(1,event.feedbackTier||1));suiEffect($('#survivalBoard'),'survival-capture-glow',600);}
+    else if((event.type==='hit'||event.type==='found')&&!opponentCuePlayed){opponentCuePlayed=true;soundCue('found',{id:`opponent:${id}`,combo:Math.max(1,event.feedbackTier||1)});suiEffect($(`#survivalScoreList [data-player="${event.who}"]`),'survival-friend-hit',600);}
     else if(event.type==='miss'&&event.who===state.you)soundCue('miss',{id});
     if(event.advanced&&event.who===state.you){soundCue('boardClear',{id,delay:.2});suiEffect($('.survival-board-card'),'survival-board-clear',900);}
   }

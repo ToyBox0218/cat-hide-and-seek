@@ -10,6 +10,7 @@
   const SNAPSHOT_INTERVAL = 100, HANDSHAKE_TIMEOUT = 10000, RECONNECT_GRACE = 15000;
   const HEARTBEAT_INTERVAL = 2000, LIVENESS_TIMEOUT = 6500, MAX_CLOCK_RTT = 5000;
   const MAX_SEATS = 4, MAX_PENDING = 4, MAX_CONNECTIONS = 8, MAX_MESSAGES_PER_SECOND = 60;
+  const MAX_BOARD_CELLS = 12 * 12;
   const noop = () => {};
 
   function record(value) { return !!value && typeof value === 'object' && !Array.isArray(value); }
@@ -32,7 +33,7 @@
   }
   function actionInput(value) {
     if (!record(value) || value.type !== 'guess' || !idValid(value.actionId) || !idValid(value.boardId) ||
-        !Number.isInteger(value.index) || value.index < 0 || value.index >= 36) return null;
+        !Number.isInteger(value.index) || value.index < 0 || value.index >= MAX_BOARD_CELLS) return null;
     // In particular, playerId, who, time, answers and marks never cross into authority.
     return {type:'guess', actionId:value.actionId, boardId:value.boardId, index:value.index};
   }
@@ -83,7 +84,7 @@
     const hostId = 'p1', initialTime = time();
     // The authority object remains lexical/private. Every observer gets publicGame.
     const game = engine.create(input.settings || {},[Object.assign(profile(input.hostProfile,hostId),{ready:true})],{now:initialTime});
-    function view(at) { return engine.publicGame(game,at); }
+    function view(at,viewerId) { return engine.publicGame(game,at,viewerId); }
     function player(id) { return game.players.find(value => value.id === id); }
     function send(entry, message) {
       if (closed || entry.closed || !entry.connection.open) return false;
@@ -93,9 +94,8 @@
     function flush(at) {
       if (closed || !dirty) return;
       dirty = false; lastFlush = at;
-      const snapshot = view(at);
-      options.onState(clone(snapshot));
-      for (const entry of connections) if (entry.seat) send(entry,wire('snapshot',{snapshot}));
+      options.onState(clone(view(at,hostId)));
+      for (const entry of connections) if (entry.seat) send(entry,wire('snapshot',{snapshot:view(at,entry.seat.playerId)}));
     }
     function changed(at) {
       if (closed) return;
@@ -169,7 +169,7 @@
       entry.seat = seat; seat.connection = entry; entry.rejoined = rejoined;
       changed(at);
       // The credential is sent only on this seat's bound connection, never broadcast.
-      send(entry,wire('joined',{seat:seatInfo(seat),credential:seat.credential,snapshot:view(at),hostTime:at}));
+      send(entry,wire('joined',{seat:seatInfo(seat),credential:seat.credential,snapshot:view(at,seat.playerId),hostTime:at}));
     }
     function confirmJoin(entry, message, at) {
       step(at);
@@ -181,7 +181,7 @@
         if (game.status === 'lobby') engine.setReady(game,entry.seat.playerId,true,at);
         entry.confirmed = true; timeouts.clear(entry.handshakeTimer); changed(at);
       }
-      send(entry,wire('join-confirmed',{gameId:game.id,seat:seatInfo(entry.seat),snapshot:view(at),hostTime:at}));
+      send(entry,wire('join-confirmed',{gameId:game.id,seat:seatInfo(entry.seat),snapshot:view(at,entry.seat.playerId),hostTime:at}));
       options.onStatus({status:entry.rejoined ? 'player-rejoined' : 'player-joined',playerId:entry.seat.playerId});
     }
     function acknowledge(id, action, at, entry) {
@@ -192,7 +192,7 @@
       const ack = {actionId:record(action) && idValid(action.actionId) ? action.actionId : null,
         accepted:result.accepted === true,hostTime:at};
       if (typeof result.reason === 'string') ack.reason = result.reason.slice(0,128);
-      if (ack.accepted) { ack.event = view(at).lastEvent; changed(at); }
+      if (ack.accepted) { ack.event = view(at,id).lastEvent; changed(at); }
       if (entry) send(entry,wire('ack',ack));
       else options.onAck(clone(ack));
       return ack;
@@ -256,13 +256,13 @@
       if (closed) return;
       const at = time(), why = typeof reason === 'string' ? reason.slice(0,120) : 'host-left';
       engine.abort(game,why,at);
-      const snapshot = view(at);
-      for (const entry of connections) if (entry.seat) send(entry,wire('aborted',{reason:why,snapshot,hostTime:at}));
+      const snapshot = view(at,hostId);
+      for (const entry of connections) if (entry.seat) send(entry,wire('aborted',{reason:why,snapshot:view(at,entry.seat.playerId),hostTime:at}));
       closed = true; timeouts.clearAll();
       for (const entry of Array.from(connections)) closeEntry(entry,why,at);
       options.onState(clone(snapshot)); options.onStatus({status:'aborted',reason:why});
     }
-    options.onState(clone(view(initialTime)));
+    options.onState(clone(view(initialTime,hostId)));
     timeouts.set(pulse,SNAPSHOT_INTERVAL);
     return Object.freeze({hostId,playerId:hostId,attach,tick,close,abort:close,
       localReady(ready) { return !closed && ready === true; },
@@ -272,7 +272,7 @@
         reconcileSeats(at); if (game.revision !== revision) changed(at); return result;
       },
       submit(action) { if (closed) return {accepted:false,reason:'closed',actionId:action && action.actionId || null}; return acknowledge(hostId,action,time()); },
-      getState() { return clone(view(time())); },getServerTime:time});
+      getState() { return clone(view(time(),hostId)); },getServerTime:time});
   }
 
   function createGuest(input) {

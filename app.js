@@ -27,7 +27,7 @@ function stableHash(value){let hash=2166136261;for(const char of String(value)){
 const catVariant=(game,index)=>stableHash(`${game.puzzle.id}:${index}`)%8;
 const MODE_INFO={
   survival:{label:'🐈 貓咪大逃殺',description:'2–4 位好友各找自己的貓，第二人進房開始 180 秒等候，也可由房主立即開賽。'},
-  battle:{label:'🐾 貓咪大對決',description:'同時解自己的 6×6，連續找到貓可累加攻擊；找齊六隻換新盤，連鎖接續。'},
+  battle:{label:'🐾 貓咪大對決',description:'同時解各自不同、同尺寸同難度的盤面；連續找貓可累加攻擊，完成盤面後連鎖接續。'},
   basic:{label:'🔎 基本對戰',description:'猜空會公開空格並換手；找到最多貓獲勝。'},
   items:{label:'🐟 魚乾道具戰',description:'翻空格集魚乾；每輪最多用一個道具。'},
   treasure:{label:'🔔 寶藏派對',description:'鈴鐺貓值 2 分，普通貓 1 分，含少量運氣。'},
@@ -95,12 +95,23 @@ function makePuzzle(size) {
   return { id:`p2p-${size}-${Date.now()}-${randomInt(1e6)}`, size, regions, solution };
 }
 
+function ensureMultiplayerDifficultyUI(){
+  if($('#multiplayerDifficulty')||!$('#battleSettings'))return;
+  $('#battleSettings').insertAdjacentHTML('beforebegin','<div id="multiplayerDifficultySetting" class="settings host-only"><label for="multiplayerDifficulty">多人題目難度<select id="multiplayerDifficulty"><option value="beginner">入門</option><option value="normal" selected>普通</option><option value="advanced">進階</option><option value="challenge">挑戰</option></select></label><p>難度為題庫推理負荷估計；開賽後固定，下一場才能更改。</p></div>');
+}
+ensureMultiplayerDifficultyUI();
+for(const paragraph of document.querySelectorAll('#helpDialog p')){
+  if(paragraph.textContent.startsWith('原有四種回合玩法'))paragraph.textContent='空格只會在翻開並確認沒有貓時顯示深灰 ×；玩家自己的私人標記是紫色 ×。系統不會自動標記或禁用同行、同列、同區及八方向相鄰的未翻格，請自行依規則推理。';
+  if(paragraph.textContent.startsWith('貓咪大逃殺：'))paragraph.innerHTML='<b>貓咪大逃殺：</b>2–4 位真人好友各解同尺寸、同推理階級且負荷相近的不同題目；對手只顯示找到數與猜錯數，不公開盤面位置。每隻貓只結算該格，不會炸開、連帶揭露或額外加分。正式比賽 5 分鐘，累積 4／10／16／24 隻門檻分別在 1／2／3／4 分鐘檢查，最後以總分、再比錯誤決勝。';
+  if(paragraph.textContent.startsWith('貓咪大對決：'))paragraph.innerHTML='<b>貓咪大對決：</b>雙方同時解同尺寸、同推理階級且負荷相近的不同題目；對手只顯示進度，不公開區域與格子位置。連續命中提高傷害，猜錯會重設連鎖並鎖定 2／4／6／8 秒；找齊當盤全部貓後換新盤，血量與連鎖接續。';
+}
 const cleanSettings = input => ({
   size:['battle','survival'].includes(input.mode)?6:([6,12,20,24].includes(+input.size)?+input.size:20),
   maxHP:Math.max(50,Math.min(500,+input.maxHP||150)),
   // Retain decoder compatibility for old saved rooms, while the current UI
   // exposes only battle and survival.
   mode:['basic','items','treasure','coop','battle','survival'].includes(input.mode)?input.mode:(input.mode==='scout'?'basic':'basic'),
+  ...(['battle','survival'].includes(input.mode)?{difficulty:['beginner','normal','advanced','challenge'].includes(input.difficulty)?input.difficulty:'normal'}:{}),
   ...(input.mode==='survival'?{capacity:4,tabbyEnabled:input.tabbyEnabled!==false}:{}),
   turnSecondsA:Math.max(10,Math.min(180,+input.turnSecondsA||45)),
   turnSecondsB:Math.max(10,Math.min(180,+input.turnSecondsB||45)),
@@ -108,9 +119,16 @@ const cleanSettings = input => ({
   streakLimit:Math.max(1,Math.min(24,+input.streakLimit||3))
 });
 const settingsFromUI = () => cleanSettings({
-  size:+$('#size').value, mode:$('#gameMode').value, capacity:4,tabbyEnabled:$('#survivalTabby')?.checked!==false, maxHP:+$('#battleHP').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
+  size:+$('#size').value, mode:$('#gameMode').value, difficulty:$('#multiplayerDifficulty')?.value||'normal', capacity:4,tabbyEnabled:$('#survivalTabby')?.checked!==false, maxHP:+$('#battleHP').value, turnSecondsA:+$('#secondsA').value, turnSecondsB:+$('#secondsB').value,
   streakLimitEnabled:$('#capEnabled').checked, streakLimit:+$('#cap').value
 });
+let authorityCatalogPromise=null;
+function ensureAuthorityPuzzleCatalog(){
+  if(globalThis.CAT_MULTIPLAYER_POOLS)return Promise.resolve(globalThis.CAT_MULTIPLAYER_POOLS);
+  if(authorityCatalogPromise)return authorityCatalogPromise;
+  authorityCatalogPromise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='./multiplayer-levels.js?v=20261016b';script.onload=()=>globalThis.CAT_MULTIPLAYER_POOLS?resolve(globalThis.CAT_MULTIPLAYER_POOLS):reject(Error('Multiplayer puzzle catalog did not initialize.'));script.onerror=()=>reject(Error('Unable to load the host puzzle catalog.'));document.head.appendChild(script);}).catch(error=>{authorityCatalogPromise=null;throw error;});
+  return authorityCatalogPromise;
+}
 
 function newGame(size) {
   if(settingsFromUI().mode==='survival')return CatSurvival.create(settingsFromUI(),[{id:crypto.randomUUID(),nickname:$('#nick').value||'奶油虎斑',avatar:state.avatar}],{now:Date.now()});
@@ -126,13 +144,35 @@ function newGame(size) {
   };
 }
 
-const publicGame = game => game.settings.mode==='survival'?CatSurvival.publicGame(game):game.settings.mode==='battle'?CatBattle.publicGame(game):({
+const publicGame = (game,viewer) => game.settings.mode==='survival'?CatSurvival.publicGame(game,undefined,viewer):game.settings.mode==='battle'?CatBattle.publicGame(game,undefined,viewer):({
   ...game,
   puzzle:{id:game.puzzle.id,size:game.puzzle.size,regions:game.puzzle.regions},
   players:game.players.map(player=>({...player})),
   foundTreasures:game.settings.mode==='treasure'?game.found.filter(index=>game.treasures.includes(index)):[],
   treasures:undefined, actionIds:undefined
 });
+function validateMultiplayerSnapshot(snapshot){
+  if(!snapshot||!['battle','survival'].includes(snapshot.settings?.mode))return true;
+  if(!globalThis.CAT_MULTIPLAYER_POOLS){
+    const viewer=Number.isInteger(snapshot.viewer)?snapshot.viewer:typeof snapshot.viewerId==='string'?snapshot.players?.findIndex(player=>player.id===snapshot.viewerId):-1;
+    return viewer>=0&&Array.isArray(snapshot.boards)&&snapshot.boards.every((board,index)=>{
+      if(!Number.isInteger(board?.puzzle?.size)||board.puzzle.size<4||board.puzzle.size>15||board.number<1)return false;
+      if(index!==viewer)return board.selection==null&&!Array.isArray(board.puzzle.regions)&&Number.isInteger(board.foundCount)&&Number.isInteger(board.missesCount);
+      return board.selection?.packVersion===snapshot.settings.packVersion&&board.selection?.poolVersion===snapshot.settings.poolVersion&&board.selection?.lane===index&&Array.isArray(board.puzzle.regions)&&board.puzzle.regions.length===board.puzzle.size**2&&/^[a-f0-9]{64}$/.test(board.selection.puzzleFingerprint||'');
+    });
+  }
+  try{
+    const sequence=CatPuzzlePools.create({tier:snapshot.settings.difficulty,matchId:snapshot.id,roundSeed:snapshot.settings.roundSeed,packVersion:snapshot.settings.packVersion,poolVersion:snapshot.settings.poolVersion});
+    const viewer=Number.isInteger(snapshot.viewer)?snapshot.viewer:typeof snapshot.viewerId==='string'?snapshot.players?.findIndex(player=>player.id===snapshot.viewerId):-1;
+    return Array.isArray(snapshot.boards)&&snapshot.boards.every((board,index)=>{
+      if(board?.number<1||!Number.isInteger(board.puzzle?.size))return false;
+      if(Number.isInteger(viewer)&&viewer>=0&&index!==viewer)return board.selection==null&&!Array.isArray(board.puzzle.regions)&&Number.isInteger(board.foundCount)&&Number.isInteger(board.missesCount);
+      if(!board.selection||!sequence.assertSelection(board.selection,index))return false;
+      const expected=sequence.at(board.number-1,index);
+      return board.puzzle.size===expected.puzzle.size&&Array.isArray(board.puzzle.regions)&&board.puzzle.regions.join(',')===expected.puzzle.regions.join(',');
+    });
+  }catch{return false;}
+}
 function saveLocal() {
   if (!state.game||state.practice) return;
   if(state.game.settings.mode==='survival'){saveSurvivalNotes();return;}
@@ -144,7 +184,7 @@ function saveLocal() {
 function send(message) { if (state.transport?.open()) state.transport.send(message); }
 function broadcast() {
   if (state.role!=='host') return;
-  saveLocal(); send({type:'state',state:publicGame(state.game)}); render();
+  saveLocal(); send({type:'state',state:publicGame(state.game,1)}); render();
 }
 
 const toast = message => {
@@ -461,7 +501,7 @@ function onMessage(message) {
     if(!syncBattleClock(data.echo,data.serverTime))return;
     state.pendingBattleSync=null;send({type:'battleReady',gameId:data.gameId});
   }else if(data.type==='state'){
-    if(!data.state?.settings||!Array.isArray(data.state.players))return;
+    if(!data.state?.settings||!Array.isArray(data.state.players)||!validateMultiplayerSnapshot(data.state))return;
     const previous=state.game,incoming=data.state,battle=incoming.settings.mode==='battle';
     if(battle&&previous?.id===incoming.id&&Number.isFinite(previous.revision)&&incoming.revision<previous.revision)return;
     const previousPuzzle=previous?.settings?.mode==='battle'?previous.boards[state.you].puzzle.id:previous?.puzzle?.id;
@@ -527,9 +567,11 @@ const normalizeRoom=value=>String(value||'').trim().toUpperCase().replace(/\s+/g
 const randomRoom=()=>`CAT-${String(randomInt(10000)).padStart(4,'0')}`;
 const peerIdForRoom=room=>SHORT_ROOM_RE.test(room)?`cat-hide-seek-v1-${room.toLowerCase()}`:room;
 function showRoom(room){$('#roomInput').value=room;$('#room').textContent=`房號 ${room}`}
-function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
+async function startPeerHost(restored=false,forcedRoom=null,collisionAttempt=0) {
+  state.clockOffset=0;state.clockSyncedAt=null;
+  if(!restored)await ensureAuthorityPuzzleCatalog();
   if(settingsFromUI().mode==='survival')return startSurvivalHost({room:forcedRoom});
-  state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=false;
+  state.practice=false;state.role='host'; state.you=0; state.manual=false;
   if (!restored) { state.room=forcedRoom||randomRoom(); state.game=newGame(+$('#size').value); state.notes.clear();state.intel=[];state.tool=null;state.yarnTargets=[]; }
   $('#roomInput').value='';
   $('#setupStatus').textContent='正在向免費 PeerJS Cloud 登記房號…';
@@ -575,6 +617,7 @@ async function useOffer(code) { const pc=rtcPeer('guest'); await pc.setRemoteDes
 async function useAnswer(code) { await state.rtc.setRemoteDescription(decode(code)); }
 function showManual(title) { $('#manual').classList.remove('hidden'); $('#manualTitle').textContent=title; }
 async function manualHost(restored=false) {
+  if(!restored)await ensureAuthorityPuzzleCatalog();
   if(settingsFromUI().mode==='survival')throw Error('大逃殺請使用好友房號建立房間');
   state.practice=false;state.clockOffset=0;state.clockSyncedAt=null;state.role='host'; state.you=0; state.manual=true;
   if (!restored) { state.room='手動連線'; state.game=newGame(+$('#size').value); }
@@ -586,6 +629,7 @@ function manualJoin() {
   showManual('貼上房主邀請碼，產生回覆碼後傳回房主'); $('#setupStatus').textContent='請貼上邀請碼';
 }
 async function resumeHost() {
+  await ensureAuthorityPuzzleCatalog();
   const saved=JSON.parse(sessionStorage.p2pHost||'null');
   if(saved?.game?.settings?.mode==='battle'){if(!saved.game.boards?.every(board=>board.puzzle.solution))throw Error('沒有可恢復的房主局面');state.game=saved.game;state.suppressBattleFX=true;state.suppressLegacyAudio=true;CatBattle.pause(state.game,Date.now());state.game.players[0].connected=true;state.game.players[1].connected=false;state.disconnectAt=state.game.pausedAt||Date.now();syncSettingsUI(state.game.settings);state.room=randomRoom();state.notes=new Set(JSON.parse(sessionStorage.getItem('p2pNotes-host')||'[]'));startPeerHost(true);return}
   if (!saved?.game?.puzzle?.solution) throw Error('沒有可恢復的房主局面');
@@ -829,7 +873,7 @@ $('#helpButton').onclick=()=>$('#helpDialog').showModal();
 $('#closeHelp').onclick=()=>$('#helpDialog').close();
 $('#helpDialog').addEventListener('click',event=>{if(event.target===$('#helpDialog'))$('#helpDialog').close()});
 
-$('#host').onclick=()=>{try{startPeerHost(false)}catch(error){toast(error.message)}};
+$('#host').onclick=()=>startPeerHost(false).catch(error=>toast(error.message));
 $('#join').onclick=()=>{try{startPeerGuest()}catch(error){toast(error.message)}};
 $('#manualHost').onclick=()=>manualHost(false).catch(error=>toast(error.message));
 $('#manualJoin').onclick=manualJoin;

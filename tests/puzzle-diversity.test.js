@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname,'../battle-engine.js'),'utf8');
-function engine() { const box = {module:{exports:{}}}; vm.runInNewContext(source,box); return box.module.exports; }
+const poolSource=fs.readFileSync(path.join(__dirname,'../multiplayer-levels.js'),'utf8'),sequenceSource=fs.readFileSync(path.join(__dirname,'../puzzle-pools.js'),'utf8');
+function engine() { const box={Math,Date,Map,Set,Uint32Array};vm.createContext(box);vm.runInContext(poolSource,box);vm.runInContext(sequenceSource,box);vm.runInContext(source,box);return box.CatBattle; }
 function seeded(seed) { return () => { seed = Math.imul(seed,1664525)+1013904223; return (seed >>> 0)/0x100000000; }; }
 function variants(regions) {
   return Array.from({length:8},(_,symmetry) => {
@@ -99,21 +100,19 @@ test('deterministic sample improves actual boundaries and excludes rotated recen
   assert.ok(distances[Math.floor(distances.length/2)] >= 15,'median nearest-recent geometry differs by at least 15 boundary edges');
 });
 
-test('same-page quick rematches avoid recent answers and topologies without carrying previousGame', () => {
-  const B = engine(), patterns = [], shapes = [];
+test('same-page quick rematches use one authoritative pool selection without exposing answers', () => {
+  const B = engine(), selections=[];
   for (let match = 0; match < 60; match++) {
     const game = B.create();
-    for (const board of game.boards) {
-      const key = B.solutionPattern(board.puzzle.solution), shape = topology(board.puzzle.regions);
-      // Only 90 valid answers exist. All are used before the first reuse.
-      if (patterns.length < 90) assert.ok(!patterns.includes(key));
-      assert.ok(!shapes.slice(-90).includes(shape));
-      patterns.push(key); shapes.push(shape);
-    }
+    assert.notEqual(game.boards[0].selection.levelId,game.boards[1].selection.levelId);
+    assert.equal(game.boards[0].selection.cohort,game.boards[1].selection.cohort);
+    assert.equal(game.boards[0].puzzle.size,game.boards[1].puzzle.size);
+    assert.equal(game.boards[0].selection.techniqueRank,game.boards[1].selection.techniqueRank);
+    selections.push(game.boards[0].selection.levelId);
     const snapshot = JSON.stringify(B.publicGame(game,0));
     for (const hidden of ['solution','recentPatterns','recentGeometry','generationSequence','seed','_history','boundaries','topology']) assert.ok(!snapshot.includes(hidden),hidden);
   }
-  assert.equal(new Set(patterns.slice(0,90)).size,90);
+  assert.ok(new Set(selections).size>1);
 });
 
 test('stuck entropy is bounded and cannot repeat a rotated topology across repeated generations', () => {

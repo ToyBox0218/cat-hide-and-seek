@@ -31,10 +31,10 @@ function loadSurvivalNotes(snapshot,board){
   const key=survivalNotesKey(),identity=`${snapshot.id}:${state.survivalPlayerId}:${board?.puzzle.id}`;
   if(state.survivalNotesLoadedKey===identity)return;
   state.survivalNotesLoadedKey=identity;state.notes.clear();
-  try{const saved=JSON.parse(sessionStorage.getItem(key)||'null');if(saved?.gameId===snapshot.id&&saved.boardId===board?.puzzle.id)for(const index of saved.notes||[])if(Number.isInteger(index)&&index>=0&&index<36&&!board.found.includes(index)&&!board.misses.includes(index))state.notes.add(index);}catch{}
+  try{const saved=JSON.parse(sessionStorage.getItem(key)||'null'),cells=(board?.puzzle.size||6)**2;if(saved?.gameId===snapshot.id&&saved.boardId===board?.puzzle.id)for(const index of saved.notes||[])if(Number.isInteger(index)&&index>=0&&index<cells&&!board.found.includes(index)&&!board.misses.includes(index))state.notes.add(index);}catch{}
 }
 function applySurvivalSnapshot(snapshot,{historical=false}={}){
-  if(!snapshot||snapshot.settings?.mode!=='survival'||!Array.isArray(snapshot.players)||!Array.isArray(snapshot.boards)||snapshot.players.length!==snapshot.boards.length||snapshot.players.length>4)return false;
+  if(!snapshot||snapshot.settings?.mode!=='survival'||!Array.isArray(snapshot.players)||!Array.isArray(snapshot.boards)||snapshot.players.length!==snapshot.boards.length||snapshot.players.length>4||typeof validateMultiplayerSnapshot==='function'&&!validateMultiplayerSnapshot(snapshot))return false;
   if(state.survivalExpectedGameId&&snapshot.id!==state.survivalExpectedGameId)return false;
   const previous=state.game?.settings?.mode==='survival'?state.game:null;
   if(previous?.id===snapshot.id&&snapshot.revision<previous.revision)return false;
@@ -181,9 +181,9 @@ function survivalChoose(index){
 }
 function survivalKeydown(event){
   if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();
-  const index=+event.currentTarget.dataset.index,delta={ArrowUp:-6,ArrowDown:6,ArrowLeft:-1,ArrowRight:1}[event.key];
-  if(event.key==='ArrowLeft'&&index%6===0||event.key==='ArrowRight'&&index%6===5)return;
-  for(let next=index+delta;next>=0&&next<36;next+=delta){const cell=$(`#survivalBoard .cell[data-index="${next}"]`);if(cell&&!cell.disabled){cell.focus({preventScroll:true});return;}}
+  const size=state.game?.boards?.[state.you]?.puzzle?.size||6,index=+event.currentTarget.dataset.index,delta={ArrowUp:-size,ArrowDown:size,ArrowLeft:-1,ArrowRight:1}[event.key];
+  if(event.key==='ArrowLeft'&&index%size===0||event.key==='ArrowRight'&&index%size===size-1)return;
+  for(let next=index+delta;next>=0&&next<size*size;next+=delta){const cell=$(`#survivalBoard .cell[data-index="${next}"]`);if(cell&&!cell.disabled){cell.focus({preventScroll:true});return;}}
 }
 function survivalCopyInvite(){if(!['hosting','connected'].includes(state.survivalLinkStatus))return false;$('#copyInvite').click();return true;}
 function survivalLeave(){

@@ -74,6 +74,15 @@ function halfJoined(value, credential) {
   return connection;
 }
 
+test('transport accepts supported 12x12 indices and authority still validates the current board', () => {
+  const value = room(2), guest = value.guests[0]; value.start();
+  const board = value.authority.boards[1];
+  guest.client.submit({type:'guess',actionId:'large-index',boardId:board.puzzle.id,index:143});
+  assert.notEqual(guest.acks.at(-1).reason,'invalid-action');
+  assert.equal(guest.acks.at(-1).accepted,board.puzzle.size === 12);
+  value.close(); assert.equal(value.clock.jobs.size,0);
+});
+
 test('UMD loads without a DOM or an imported networking service', () => {
   const context = {}; vm.createContext(context);
   vm.runInContext(fs.readFileSync(require.resolve('../survival-session.js'),'utf8'),context);
@@ -347,9 +356,10 @@ test('host and guest share cumulative 4/10/16/24 checkpoints and a quota-free fi
   for (const [index,quota] of quotas.entries()) {
     assert.equal(value.host.getState().nextQuota,quota);
     while (rescues < quota) {
-      assert.equal(value.host.submit(action(value,0,`host-rescue-${rescues}`)).accepted,true);
+      const hostResult = value.host.submit(action(value,0,`host-rescue-${rescues}`));
+      assert.equal(hostResult.accepted,true,`host rescue ${rescues} rejected: ${hostResult.reason || 'unknown'}; board ${JSON.stringify(value.authority.boards[0])}`);
       guest.client.submit(action(value,1,`guest-rescue-${rescues}`));
-      assert.equal(guest.acks.at(-1).accepted,true);
+      assert.equal(guest.acks.at(-1).accepted,true,`guest rescue ${rescues} rejected: ${guest.acks.at(-1).reason || 'unknown'}`);
       rescues++; value.clock.advance(300);
     }
     value.clock.advance(value.authority.startAt + (index + 1) * 60000 - value.clock.at);

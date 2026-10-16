@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 function player(id){return{id,nickname:id,connected:true,ready:true}}
 test('survival settings expose no tabby or blast ability',()=>{
   const settings=Survival.settings({tabbyEnabled:true});
-  assert.deepEqual(settings,{mode:'survival',size:6,capacity:4});
+  assert.deepEqual(settings,{mode:'survival',size:null,capacity:4,difficulty:'normal',packVersion:null,poolVersion:null,roundSeed:null});
 });
 test('survival UI and styles contain no retired blast or special-cat behavior',()=>{
   const root=path.resolve(__dirname,'..'),source=['survival-app.js','survival-ui.js','survival.css'].map(file=>fs.readFileSync(path.join(root,file),'utf8')).join('\n');
