@@ -483,18 +483,52 @@ function solidVisual(kind,highlight){
  ['cylinder','top',0,'圓柱上面平平的面是圓形，斜著看時會畫成扁扁的圓。'],
  ['box','front',3,'這個盒子前面長長的面是長方形。']
 ].forEach(([kind,face,answer,why],i)=>addQuestion({id:'mg'+(i+5),subject:'math',type:'choice',topic:'立體看形狀',geometry:'solid',plain:'把橘色的面平放在紙上，可以畫出什麼形狀？',p:R('把橘色的面平放在紙上，可以畫出什麼形狀？','ㄅㄚˇ ㄐㄩˊ ㄙㄜˋ ㄉㄜ˙ ㄇㄧㄢˋ ㄆㄧㄥˊ ㄈㄤˋ ㄗㄞˋ ㄓˇ ㄕㄤˋ ㄎㄜˇ ㄧˇ ㄏㄨㄚˋ ㄔㄨ ㄕㄣˊ ㄇㄜ˙ ㄒㄧㄥˊ ㄓㄨㄤˋ'),visual:solidVisual(kind,face),options:shapeOptions(),answer,explanation:why}));
-function cubeStacks(heights){
- const size=38,depth=17,dy=12,gap=78,base=170,width=heights.length*gap+10;
+// Each cell is a stack height. Adjacent cells touch; internal faces are omitted.
+// Stairs have one row in depth; floor arrangements have one layer in height.
+// This keeps every cube countable without guessing any fully hidden cubes.
+function cubeCells(layout){return layout.flatMap((row,y)=>row.flatMap((height,x)=>Array.from({length:height},(_,z)=>[x,y,z])));}
+function cubeStacks(layout){
+ const cells=cubeCells(layout),occupied=new Set(cells.map(c=>c.join(',')));
+ const project=([x,y,z])=>[44*x+22*y,-18*y-44*z];
+ const corners=cells.flatMap(([x,y,z])=>[0,1].flatMap(dx=>[0,1].flatMap(dy=>[0,1].map(dz=>project([x+dx,y+dy,z+dz])))));
+ const minX=Math.min(...corners.map(p=>p[0])),minY=Math.min(...corners.map(p=>p[1])),maxX=Math.max(...corners.map(p=>p[0])),maxY=Math.max(...corners.map(p=>p[1]));
+ const point=p=>{const [x,y]=project(p);return (x-minX+18)+','+(y-minY+18);};
  let body='';
- heights.forEach((height,col)=>{for(let row=0;row<height;row++){
-  const x=15+col*gap,y=base-(row+1)*size;
-  body+='<g class="counting-cube" stroke="#315a50" stroke-width="2.4" stroke-linejoin="round"><path d="M'+x+' '+y+' '+(x+depth)+' '+(y-dy)+' '+(x+size+depth)+' '+(y-dy)+' '+(x+size)+' '+y+'Z" fill="#f5d99e"/><path d="M'+(x+size)+' '+y+' '+(x+size+depth)+' '+(y-dy)+' '+(x+size+depth)+' '+(y+size-dy)+' '+(x+size)+' '+(y+size)+'Z" fill="#8eb6a9"/><rect class="cube-front" x="'+x+'" y="'+y+'" width="'+size+'" height="'+size+'" fill="#d9ede7"/></g>';
- }});
- return svgFrame(body,width,190,'小方塊堆疊圖，每個方塊的前面都看得到');
+ // Back to front, left to right, bottom to top: only the exposed faces remain.
+ for(const [x,y,z] of [...cells].sort((a,b)=>b[1]-a[1]||a[0]-b[0]||a[2]-b[2])){
+  body+='<g class="counting-cube" data-cube="'+[x,y,z].join(',')+'" stroke="#315a50" stroke-width="2.2" stroke-linejoin="round">';
+  const faces=[
+   ['top',[x,y,z+1],[[x,y,z+1],[x+1,y,z+1],[x+1,y+1,z+1],[x,y+1,z+1]],'#f5d99e'],
+   ['right',[x+1,y,z],[[x+1,y,z],[x+1,y+1,z],[x+1,y+1,z+1],[x+1,y,z+1]],'#8eb6a9'],
+   ['front',[x,y-1,z],[[x,y,z],[x+1,y,z],[x+1,y,z+1],[x,y,z+1]],'#d9ede7']
+  ];
+  for(const [face,neighbor,vertices,color] of faces)if(!occupied.has(neighbor.join(',')))body+='<polygon data-face="'+face+'" points="'+vertices.map(point).join(' ')+'" fill="'+color+'"/>';
+  body+='</g>';
+ }
+ return svgFrame(body,maxX-minX+36,maxY-minY+36,'相連的小方塊堆疊圖，每個小方塊都有看得到的面');
 }
-[[1,1],[1,2],[2,2],[3,1],[2,3],[1,2,3],[2,2,3],[3,3,2]].forEach((heights,i)=>{
- const n=heights.reduce((a,b)=>a+b,0);
- addQuestion({id:'mg'+(i+9),subject:'math',type:'choice',topic:'數小方塊',geometry:'blocks',cubeHeights:heights,plain:'圖中一共有幾個小方塊？',p:R('圖中一共有幾個小方塊？','ㄊㄨˊ ㄓㄨㄥ ㄧˊ ㄍㄨㄥˋ ㄧㄡˇ ㄐㄧˇ ㄍㄜ˙ ㄒㄧㄠˇ ㄈㄤ ㄎㄨㄞˋ'),visual:cubeStacks(heights),options:numberOptions(n),answer:0,explanation:'從左邊開始，每堆有'+heights.join('、')+'個小方塊，合起來有'+n+'個。每個小方塊只算一次。'});
+const CUBE_LAYOUTS=[
+ ['橫排',[[1,1]]],
+ ['小階梯',[[1,2]]],
+ ['兩層方牆',[[2,2]]],
+ ['方形平鋪',[[1,1],[1,1]]],
+ ['高低平台',[[1,2,2]]],
+ ['上升階梯',[[1,2,3]]],
+ ['下降長階梯',[[3,2,1,1]]],
+ ['兩層長牆',[[2,2,2,2]]],
+ ['長橫排',[[1,1,1,1]]],
+ ['下降階梯',[[3,2,1]]],
+ ['中間高塔',[[1,3,1]]],
+ ['中間平台',[[1,2,2,1]]],
+ ['L形平鋪',[[1,1,1],[1,0,0]]],
+ ['T形平鋪',[[1,1,1],[0,1,0]]],
+ ['長方形平鋪',[[1,1,1],[1,1,1]]],
+ ['四層階梯',[[1,2,3,4]]]
+];
+CUBE_LAYOUTS.forEach(([pattern,layout],i)=>{
+ const n=cubeCells(layout).length,maxHeight=Math.max(...layout.flat()),layers=Array.from({length:maxHeight},(_,z)=>layout.flat().filter(h=>h>z).length);
+ const explanation=(maxHeight===1?'這個圖只有一層，一個一個數':'從下面往上數，每層有'+layers.join('、')+'個小方塊')+'，一共有'+n+'個小方塊。每個小方塊只算一次。';
+ addQuestion({id:'mg'+(i+9),subject:'math',type:'choice',topic:'數小方塊',geometry:'blocks',cubeLayout:layout,cubePattern:pattern,plain:'圖中一共有幾個小方塊？',p:R('圖中一共有幾個小方塊？','ㄊㄨˊ ㄓㄨㄥ ㄧˊ ㄍㄨㄥˋ ㄧㄡˇ ㄐㄧˇ ㄍㄜ˙ ㄒㄧㄠˇ ㄈㄤ ㄎㄨㄞˋ'),visual:cubeStacks(layout),options:numberOptions(n),answer:0,explanation});
 });
 
 function keepPunctuation(html){return html.replace(/(<ruby\b[^>]*>(?:(?!<\/ruby>)[\s\S])*<\/ruby>)([，。！？：」]+)/g,'<span class="reading-word">$1$2</span>');}
