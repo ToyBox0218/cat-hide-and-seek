@@ -499,7 +499,7 @@ function cubeStacks(heights){
 
 function keepPunctuation(html){return html.replace(/(<ruby\b[^>]*>(?:(?!<\/ruby>)[\s\S])*<\/ruby>)([，。！？：」]+)/g,'<span class="reading-word">$1$2</span>');}
 function passageView(q,interactive=false){if(!q.passageId)return '';const p=PASSAGES[q.passageId],ids=session?.ids.filter(id=>byId(id).passageId===q.passageId)||BANK.filter(other=>other.passageId===q.passageId).sort((a,b)=>a.passagePart-b.passagePart).map(other=>other.id);return '<section id="passage-'+q.id+'" class="passage" aria-label="閱讀短文"><div class="passage-meta"><strong>'+p.title+'</strong><span>本篇第 '+(ids.indexOf(q.id)+1)+' / '+ids.length+' 題</span></div>'+(interactive?'<a class="reading-jump" href="#question-title">'+R('回答問題','ㄏㄨㄟˊ ㄉㄚˊ ㄨㄣˋ ㄊㄧˊ')+' ↓</a>':'')+'<div class="passage-body">'+p.lines.map(line=>'<p>'+keepPunctuation(line)+'</p>').join('')+'</div></section>';}
-function promptView(q,answer){if(q.type!=='fill')return q.p;const chosen=Number.isInteger(answer)?q.options[answer]:null;return q.fillTemplate.replace('{{blank}}','<span class="blank-slot '+(chosen?'filled':'')+'" role="status" aria-live="polite" aria-label="'+(chosen?'已填入答案':'尚未填答')+'">'+(chosen||'？')+'</span>');}
+function promptView(q,answer){if(q.type!=='fill')return keepPunctuation(q.p);const chosen=Number.isInteger(answer)?q.options[answer]:null;return keepPunctuation(q.fillTemplate.replace('{{blank}}','<span class="blank-slot '+(chosen?'filled':'')+'" role="status" aria-live="polite" aria-label="'+(chosen?'已填入答案':'尚未填答')+'">'+(chosen||'？')+'</span>'));}
 function visualView(q){return q.visual?'<div class="visual">'+q.visual+'</div>':'';}
 function typeHelp(q){return TYPE_HELP[q.type]?'<div class="type-help">'+TYPE_HELP[q.type]+'</div>':'';}
 
