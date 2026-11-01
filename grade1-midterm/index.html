@@ -29,7 +29,14 @@ const VERSION=1,KEY='toybox-grade1-midterm-v1';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function ruby(text,reading){const syllables=reading.trim().split(/\s+/);let i=0;const html=[...text].map(c=>/[\u3400-\u9fff]/.test(c)?`<ruby>${c}<rp>（</rp><rt>${syllables[i++]||''}</rt><rp>）</rp></ruby>`:esc(c)).join('');if(i!==syllables.length)throw Error('注音字數不符：'+text);return html;}
 const R=ruby;
-const Z=(id,p,visual,options,answer,explanation,topic='注音拼讀')=>({id,subject:'zh',p:esc(p),plain:p,visual,options:options.map(esc),answer,explanation:esc(explanation),topic});
+const INSTRUCTION_READINGS={的:'ㄉㄜ˙',注:'ㄓㄨˋ',音:'ㄧㄣ',是:'ㄕˋ',哪:'ㄋㄚˇ',一:'ㄧˊ',個:'ㄍㄜ˙',加:'ㄐㄧㄚ',上:'ㄕㄤˋ',可:'ㄎㄜˇ',以:'ㄧˇ',拼:'ㄆㄧㄣ',成:'ㄔㄥˊ',第:'ㄉㄧˋ',二:'ㄦˋ',三:'ㄙㄢ',四:'ㄙˋ',聲:'ㄕㄥ',符:'ㄈㄨˊ',號:'ㄏㄠˋ',裡:'ㄌㄧˇ',少:'ㄕㄠˇ',了:'ㄌㄜ˙',和:'ㄏㄢˋ',完:'ㄨㄢˊ',全:'ㄑㄩㄢˊ',樣:'ㄧㄤˋ'};
+function chinesePrompt(text,topic){return text.split(/(「[^」]*」)/).map(part=>{
+  // Reading questions keep the quoted target unannotated; quoted instructions
+  // such as "第三聲" still receive reading support in tone questions.
+  if(topic==='注音拼讀'&&/^「[^」]+」$/.test(part))return `<span class="test-target">${esc(part)}</span>`;
+  return [...part].map(c=>{if(!/[\u3400-\u9fff]/.test(c))return esc(c);const reading=INSTRUCTION_READINGS[c];if(!reading)throw Error('題目說明缺少注音：'+c);return R(c,reading);}).join('');
+}).join('');}
+const Z=(id,p,visual,options,answer,explanation,topic='注音拼讀')=>({id,subject:'zh',p:chinesePrompt(p,topic),plain:p,visual,options:options.map(esc),answer,explanation:esc(explanation),topic});
 const M=(id,p,reading,visual,options,answer,explanation,topic)=>({id,subject:'math',p:R(p,reading),plain:p,visual,options:options.map(String),answer,explanation:esc(explanation),topic});
 const dots=(symbol,n)=>`<span class="count" aria-label="${Array(n).fill(symbol).join(' ')}">${Array(n).fill(symbol).join(' ')}</span>`;
 const BANK=[
