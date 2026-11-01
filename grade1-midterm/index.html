@@ -179,7 +179,7 @@ const TYPE_NAMES={choice:'選擇題',tf:'是非題',fill:'選詞填空',reading:
 const TYPE_HELP={
   tf:R('對的選○，錯的選×。','ㄉㄨㄟˋ ㄉㄜ˙ ㄒㄩㄢˇ ㄘㄨㄛˋ ㄉㄜ˙ ㄒㄩㄢˇ'),
   fill:R('選詞填空。','ㄒㄩㄢˇ ㄘˊ ㄊㄧㄢˊ ㄎㄨㄥˋ'),
-  reading:R('先讀短文，再回答。','ㄒㄧㄢ ㄉㄨˊ ㄉㄨㄢˇ ㄨㄣˊ ㄗㄞˋ ㄏㄨㄟˊ ㄉㄚˊ')
+  reading:R('讀短文，再回答。','ㄉㄨˊ ㄉㄨㄢˇ ㄨㄣˊ ㄗㄞˋ ㄏㄨㄟˊ ㄉㄚˊ')
 };
 const TF_OPTIONS=['<span class="tf-symbol">○</span>'+R('對','ㄉㄨㄟˋ'),'<span class="tf-symbol">×</span>'+R('錯','ㄘㄨㄛˋ')];
 const targetText=word=>'<span class="test-target">「'+esc(word)+'」</span>';
@@ -320,7 +320,7 @@ addPassage('candy','math','分糖果','ㄈㄣ ㄊㄤˊ ㄍㄨㄛˇ',[
  ['mr8','小熊還有幾顆糖果？','ㄒㄧㄠˇ ㄒㄩㄥˊ ㄏㄞˊ ㄧㄡˇ ㄐㄧˇ ㄎㄜ ㄊㄤˊ ㄍㄨㄛˇ',['2','5','7'],1,'原來7顆，分出去2顆，7−2＝5顆。']
 ]);
 
-function passageView(q){if(!q.passageId)return '';const p=PASSAGES[q.passageId];return '<section class="passage" aria-label="閱讀短文"><div class="passage-meta">'+p.title+'<span>第 '+q.passagePart+' / 2 題</span></div>'+p.lines.map(line=>'<p>'+line+'</p>').join('')+'</section>';}
+function passageView(q){if(!q.passageId)return '';const p=PASSAGES[q.passageId];return '<section class="passage" aria-label="閱讀短文"><div class="passage-meta"><strong>'+p.title+'</strong><span>第 '+q.passagePart+' / 2 題</span></div>'+p.lines.map(line=>'<p>'+line+'</p>').join('')+'</section>';}
 function promptView(q,answer){if(q.type!=='fill')return q.p;const chosen=Number.isInteger(answer)?q.options[answer]:null;return q.fillTemplate.replace('{{blank}}','<span class="blank-slot '+(chosen?'filled':'')+'" role="status" aria-live="polite" aria-label="'+(chosen?'已填入答案':'尚未填答')+'">'+(chosen||'？')+'</span>');}
 function visualView(q){return q.visual?'<div class="visual">'+q.visual+'</div>':'';}
 function typeHelp(q){return TYPE_HELP[q.type]?'<div class="type-help">'+TYPE_HELP[q.type]+'</div>':'';}
