@@ -39,6 +39,8 @@ ruby.zhuyin>rt.zhuyin-reading{display:inline-flex;align-items:center;position:re
 .review-item .passage{font-size:22px;margin-top:18px}.review-item .passage p{font-size:22px}.review-item .blank-slot{font-size:21px}.question-card[data-kind="fill"] .question-text{margin-bottom:20px}
 @media(max-width:560px){.passage{padding:16px 13px;margin-bottom:22px;font-size:24px}.passage p{font-size:24px;line-height:2.8}.passage-meta{font-size:19px}.passage-meta ruby.zhuyin>rt.zhuyin-reading{font-size:14px}.type-help{font-size:16px}.blank-slot{padding:3px 8px;min-width:2.7em;margin:5px 2px}.word-bank.word-answers{grid-template-columns:1fr}.question-card[data-kind="fill"] .answer-value{overflow-wrap:normal}.question-card[data-kind="fill"] .question-text{font-size:25px}.tf-options .answer{min-height:120px}}
 
+.geometry-svg{display:block;width:min(100%,360px);height:auto;margin:0 auto}.compare-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;width:100%;font-size:20px}.compare-groups>div{padding:8px;border:1px solid #d3dfd1;border-radius:12px;background:#fff}.compare-stars{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;font-size:26px;line-height:1.5}.reading-word{white-space:nowrap}.passage p{display:inline;margin:0;overflow-wrap:normal}.passage-body{margin-top:12px}.reading-jump{display:inline-flex;align-items:center;gap:8px;color:var(--green);font-size:17px;line-height:2.5;min-height:48px;text-decoration:underline;text-underline-offset:5px}.reading-jump ruby.zhuyin>rt.zhuyin-reading{font-size:12px}.back-to-story{margin-bottom:18px}.question-text{scroll-margin-top:75px}.passage{scroll-margin-top:12px}
+@media(max-width:560px){.visual:has(.geometry-svg){padding:12px}.compare-groups{gap:8px}.compare-stars{font-size:22px}.passage p{font-size:24px;line-height:2.8}.passage .reading-word{display:inline-block}}
 </style>
 </head>
 <body>
@@ -289,7 +291,8 @@ addPassage('picnic','zh','去野餐','ㄑㄩˋ ㄧㄝˇ ㄘㄢ',[
 
 [[2,3],[4,2],[1,6],[3,5],[5,2],[7,3],[6,2],[9,4]].forEach(([a,b],i)=>{const plus=i<4,op=plus?'＋':'−',result=plus?a+b:a-b;fill('mf'+(i+1),'math',a+' '+op+' ＿＿ = '+result,a+' '+op+' {{blank}} = '+result,'',numberOptions(b),0,a+op+b+'='+result+'，所以填'+b+'。');});
 [[0,1,2,3],[2,3,4,5],[6,7,8,9],[7,8,9,10]].forEach((nums,i)=>{const gap=i===2?1:i===3?3:2,correct=nums[gap],p=nums.map((n,j)=>j===gap?'＿＿':n).join('　'),template=nums.map((n,j)=>j===gap?'{{blank}}':n).join('　');fill('mf'+(i+9),'math',p,template,'',numberOptions(correct),0,'每次多1，正確順序是'+nums.join('、')+'。');});
-[[7,4],[3,6],[5,5],[9,2]].forEach(([a,b],i)=>fill('mf'+(i+13),'math',a+' ＿＿ '+b,a+' {{blank}} '+b,'',['＞','＜','＝'],a>b?0:a<b?1:2,a+'比'+b+(a>b?'大，填＞。':a<b?'小，填＜。':'一樣大，填＝。')));
+// Keep the original relation/answer indices so saved answers remain meaningful.
+[[7,4],[3,6],[5,5],[9,2]].forEach(([a,b],i)=>fill('mf'+(i+13),'math','比一比，左邊的星星＿＿。',R('比一比，左邊的星星','ㄅㄧˇ ㄧˋ ㄅㄧˇ ㄗㄨㄛˇ ㄅㄧㄢ ㄉㄜ˙ ㄒㄧㄥ ㄒㄧㄥ')+'{{blank}}。','<div class="compare-groups">'+[[a,'左邊','ㄗㄨㄛˇ ㄅㄧㄢ'],[b,'右邊','ㄧㄡˋ ㄅㄧㄢ']].map(([n,t,r])=>'<div><span class="visual-label">'+R(t,r)+'</span><div class="compare-stars">'+Array(n).fill('<span>⭐</span>').join('')+'</div></div>').join('')+'</div>',[R('比較多','ㄅㄧˇ ㄐㄧㄠˋ ㄉㄨㄛ'),R('比較少','ㄅㄧˇ ㄐㄧㄠˋ ㄕㄠˇ'),R('一樣多','ㄧˊ ㄧㄤˋ ㄉㄨㄛ')],a>b?0:a<b?1:2,'左邊有'+a+'顆，右邊有'+b+'顆，所以左邊'+(a>b?'比較多。':a<b?'比較少。':'和右邊一樣多。')));
 
 addPassage('carrot','math','小兔的紅蘿蔔','ㄒㄧㄠˇ ㄊㄨˋ ㄉㄜ˙ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙',[
  ['小兔原來有3根紅蘿蔔。','ㄒㄧㄠˇ ㄊㄨˋ ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄍㄣ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙'],
@@ -320,7 +323,182 @@ addPassage('candy','math','分糖果','ㄈㄣ ㄊㄤˊ ㄍㄨㄛˇ',[
  ['mr8','小熊還有幾顆糖果？','ㄒㄧㄠˇ ㄒㄩㄥˊ ㄏㄞˊ ㄧㄡˇ ㄐㄧˇ ㄎㄜ ㄊㄤˊ ㄍㄨㄛˇ',['2','5','7'],1,'原來7顆，分出去2顆，7−2＝5顆。']
 ]);
 
-function passageView(q){if(!q.passageId)return '';const p=PASSAGES[q.passageId];return '<section class="passage" aria-label="閱讀短文"><div class="passage-meta"><strong>'+p.title+'</strong><span>第 '+q.passagePart+' / 2 題</span></div>'+p.lines.map(line=>'<p>'+line+'</p>').join('')+'</section>';}
+// Longer, everyday stories. Original question IDs and options stay compatible.
+function extendPassage(id,lines,questions){
+  const p=PASSAGES[id];p.lines=lines.map(([t,r])=>R(t,r));p.plain=lines.map(([t])=>t).join('\n');
+  const existing=BANK.filter(q=>q.passageId===id);
+  questions.forEach(([qid,text,reading,options,answer,why],i)=>addQuestion({id:qid,subject:existing[0].subject,type:'reading',plain:text,p:R(text,reading),visual:'',options:options.map(o=>Array.isArray(o)?R(o[0],o[1]):String(o)),answer,explanation:why,passageId:id,passagePart:existing.length+i+1}));
+}
+extendPassage('dog',[
+ ['小明有一隻小狗。','ㄒㄧㄠˇ ㄇㄧㄥˊ ㄧㄡˇ ㄧˋ ㄓ ㄒㄧㄠˇ ㄍㄡˇ'],
+ ['小狗的名字叫小黑，最愛吃肉和跑步。','ㄒㄧㄠˇ ㄍㄡˇ ㄉㄜ˙ ㄇㄧㄥˊ ㄗˋ ㄐㄧㄠˋ ㄒㄧㄠˇ ㄏㄟ ㄗㄨㄟˋ ㄞˋ ㄔ ㄖㄡˋ ㄏㄢˋ ㄆㄠˇ ㄅㄨˋ'],
+ ['今天放學後，小明帶小黑去公園。','ㄐㄧㄣ ㄊㄧㄢ ㄈㄤˋ ㄒㄩㄝˊ ㄏㄡˋ ㄒㄧㄠˇ ㄇㄧㄥˊ ㄉㄞˋ ㄒㄧㄠˇ ㄏㄟ ㄑㄩˋ ㄍㄨㄥ ㄩㄢˊ'],
+ ['小明把球放在草地上，小黑跑去找球。','ㄒㄧㄠˇ ㄇㄧㄥˊ ㄅㄚˇ ㄑㄧㄡˊ ㄈㄤˋ ㄗㄞˋ ㄘㄠˇ ㄉㄧˋ ㄕㄤˋ ㄒㄧㄠˇ ㄏㄟ ㄆㄠˇ ㄑㄩˋ ㄓㄠˇ ㄑㄧㄡˊ'],
+ ['玩累了，小明拿水給小黑喝。','ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙ ㄒㄧㄠˇ ㄇㄧㄥˊ ㄋㄚˊ ㄕㄨㄟˇ ㄍㄟˇ ㄒㄧㄠˇ ㄏㄟ ㄏㄜ'],
+ ['天快黑了，他們一起回家。','ㄊㄧㄢ ㄎㄨㄞˋ ㄏㄟ ㄌㄜ˙ ㄊㄚ ㄇㄣ˙ ㄧˋ ㄑㄧˇ ㄏㄨㄟˊ ㄐㄧㄚ']
+],[
+ ['zr17','小明帶小黑去哪裡？','ㄒㄧㄠˇ ㄇㄧㄥˊ ㄉㄞˋ ㄒㄧㄠˇ ㄏㄟ ㄑㄩˋ ㄋㄚˇ ㄌㄧˇ',[['公園','ㄍㄨㄥ ㄩㄢˊ'],['學校','ㄒㄩㄝˊ ㄒㄧㄠˋ'],['商店','ㄕㄤ ㄉㄧㄢˋ']],0,'放學後，小明帶小黑去公園。'],
+ ['zr18','玩累了，小明做了什麼？','ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙ ㄒㄧㄠˇ ㄇㄧㄥˊ ㄗㄨㄛˋ ㄌㄜ˙ ㄕㄣˊ ㄇㄜ˙',[['給小黑喝水','ㄍㄟˇ ㄒㄧㄠˇ ㄏㄟ ㄏㄜ ㄕㄨㄟˇ'],['帶小黑游泳','ㄉㄞˋ ㄒㄧㄠˇ ㄏㄟ ㄧㄡˊ ㄩㄥˇ'],['給小黑洗澡','ㄍㄟˇ ㄒㄧㄠˇ ㄏㄟ ㄒㄧˇ ㄗㄠˇ']],0,'小黑玩累了，小明拿水給牠喝。']
+]);
+extendPassage('rain',[
+ ['早上下雨了。','ㄗㄠˇ ㄕㄤˋ ㄒㄧㄚˋ ㄩˇ ㄌㄜ˙'],
+ ['小美帶著紅雨傘去上學。','ㄒㄧㄠˇ ㄇㄟˇ ㄉㄞˋ ㄓㄜ˙ ㄏㄨㄥˊ ㄩˇ ㄙㄢˇ ㄑㄩˋ ㄕㄤˋ ㄒㄩㄝˊ'],
+ ['路上，她看見小安站在樹下。','ㄌㄨˋ ㄕㄤˋ ㄊㄚ ㄎㄢˋ ㄐㄧㄢˋ ㄒㄧㄠˇ ㄢ ㄓㄢˋ ㄗㄞˋ ㄕㄨˋ ㄒㄧㄚˋ'],
+ ['小安沒有帶傘，書包快要淋溼了。','ㄒㄧㄠˇ ㄢ ㄇㄟˊ ㄧㄡˇ ㄉㄞˋ ㄙㄢˇ ㄕㄨ ㄅㄠ ㄎㄨㄞˋ ㄧㄠˋ ㄌㄧㄣˊ ㄕ ㄌㄜ˙'],
+ ['小美請小安一起撐傘，兩個人慢慢走到學校。','ㄒㄧㄠˇ ㄇㄟˇ ㄑㄧㄥˇ ㄒㄧㄠˇ ㄢ ㄧˋ ㄑㄧˇ ㄔㄥ ㄙㄢˇ ㄌㄧㄤˇ ㄍㄜ˙ ㄖㄣˊ ㄇㄢˋ ㄇㄢˋ ㄗㄡˇ ㄉㄠˋ ㄒㄩㄝˊ ㄒㄧㄠˋ'],
+ ['小安笑著說：「謝謝你！」','ㄒㄧㄠˇ ㄢ ㄒㄧㄠˋ ㄓㄜ˙ ㄕㄨㄛ ㄒㄧㄝˋ ㄒㄧㄝ˙ ㄋㄧˇ']
+],[
+ ['zr19','誰沒有帶雨傘？','ㄕㄟˊ ㄇㄟˊ ㄧㄡˇ ㄉㄞˋ ㄩˇ ㄙㄢˇ',[['小安','ㄒㄧㄠˇ ㄢ'],['小美','ㄒㄧㄠˇ ㄇㄟˇ'],['老師','ㄌㄠˇ ㄕ']],0,'小安沒有帶傘，站在樹下。'],
+ ['zr20','小安為什麼說謝謝？','ㄒㄧㄠˇ ㄢ ㄨㄟˋ ㄕㄣˊ ㄇㄜ˙ ㄕㄨㄛ ㄒㄧㄝˋ ㄒㄧㄝ˙',[['小美和他一起撐傘','ㄒㄧㄠˇ ㄇㄟˇ ㄏㄢˋ ㄊㄚ ㄧˋ ㄑㄧˇ ㄔㄥ ㄙㄢˇ'],['小美送他一本書','ㄒㄧㄠˇ ㄇㄟˇ ㄙㄨㄥˋ ㄊㄚ ㄧˋ ㄅㄣˇ ㄕㄨ'],['小美陪他玩球','ㄒㄧㄠˇ ㄇㄟˇ ㄆㄟˊ ㄊㄚ ㄨㄢˊ ㄑㄧㄡˊ']],0,'小美請沒有帶傘的小安一起撐傘，幫助他走到學校。']
+]);
+extendPassage('fruit',[
+ ['媽媽買了蘋果和香蕉，放在桌上。','ㄇㄚ ㄇㄚ˙ ㄇㄞˇ ㄌㄜ˙ ㄆㄧㄥˊ ㄍㄨㄛˇ ㄏㄢˋ ㄒㄧㄤ ㄐㄧㄠ ㄈㄤˋ ㄗㄞˋ ㄓㄨㄛ ㄕㄤˋ'],
+ ['吃水果前，小安和妹妹先洗手。','ㄔ ㄕㄨㄟˇ ㄍㄨㄛˇ ㄑㄧㄢˊ ㄒㄧㄠˇ ㄢ ㄏㄢˋ ㄇㄟˋ ㄇㄟ˙ ㄒㄧㄢ ㄒㄧˇ ㄕㄡˇ'],
+ ['小安拿蘋果，妹妹拿香蕉。','ㄒㄧㄠˇ ㄢ ㄋㄚˊ ㄆㄧㄥˊ ㄍㄨㄛˇ ㄇㄟˋ ㄇㄟ˙ ㄋㄚˊ ㄒㄧㄤ ㄐㄧㄠ'],
+ ['妹妹把香蕉分一半給小安。','ㄇㄟˋ ㄇㄟ˙ ㄅㄚˇ ㄒㄧㄤ ㄐㄧㄠ ㄈㄣ ㄧˊ ㄅㄢˋ ㄍㄟˇ ㄒㄧㄠˇ ㄢ'],
+ ['兩個人坐在桌邊，一邊吃一邊說笑。','ㄌㄧㄤˇ ㄍㄜ˙ ㄖㄣˊ ㄗㄨㄛˋ ㄗㄞˋ ㄓㄨㄛ ㄅㄧㄢ ㄧˋ ㄅㄧㄢ ㄔ ㄧˋ ㄅㄧㄢ ㄕㄨㄛ ㄒㄧㄠˋ'],
+ ['吃完後，他們把果皮放進垃圾桶。','ㄔ ㄨㄢˊ ㄏㄡˋ ㄊㄚ ㄇㄣ˙ ㄅㄚˇ ㄍㄨㄛˇ ㄆㄧˊ ㄈㄤˋ ㄐㄧㄣˋ ㄌㄜˋ ㄙㄜˋ ㄊㄨㄥˇ']
+],[
+ ['zr21','吃水果以前，他們先做什麼？','ㄔ ㄕㄨㄟˇ ㄍㄨㄛˇ ㄧˇ ㄑㄧㄢˊ ㄊㄚ ㄇㄣ˙ ㄒㄧㄢ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['洗手','ㄒㄧˇ ㄕㄡˇ'],['睡覺','ㄕㄨㄟˋ ㄐㄧㄠˋ'],['畫畫','ㄏㄨㄚˋ ㄏㄨㄚˋ']],0,'吃水果前，小安和妹妹先洗手。'],
+ ['zr22','果皮最後放在哪裡？','ㄍㄨㄛˇ ㄆㄧˊ ㄗㄨㄟˋ ㄏㄡˋ ㄈㄤˋ ㄗㄞˋ ㄋㄚˇ ㄌㄧˇ',[['垃圾桶','ㄌㄜˋ ㄙㄜˋ ㄊㄨㄥˇ'],['書包裡','ㄕㄨ ㄅㄠ ㄌㄧˇ'],['地上','ㄉㄧˋ ㄕㄤˋ']],0,'最後一句說，他們把果皮放進垃圾桶。']
+]);
+extendPassage('park',[
+ ['星期天，小華和爸爸去公園。','ㄒㄧㄥ ㄑㄧˊ ㄊㄧㄢ ㄒㄧㄠˇ ㄏㄨㄚˊ ㄏㄢˋ ㄅㄚˋ ㄅㄚ˙ ㄑㄩˋ ㄍㄨㄥ ㄩㄢˊ'],
+ ['爸爸坐在樹下看書，小華在旁邊玩球。','ㄅㄚˋ ㄅㄚ˙ ㄗㄨㄛˋ ㄗㄞˋ ㄕㄨˋ ㄒㄧㄚˋ ㄎㄢˋ ㄕㄨ ㄒㄧㄠˇ ㄏㄨㄚˊ ㄗㄞˋ ㄆㄤˊ ㄅㄧㄢ ㄨㄢˊ ㄑㄧㄡˊ'],
+ ['風吹過來，樹葉輕輕地動。','ㄈㄥ ㄔㄨㄟ ㄍㄨㄛˋ ㄌㄞˊ ㄕㄨˋ ㄧㄝˋ ㄑㄧㄥ ㄑㄧㄥ ㄉㄜ˙ ㄉㄨㄥˋ'],
+ ['玩累了，小華坐在爸爸旁邊喝水。','ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙ ㄒㄧㄠˇ ㄏㄨㄚˊ ㄗㄨㄛˋ ㄗㄞˋ ㄅㄚˋ ㄅㄚ˙ ㄆㄤˊ ㄅㄧㄢ ㄏㄜ ㄕㄨㄟˇ'],
+ ['離開以前，他們把空水瓶放進袋子。','ㄌㄧˊ ㄎㄞ ㄧˇ ㄑㄧㄢˊ ㄊㄚ ㄇㄣ˙ ㄅㄚˇ ㄎㄨㄥ ㄕㄨㄟˇ ㄆㄧㄥˊ ㄈㄤˋ ㄐㄧㄣˋ ㄉㄞˋ ㄗ˙'],
+ ['公園裡沒有留下垃圾，爸爸開心地笑了。','ㄍㄨㄥ ㄩㄢˊ ㄌㄧˇ ㄇㄟˊ ㄧㄡˇ ㄌㄧㄡˊ ㄒㄧㄚˋ ㄌㄜˋ ㄙㄜˋ ㄅㄚˋ ㄅㄚ˙ ㄎㄞ ㄒㄧㄣ ㄉㄜ˙ ㄒㄧㄠˋ ㄌㄜ˙']
+],[
+ ['zr23','玩累了，小華做什麼？','ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙ ㄒㄧㄠˇ ㄏㄨㄚˊ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['坐下喝水','ㄗㄨㄛˋ ㄒㄧㄚˋ ㄏㄜ ㄕㄨㄟˇ'],['爬到樹上','ㄆㄚˊ ㄉㄠˋ ㄕㄨˋ ㄕㄤˋ'],['回家睡覺','ㄏㄨㄟˊ ㄐㄧㄚ ㄕㄨㄟˋ ㄐㄧㄠˋ']],0,'玩累了，小華坐在爸爸旁邊喝水。'],
+ ['zr24','離開前，水瓶放在哪裡？','ㄌㄧˊ ㄎㄞ ㄑㄧㄢˊ ㄕㄨㄟˇ ㄆㄧㄥˊ ㄈㄤˋ ㄗㄞˋ ㄋㄚˇ ㄌㄧˇ',[['袋子裡','ㄉㄞˋ ㄗ˙ ㄌㄧˇ'],['草地上','ㄘㄠˇ ㄉㄧˋ ㄕㄤˋ'],['樹下面','ㄕㄨˋ ㄒㄧㄚˋ ㄇㄧㄢˋ']],0,'他們把空水瓶放進袋子，沒有留在公園裡。']
+]);
+extendPassage('cat',[
+ ['小白是一隻貓，全身白白的。','ㄒㄧㄠˇ ㄅㄞˊ ㄕˋ ㄧˋ ㄓ ㄇㄠ ㄑㄩㄢˊ ㄕㄣ ㄅㄞˊ ㄅㄞˊ ㄉㄜ˙'],
+ ['牠最喜歡追著小球跑。','ㄊㄚ ㄗㄨㄟˋ ㄒㄧˇ ㄏㄨㄢ ㄓㄨㄟ ㄓㄜ˙ ㄒㄧㄠˇ ㄑㄧㄡˊ ㄆㄠˇ'],
+ ['今天中午，小白玩累了。','ㄐㄧㄣ ㄊㄧㄢ ㄓㄨㄥ ㄨˇ ㄒㄧㄠˇ ㄅㄞˊ ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙'],
+ ['牠躲到桌子下面睡覺。','ㄊㄚ ㄉㄨㄛˇ ㄉㄠˋ ㄓㄨㄛ ㄗ˙ ㄒㄧㄚˋ ㄇㄧㄢˋ ㄕㄨㄟˋ ㄐㄧㄠˋ'],
+ ['妹妹想找小白玩，可是找不到牠。','ㄇㄟˋ ㄇㄟ˙ ㄒㄧㄤˇ ㄓㄠˇ ㄒㄧㄠˇ ㄅㄞˊ ㄨㄢˊ ㄎㄜˇ ㄕˋ ㄓㄠˇ ㄅㄨˊ ㄉㄠˋ ㄊㄚ'],
+ ['我指著桌子下面，輕輕地說：「小白在睡覺，我們小聲一點。」','ㄨㄛˇ ㄓˇ ㄓㄜ˙ ㄓㄨㄛ ㄗ˙ ㄒㄧㄚˋ ㄇㄧㄢˋ ㄑㄧㄥ ㄑㄧㄥ ㄉㄜ˙ ㄕㄨㄛ ㄒㄧㄠˇ ㄅㄞˊ ㄗㄞˋ ㄕㄨㄟˋ ㄐㄧㄠˋ ㄨㄛˇ ㄇㄣ˙ ㄒㄧㄠˇ ㄕㄥ ㄧˋ ㄉㄧㄢˇ']
+],[
+ ['zr25','小白為什麼去睡覺？','ㄒㄧㄠˇ ㄅㄞˊ ㄨㄟˋ ㄕㄣˊ ㄇㄜ˙ ㄑㄩˋ ㄕㄨㄟˋ ㄐㄧㄠˋ',[['玩累了','ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙'],['吃太飽','ㄔ ㄊㄞˋ ㄅㄠˇ'],['外面下雨','ㄨㄞˋ ㄇㄧㄢˋ ㄒㄧㄚˋ ㄩˇ']],0,'短文先說小白玩累了，接著說牠去睡覺。'],
+ ['zr26','為了讓小白好好睡覺，我們可以怎麼做？','ㄨㄟˋ ㄌㄜ˙ ㄖㄤˋ ㄒㄧㄠˇ ㄅㄞˊ ㄏㄠˇ ㄏㄠˇ ㄕㄨㄟˋ ㄐㄧㄠˋ ㄨㄛˇ ㄇㄣ˙ ㄎㄜˇ ㄧˇ ㄗㄣˇ ㄇㄜ˙ ㄗㄨㄛˋ',[['小聲說話','ㄒㄧㄠˇ ㄕㄥ ㄕㄨㄛ ㄏㄨㄚˋ'],['大聲唱歌','ㄉㄚˋ ㄕㄥ ㄔㄤˋ ㄍㄜ'],['叫牠起床','ㄐㄧㄠˋ ㄊㄚ ㄑㄧˇ ㄔㄨㄤˊ']],0,'最後一句提醒我們小聲一點，讓小白休息。']
+]);
+extendPassage('flower',[
+ ['小青和媽媽在院子裡種了一盆花。','ㄒㄧㄠˇ ㄑㄧㄥ ㄏㄢˋ ㄇㄚ ㄇㄚ˙ ㄗㄞˋ ㄩㄢˋ ㄗ˙ ㄌㄧˇ ㄓㄨㄥˋ ㄌㄜ˙ ㄧˋ ㄆㄣˊ ㄏㄨㄚ'],
+ ['小青每天早上幫花澆水。','ㄒㄧㄠˇ ㄑㄧㄥ ㄇㄟˇ ㄊㄧㄢ ㄗㄠˇ ㄕㄤˋ ㄅㄤ ㄏㄨㄚ ㄐㄧㄠ ㄕㄨㄟˇ'],
+ ['她把花盆放在有陽光的地方。','ㄊㄚ ㄅㄚˇ ㄏㄨㄚ ㄆㄣˊ ㄈㄤˋ ㄗㄞˋ ㄧㄡˇ ㄧㄤˊ ㄍㄨㄤ ㄉㄜ˙ ㄉㄧˋ ㄈㄤ'],
+ ['過了幾天，花開了，是一朵黃色的花。','ㄍㄨㄛˋ ㄌㄜ˙ ㄐㄧˇ ㄊㄧㄢ ㄏㄨㄚ ㄎㄞ ㄌㄜ˙ ㄕˋ ㄧˋ ㄉㄨㄛˇ ㄏㄨㄤˊ ㄙㄜˋ ㄉㄜ˙ ㄏㄨㄚ'],
+ ['小青畫了一張花的圖，送給媽媽。','ㄒㄧㄠˇ ㄑㄧㄥ ㄏㄨㄚˋ ㄌㄜ˙ ㄧˋ ㄓㄤ ㄏㄨㄚ ㄉㄜ˙ ㄊㄨˊ ㄙㄨㄥˋ ㄍㄟˇ ㄇㄚ ㄇㄚ˙'],
+ ['媽媽把圖貼在牆上，說：「你把花照顧得真好！」','ㄇㄚ ㄇㄚ˙ ㄅㄚˇ ㄊㄨˊ ㄊㄧㄝ ㄗㄞˋ ㄑㄧㄤˊ ㄕㄤˋ ㄕㄨㄛ ㄋㄧˇ ㄅㄚˇ ㄏㄨㄚ ㄓㄠˋ ㄍㄨˋ ㄉㄜ˙ ㄓㄣ ㄏㄠˇ']
+],[
+ ['zr27','開出來的花是什麼顏色？','ㄎㄞ ㄔㄨ ㄌㄞˊ ㄉㄜ˙ ㄏㄨㄚ ㄕˋ ㄕㄣˊ ㄇㄜ˙ ㄧㄢˊ ㄙㄜˋ',[['黃色','ㄏㄨㄤˊ ㄙㄜˋ'],['紅色','ㄏㄨㄥˊ ㄙㄜˋ'],['藍色','ㄌㄢˊ ㄙㄜˋ']],0,'短文說開出一朵黃色的花。'],
+ ['zr28','小青把圖送給誰？','ㄒㄧㄠˇ ㄑㄧㄥ ㄅㄚˇ ㄊㄨˊ ㄙㄨㄥˋ ㄍㄟˇ ㄕㄟˊ',[['媽媽','ㄇㄚ ㄇㄚ˙'],['爸爸','ㄅㄚˋ ㄅㄚ˙'],['老師','ㄌㄠˇ ㄕ']],0,'小青畫了一張花的圖，送給媽媽。']
+]);
+BANK.find(q=>q.id==='zr11').explanation='小青和媽媽在院子裡種了一盆花。';
+extendPassage('school',[
+ ['早上，小文背著書包去學校。','ㄗㄠˇ ㄕㄤˋ ㄒㄧㄠˇ ㄨㄣˊ ㄅㄟ ㄓㄜ˙ ㄕㄨ ㄅㄠ ㄑㄩˋ ㄒㄩㄝˊ ㄒㄧㄠˋ'],
+ ['他先把水壺放好，再拿出畫紙和彩色筆。','ㄊㄚ ㄒㄧㄢ ㄅㄚˇ ㄕㄨㄟˇ ㄏㄨˊ ㄈㄤˋ ㄏㄠˇ ㄗㄞˋ ㄋㄚˊ ㄔㄨ ㄏㄨㄚˋ ㄓˇ ㄏㄢˋ ㄘㄞˇ ㄙㄜˋ ㄅㄧˇ'],
+ ['老師請大家畫一種喜歡的動物。','ㄌㄠˇ ㄕ ㄑㄧㄥˇ ㄉㄚˋ ㄐㄧㄚ ㄏㄨㄚˋ ㄧˋ ㄓㄨㄥˇ ㄒㄧˇ ㄏㄨㄢ ㄉㄜ˙ ㄉㄨㄥˋ ㄨˋ'],
+ ['小文在教室畫了一隻兔子，還畫了兩根紅蘿蔔。','ㄒㄧㄠˇ ㄨㄣˊ ㄗㄞˋ ㄐㄧㄠˋ ㄕˋ ㄏㄨㄚˋ ㄌㄜ˙ ㄧˋ ㄓ ㄊㄨˋ ㄗ˙ ㄏㄞˊ ㄏㄨㄚˋ ㄌㄜ˙ ㄌㄧㄤˇ ㄍㄣ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙'],
+ ['下課時，他把圖拿給小安看。','ㄒㄧㄚˋ ㄎㄜˋ ㄕˊ ㄊㄚ ㄅㄚˇ ㄊㄨˊ ㄋㄚˊ ㄍㄟˇ ㄒㄧㄠˇ ㄢ ㄎㄢˋ'],
+ ['小安說：「你的兔子好可愛！」','ㄒㄧㄠˇ ㄢ ㄕㄨㄛ ㄋㄧˇ ㄉㄜ˙ ㄊㄨˋ ㄗ˙ ㄏㄠˇ ㄎㄜˇ ㄞˋ']
+],[
+ ['zr29','小文先放好什麼？','ㄒㄧㄠˇ ㄨㄣˊ ㄒㄧㄢ ㄈㄤˋ ㄏㄠˇ ㄕㄣˊ ㄇㄜ˙',[['水壺','ㄕㄨㄟˇ ㄏㄨˊ'],['雨傘','ㄩˇ ㄙㄢˇ'],['皮球','ㄆㄧˊ ㄑㄧㄡˊ']],0,'他先把水壺放好，再拿出畫紙和彩色筆。'],
+ ['zr30','老師請大家畫什麼？','ㄌㄠˇ ㄕ ㄑㄧㄥˇ ㄉㄚˋ ㄐㄧㄚ ㄏㄨㄚˋ ㄕㄣˊ ㄇㄜ˙',[['喜歡的動物','ㄒㄧˇ ㄏㄨㄢ ㄉㄜ˙ ㄉㄨㄥˋ ㄨˋ'],['好吃的水果','ㄏㄠˇ ㄔ ㄉㄜ˙ ㄕㄨㄟˇ ㄍㄨㄛˇ'],['漂亮的花','ㄆㄧㄠˋ ㄌㄧㄤˋ ㄉㄜ˙ ㄏㄨㄚ']],0,'老師請大家畫一種喜歡的動物。']
+]);
+extendPassage('picnic',[
+ ['今天，姐姐和我去野餐。','ㄐㄧㄣ ㄊㄧㄢ ㄐㄧㄝˇ ㄐㄧㄝ˙ ㄏㄢˋ ㄨㄛˇ ㄑㄩˋ ㄧㄝˇ ㄘㄢ'],
+ ['姐姐帶麵包，我帶牛奶。','ㄐㄧㄝˇ ㄐㄧㄝ˙ ㄉㄞˋ ㄇㄧㄢˋ ㄅㄠ ㄨㄛˇ ㄉㄞˋ ㄋㄧㄡˊ ㄋㄞˇ'],
+ ['我們在大樹下鋪好小墊子，再把食物放上去。','ㄨㄛˇ ㄇㄣ˙ ㄗㄞˋ ㄉㄚˋ ㄕㄨˋ ㄒㄧㄚˋ ㄆㄨ ㄏㄠˇ ㄒㄧㄠˇ ㄉㄧㄢˋ ㄗ˙ ㄗㄞˋ ㄅㄚˇ ㄕˊ ㄨˋ ㄈㄤˋ ㄕㄤˋ ㄑㄩˋ'],
+ ['吃東西以前，我們先把手洗乾淨。','ㄔ ㄉㄨㄥ ㄒㄧ˙ ㄧˇ ㄑㄧㄢˊ ㄨㄛˇ ㄇㄣ˙ ㄒㄧㄢ ㄅㄚˇ ㄕㄡˇ ㄒㄧˇ ㄍㄢ ㄐㄧㄥˋ'],
+ ['吃完後，我們坐著看天上的白雲。','ㄔ ㄨㄢˊ ㄏㄡˋ ㄨㄛˇ ㄇㄣ˙ ㄗㄨㄛˋ ㄓㄜ˙ ㄎㄢˋ ㄊㄧㄢ ㄕㄤˋ ㄉㄜ˙ ㄅㄞˊ ㄩㄣˊ'],
+ ['回家前，我們把垃圾帶走，也把墊子收好。','ㄏㄨㄟˊ ㄐㄧㄚ ㄑㄧㄢˊ ㄨㄛˇ ㄇㄣ˙ ㄅㄚˇ ㄌㄜˋ ㄙㄜˋ ㄉㄞˋ ㄗㄡˇ ㄧㄝˇ ㄅㄚˇ ㄉㄧㄢˋ ㄗ˙ ㄕㄡ ㄏㄠˇ']
+],[
+ ['zr31','他們在哪裡鋪墊子？','ㄊㄚ ㄇㄣ˙ ㄗㄞˋ ㄋㄚˇ ㄌㄧˇ ㄆㄨ ㄉㄧㄢˋ ㄗ˙',[['大樹下','ㄉㄚˋ ㄕㄨˋ ㄒㄧㄚˋ'],['教室裡','ㄐㄧㄠˋ ㄕˋ ㄌㄧˇ'],['桌子上','ㄓㄨㄛ ㄗ˙ ㄕㄤˋ']],0,'他們在大樹下鋪好小墊子。'],
+ ['zr32','回家前，他們做了什麼？','ㄏㄨㄟˊ ㄐㄧㄚ ㄑㄧㄢˊ ㄊㄚ ㄇㄣ˙ ㄗㄨㄛˋ ㄌㄜ˙ ㄕㄣˊ ㄇㄜ˙',[['把垃圾帶走','ㄅㄚˇ ㄌㄜˋ ㄙㄜˋ ㄉㄞˋ ㄗㄡˇ'],['把牛奶倒在地上','ㄅㄚˇ ㄋㄧㄡˊ ㄋㄞˇ ㄉㄠˋ ㄗㄞˋ ㄉㄧˋ ㄕㄤˋ'],['把墊子留在樹下','ㄅㄚˇ ㄉㄧㄢˋ ㄗ˙ ㄌㄧㄡˊ ㄗㄞˋ ㄕㄨˋ ㄒㄧㄚˋ']],0,'最後一句說，他們把垃圾帶走，也把墊子收好。']
+]);
+extendPassage('carrot',[
+ ['小兔原來有3根紅蘿蔔。','ㄒㄧㄠˇ ㄊㄨˋ ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄍㄣ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙'],
+ ['媽媽又給牠2根。','ㄇㄚ ㄇㄚ˙ ㄧㄡˋ ㄍㄟˇ ㄊㄚ ㄍㄣ'],
+ ['小兔把紅蘿蔔都放進小籃子裡。','ㄒㄧㄠˇ ㄊㄨˋ ㄅㄚˇ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙ ㄉㄡ ㄈㄤˋ ㄐㄧㄣˋ ㄒㄧㄠˇ ㄌㄢˊ ㄗ˙ ㄌㄧˇ'],
+ ['吃飯前，牠先把紅蘿蔔洗乾淨。','ㄔ ㄈㄢˋ ㄑㄧㄢˊ ㄊㄚ ㄒㄧㄢ ㄅㄚˇ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙ ㄒㄧˇ ㄍㄢ ㄐㄧㄥˋ'],
+ ['牠想和媽媽一起吃，心裡很開心。','ㄊㄚ ㄒㄧㄤˇ ㄏㄢˋ ㄇㄚ ㄇㄚ˙ ㄧˋ ㄑㄧˇ ㄔ ㄒㄧㄣ ㄌㄧˇ ㄏㄣˇ ㄎㄞ ㄒㄧㄣ']
+],[
+ ['mr9','媽媽給小兔幾根紅蘿蔔？','ㄇㄚ ㄇㄚ˙ ㄍㄟˇ ㄒㄧㄠˇ ㄊㄨˋ ㄐㄧˇ ㄍㄣ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙',['2','3','5'],0,'媽媽又給牠2根。'],
+ ['mr10','媽媽給了紅蘿蔔後，小兔的紅蘿蔔怎麼了？','ㄇㄚ ㄇㄚ˙ ㄍㄟˇ ㄌㄜ˙ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙ ㄏㄡˋ ㄒㄧㄠˇ ㄊㄨˋ ㄉㄜ˙ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙ ㄗㄣˇ ㄇㄜ˙ ㄌㄜ˙',[['變多了','ㄅㄧㄢˋ ㄉㄨㄛ ㄌㄜ˙'],['變少了','ㄅㄧㄢˋ ㄕㄠˇ ㄌㄜ˙'],['一樣多','ㄧˊ ㄧㄤˋ ㄉㄨㄛ']],0,'原來有3根，媽媽又給2根，所以數量變多了。']
+]);
+extendPassage('cookie',[
+ ['放學後，小安和媽媽一起吃點心。','ㄈㄤˋ ㄒㄩㄝˊ ㄏㄡˋ ㄒㄧㄠˇ ㄢ ㄏㄢˋ ㄇㄚ ㄇㄚ˙ ㄧˋ ㄑㄧˇ ㄔ ㄉㄧㄢˇ ㄒㄧㄣ'],
+ ['盤子上原來有8個餅乾。','ㄆㄢˊ ㄗ˙ ㄕㄤˋ ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄍㄜ˙ ㄅㄧㄥˇ ㄍㄢ'],
+ ['小安洗好手，吃了3個餅乾。','ㄒㄧㄠˇ ㄢ ㄒㄧˇ ㄏㄠˇ ㄕㄡˇ ㄔ ㄌㄜ˙ ㄍㄜ˙ ㄅㄧㄥˇ ㄍㄢ'],
+ ['媽媽還沒有吃，先去倒了一杯水。','ㄇㄚ ㄇㄚ˙ ㄏㄞˊ ㄇㄟˊ ㄧㄡˇ ㄔ ㄒㄧㄢ ㄑㄩˋ ㄉㄠˋ ㄌㄜ˙ ㄧˋ ㄅㄟ ㄕㄨㄟˇ'],
+ ['小安把盤子推到媽媽面前，請媽媽一起吃。','ㄒㄧㄠˇ ㄢ ㄅㄚˇ ㄆㄢˊ ㄗ˙ ㄊㄨㄟ ㄉㄠˋ ㄇㄚ ㄇㄚ˙ ㄇㄧㄢˋ ㄑㄧㄢˊ ㄑㄧㄥˇ ㄇㄚ ㄇㄚ˙ ㄧˋ ㄑㄧˇ ㄔ']
+],[
+ ['mr11','盤子上原來有幾個餅乾？','ㄆㄢˊ ㄗ˙ ㄕㄤˋ ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄐㄧˇ ㄍㄜ˙ ㄅㄧㄥˇ ㄍㄢ',['3','5','8'],2,'盤子上原來有8個餅乾。'],
+ ['mr12','小安吃了餅乾後，盤子上的餅乾怎麼了？','ㄒㄧㄠˇ ㄢ ㄔ ㄌㄜ˙ ㄅㄧㄥˇ ㄍㄢ ㄏㄡˋ ㄆㄢˊ ㄗ˙ ㄕㄤˋ ㄉㄜ˙ ㄅㄧㄥˇ ㄍㄢ ㄗㄣˇ ㄇㄜ˙ ㄌㄜ˙',[['變少了','ㄅㄧㄢˋ ㄕㄠˇ ㄌㄜ˙'],['變多了','ㄅㄧㄢˋ ㄉㄨㄛ ㄌㄜ˙'],['一樣多','ㄧˊ ㄧㄤˋ ㄉㄨㄛ']],0,'拿走3個餅乾吃掉，盤子上的餅乾變少了。']
+]);
+BANK.find(q=>q.id==='mr1').explanation='小兔原來有3根紅蘿蔔。';
+BANK.find(q=>q.id==='mr3').explanation='小安洗好手，吃了3個餅乾。';
+extendPassage('pencil',[
+ ['哥哥和妹妹坐在桌邊，準備畫圖。','ㄍㄜ ㄍㄜ˙ ㄏㄢˋ ㄇㄟˋ ㄇㄟ˙ ㄗㄨㄛˋ ㄗㄞˋ ㄓㄨㄛ ㄅㄧㄢ ㄓㄨㄣˇ ㄅㄟˋ ㄏㄨㄚˋ ㄊㄨˊ'],
+ ['哥哥有4枝鉛筆，妹妹有6枝鉛筆。','ㄍㄜ ㄍㄜ˙ ㄧㄡˇ ㄓ ㄑㄧㄢ ㄅㄧˇ ㄇㄟˋ ㄇㄟ˙ ㄧㄡˇ ㄓ ㄑㄧㄢ ㄅㄧˇ'],
+ ['他們先數一數自己的鉛筆，再拿出畫紙。','ㄊㄚ ㄇㄣ˙ ㄒㄧㄢ ㄕㄨˇ ㄧˋ ㄕㄨˇ ㄗˋ ㄐㄧˇ ㄉㄜ˙ ㄑㄧㄢ ㄅㄧˇ ㄗㄞˋ ㄋㄚˊ ㄔㄨ ㄏㄨㄚˋ ㄓˇ'],
+ ['哥哥畫小狗，妹妹畫小貓。','ㄍㄜ ㄍㄜ˙ ㄏㄨㄚˋ ㄒㄧㄠˇ ㄍㄡˇ ㄇㄟˋ ㄇㄟ˙ ㄏㄨㄚˋ ㄒㄧㄠˇ ㄇㄠ'],
+ ['畫完後，兩人把鉛筆全放進同一個筆盒。','ㄏㄨㄚˋ ㄨㄢˊ ㄏㄡˋ ㄌㄧㄤˇ ㄖㄣˊ ㄅㄚˇ ㄑㄧㄢ ㄅㄧˇ ㄑㄩㄢˊ ㄈㄤˋ ㄐㄧㄣˋ ㄊㄨㄥˊ ㄧˊ ㄍㄜ˙ ㄅㄧˇ ㄏㄜˊ']
+],[
+ ['mr13','哥哥原來有幾枝鉛筆？','ㄍㄜ ㄍㄜ˙ ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄐㄧˇ ㄓ ㄑㄧㄢ ㄅㄧˇ',['4','6','10'],0,'哥哥原來有4枝鉛筆。'],
+ ['mr14','誰原來的鉛筆比較多？','ㄕㄟˊ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄑㄧㄢ ㄅㄧˇ ㄅㄧˇ ㄐㄧㄠˋ ㄉㄨㄛ',[['妹妹','ㄇㄟˋ ㄇㄟ˙'],['哥哥','ㄍㄜ ㄍㄜ˙'],['兩人一樣多','ㄌㄧㄤˇ ㄖㄣˊ ㄧˊ ㄧㄤˋ ㄉㄨㄛ']],0,'妹妹有6枝，哥哥有4枝，所以妹妹比較多。']
+]);
+extendPassage('candy',[
+ ['小熊有7顆糖果，放在小盒子裡。','ㄒㄧㄠˇ ㄒㄩㄥˊ ㄧㄡˇ ㄎㄜ ㄊㄤˊ ㄍㄨㄛˇ ㄈㄤˋ ㄗㄞˋ ㄒㄧㄠˇ ㄏㄜˊ ㄗ˙ ㄌㄧˇ'],
+ ['小兔來找小熊玩，帶來一本故事書。','ㄒㄧㄠˇ ㄊㄨˋ ㄌㄞˊ ㄓㄠˇ ㄒㄧㄠˇ ㄒㄩㄥˊ ㄨㄢˊ ㄉㄞˋ ㄌㄞˊ ㄧˋ ㄅㄣˇ ㄍㄨˋ ㄕˋ ㄕㄨ'],
+ ['小熊從盒子裡拿出2顆糖果，分給小兔。','ㄒㄧㄠˇ ㄒㄩㄥˊ ㄘㄨㄥˊ ㄏㄜˊ ㄗ˙ ㄌㄧˇ ㄋㄚˊ ㄔㄨ ㄎㄜ ㄊㄤˊ ㄍㄨㄛˇ ㄈㄣ ㄍㄟˇ ㄒㄧㄠˇ ㄊㄨˋ'],
+ ['小兔說了謝謝，把糖果收好。','ㄒㄧㄠˇ ㄊㄨˋ ㄕㄨㄛ ㄌㄜ˙ ㄒㄧㄝˋ ㄒㄧㄝ˙ ㄅㄚˇ ㄊㄤˊ ㄍㄨㄛˇ ㄕㄡ ㄏㄠˇ'],
+ ['兩個好朋友坐在一起，開心地看書。','ㄌㄧㄤˇ ㄍㄜ˙ ㄏㄠˇ ㄆㄥˊ ㄧㄡˇ ㄗㄨㄛˋ ㄗㄞˋ ㄧˋ ㄑㄧˇ ㄎㄞ ㄒㄧㄣ ㄉㄜ˙ ㄎㄢˋ ㄕㄨ']
+],[
+ ['mr15','小熊原來有幾顆糖果？','ㄒㄧㄠˇ ㄒㄩㄥˊ ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄐㄧˇ ㄎㄜ ㄊㄤˊ ㄍㄨㄛˇ',['2','5','7'],2,'小熊原來有7顆糖果。'],
+ ['mr16','分出去以後，小熊的糖果怎麼了？','ㄈㄣ ㄔㄨ ㄑㄩˋ ㄧˇ ㄏㄡˋ ㄒㄧㄠˇ ㄒㄩㄥˊ ㄉㄜ˙ ㄊㄤˊ ㄍㄨㄛˇ ㄗㄣˇ ㄇㄜ˙ ㄌㄜ˙',[['變少了','ㄅㄧㄢˋ ㄕㄠˇ ㄌㄜ˙'],['變多了','ㄅㄧㄢˋ ㄉㄨㄛ ㄌㄜ˙'],['一樣多','ㄧˊ ㄧㄤˋ ㄉㄨㄛ']],0,'小熊分出2顆，所以自己留下的糖果變少了。']
+]);
+
+// SVG diagrams have no answer text, and every counting cube has a visible front.
+const SHAPES=[['圓形','ㄩㄢˊ ㄒㄧㄥˊ'],['三角形','ㄙㄢ ㄐㄧㄠˇ ㄒㄧㄥˊ'],['正方形','ㄓㄥˋ ㄈㄤ ㄒㄧㄥˊ'],['長方形','ㄔㄤˊ ㄈㄤ ㄒㄧㄥˊ']];
+const shapeOptions=()=>SHAPES.map(([t,r])=>R(t,r));
+const svgFrame=(body,w=280,h=190,label='題目圖形')=>'<svg class="geometry-svg" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+label+'">'+body+'</svg>';
+[
+ '<circle cx="140" cy="95" r="65"/>',
+ '<path d="M140 25 215 160H65Z"/>',
+ '<rect x="80" y="35" width="120" height="120"/>',
+ '<rect x="45" y="55" width="190" height="85"/>'
+].forEach((shape,i)=>addQuestion({id:'mg'+(i+1),subject:'math',type:'choice',topic:'平面形狀',plain:'這是什麼形狀？',p:R('這是什麼形狀？','ㄓㄜˋ ㄕˋ ㄕㄣˊ ㄇㄜ˙ ㄒㄧㄥˊ ㄓㄨㄤˋ'),visual:svgFrame('<g fill="#d9ede7" stroke="#217361" stroke-width="4" stroke-linejoin="round">'+shape+'</g>'),options:shapeOptions(),answer:i,explanation:'圖中是'+SHAPES[i][0]+'。',geometry:'flat'}));
+function solidVisual(kind,highlight){
+ const top=highlight==='top'?'#f5b45d':'#d9e9e4',front=highlight==='front'?'#f5b45d':'#d9e9e4';
+ if(kind==='cylinder')return svgFrame('<path d="M70 60V145C70 180 210 180 210 145V60" fill="#d9e9e4" stroke="#315a50" stroke-width="3"/><ellipse cx="140" cy="60" rx="70" ry="25" fill="'+top+'" stroke="#315a50" stroke-width="3"/>');
+ const wide=kind==='box',left=wide?35:65,right=wide?195:175,depth=40,y=wide?75:60,bottom=170;
+ return svgFrame('<g stroke="#315a50" stroke-width="3" stroke-linejoin="round"><path d="M'+left+' '+y+' '+(left+depth)+' '+(y-30)+' '+(right+depth)+' '+(y-30)+' '+right+' '+y+'Z" fill="'+top+'"/><path d="M'+right+' '+y+' '+(right+depth)+' '+(y-30)+' '+(right+depth)+' '+(bottom-30)+' '+right+' '+bottom+'Z" fill="#9fbbb2"/><path d="M'+left+' '+y+'H'+right+'V'+bottom+'H'+left+'Z" fill="'+front+'"/></g>');
+}
+[
+ ['cube','top',2,'小方塊上面平平的面是正方形，畫成立體圖時看起來會斜斜的。'],
+ ['cube','front',2,'小方塊前面的面是正方形。'],
+ ['cylinder','top',0,'圓柱上面平平的面是圓形，斜著看時會畫成扁扁的圓。'],
+ ['box','front',3,'這個盒子前面長長的面是長方形。']
+].forEach(([kind,face,answer,why],i)=>addQuestion({id:'mg'+(i+5),subject:'math',type:'choice',topic:'立體看形狀',geometry:'solid',plain:'把橘色的面平放在紙上，可以畫出什麼形狀？',p:R('把橘色的面平放在紙上，可以畫出什麼形狀？','ㄅㄚˇ ㄐㄩˊ ㄙㄜˋ ㄉㄜ˙ ㄇㄧㄢˋ ㄆㄧㄥˊ ㄈㄤˋ ㄗㄞˋ ㄓˇ ㄕㄤˋ ㄎㄜˇ ㄧˇ ㄏㄨㄚˋ ㄔㄨ ㄕㄣˊ ㄇㄜ˙ ㄒㄧㄥˊ ㄓㄨㄤˋ'),visual:solidVisual(kind,face),options:shapeOptions(),answer,explanation:why}));
+function cubeStacks(heights){
+ const size=38,depth=17,dy=12,gap=78,base=170,width=heights.length*gap+10;
+ let body='';
+ heights.forEach((height,col)=>{for(let row=0;row<height;row++){
+  const x=15+col*gap,y=base-(row+1)*size;
+  body+='<g class="counting-cube" stroke="#315a50" stroke-width="2.4" stroke-linejoin="round"><path d="M'+x+' '+y+' '+(x+depth)+' '+(y-dy)+' '+(x+size+depth)+' '+(y-dy)+' '+(x+size)+' '+y+'Z" fill="#f5d99e"/><path d="M'+(x+size)+' '+y+' '+(x+size+depth)+' '+(y-dy)+' '+(x+size+depth)+' '+(y+size-dy)+' '+(x+size)+' '+(y+size)+'Z" fill="#8eb6a9"/><rect class="cube-front" x="'+x+'" y="'+y+'" width="'+size+'" height="'+size+'" fill="#d9ede7"/></g>';
+ }});
+ return svgFrame(body,width,190,'小方塊堆疊圖，每個方塊的前面都看得到');
+}
+[[1,1],[1,2],[2,2],[3,1],[2,3],[1,2,3],[2,2,3],[3,3,2]].forEach((heights,i)=>{
+ const n=heights.reduce((a,b)=>a+b,0);
+ addQuestion({id:'mg'+(i+9),subject:'math',type:'choice',topic:'數小方塊',geometry:'blocks',cubeHeights:heights,plain:'圖中一共有幾個小方塊？',p:R('圖中一共有幾個小方塊？','ㄊㄨˊ ㄓㄨㄥ ㄧˊ ㄍㄨㄥˋ ㄧㄡˇ ㄐㄧˇ ㄍㄜ˙ ㄒㄧㄠˇ ㄈㄤ ㄎㄨㄞˋ'),visual:cubeStacks(heights),options:numberOptions(n),answer:0,explanation:'從左邊開始，每堆有'+heights.join('、')+'個小方塊，合起來有'+n+'個。每個小方塊只算一次。'});
+});
+
+function keepPunctuation(html){return html.replace(/(<ruby\b[^>]*>(?:(?!<\/ruby>)[\s\S])*<\/ruby>)([，。！？：」]+)/g,'<span class="reading-word">$1$2</span>');}
+function passageView(q,interactive=false){if(!q.passageId)return '';const p=PASSAGES[q.passageId],ids=session?.ids.filter(id=>byId(id).passageId===q.passageId)||BANK.filter(other=>other.passageId===q.passageId).sort((a,b)=>a.passagePart-b.passagePart).map(other=>other.id);return '<section id="passage-'+q.id+'" class="passage" aria-label="閱讀短文"><div class="passage-meta"><strong>'+p.title+'</strong><span>本篇第 '+(ids.indexOf(q.id)+1)+' / '+ids.length+' 題</span></div>'+(interactive?'<a class="reading-jump" href="#question-title">'+R('回答問題','ㄏㄨㄟˊ ㄉㄚˊ ㄨㄣˋ ㄊㄧˊ')+' ↓</a>':'')+'<div class="passage-body">'+p.lines.map(line=>'<p>'+keepPunctuation(line)+'</p>').join('')+'</div></section>';}
 function promptView(q,answer){if(q.type!=='fill')return q.p;const chosen=Number.isInteger(answer)?q.options[answer]:null;return q.fillTemplate.replace('{{blank}}','<span class="blank-slot '+(chosen?'filled':'')+'" role="status" aria-live="polite" aria-label="'+(chosen?'已填入答案':'尚未填答')+'">'+(chosen||'？')+'</span>');}
 function visualView(q){return q.visual?'<div class="visual">'+q.visual+'</div>':'';}
 function typeHelp(q){return TYPE_HELP[q.type]?'<div class="type-help">'+TYPE_HELP[q.type]+'</div>':'';}
@@ -328,12 +506,17 @@ function typeHelp(q){return TYPE_HELP[q.type]?'<div class="type-help">'+TYPE_HEL
 function pickType(pool,count,previous){const avoid=new Set(previous);return [...shuffle(pool.filter(q=>!avoid.has(q.id))),...shuffle(pool.filter(q=>avoid.has(q.id)))].slice(0,count);}
 function mixedTypeDraw(subject,count,previous=[]){
   const pool=BANK.filter(q=>q.subject===subject),avoid=new Set(previous),readingPool=pool.filter(q=>q.type==='reading');
-  const readingCount=Math.min(readingPool.length,Math.max(2,Math.floor(count/10)*2)),tfCount=Math.floor(count/5),fillCount=Math.floor(count/5),choiceCount=count-readingCount-tfCount-fillCount;
+  const readingCount=Math.min(readingPool.length,Math.max(4,Math.floor(count/10)*4)),tfCount=subject==='math'&&count===10?1:Math.floor(count/5),fillCount=Math.floor(count/5),choiceCount=count-readingCount-tfCount-fillCount;
   const blocks=[];
-  for(const [type,n] of [['choice',choiceCount],['tf',tfCount],['fill',fillCount]])for(const q of pickType(pool.filter(q=>q.type===type),n,previous))blocks.push([q.id]);
+  // Every math paper includes a flat shape, a solid face and visible cube counting.
+  if(subject==='math'){
+    for(const geometry of ['flat','solid','blocks'])for(const q of pickType(pool.filter(q=>q.geometry===geometry),1,previous))blocks.push([q.id]);
+    for(const q of pickType(pool.filter(q=>q.type==='choice'&&!q.geometry),choiceCount-3,previous))blocks.push([q.id]);
+  }else for(const q of pickType(pool.filter(q=>q.type==='choice'),choiceCount,previous))blocks.push([q.id]);
+  for(const [type,n] of [['tf',tfCount],['fill',fillCount]])for(const q of pickType(pool.filter(q=>q.type===type),n,previous))blocks.push([q.id]);
   const groups=[...new Set(readingPool.map(q=>q.passageId))].map(id=>readingPool.filter(q=>q.passageId===id).sort((a,b)=>a.passagePart-b.passagePart));
   const fresh=shuffle(groups.filter(g=>g.every(q=>!avoid.has(q.id)))),seen=shuffle(groups.filter(g=>g.some(q=>avoid.has(q.id))));
-  for(const group of [...fresh,...seen].slice(0,readingCount/2))blocks.push(group.map(q=>q.id));
+  for(const group of [...fresh,...seen].slice(0,readingCount/4))blocks.push(group.map(q=>q.id));
   return shuffle(blocks).flat();
 }
 
@@ -348,12 +531,12 @@ const formatTime=ms=>`${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(M
 function stopClock(){session.elapsed=elapsed();session.since=null;}
 function progress(){return session.ids.filter(id=>session.answers[id]!==undefined).length;}
 function score(s=session){const correct=s.ids.filter(id=>s.answers[id]===byId(id).answer).length;return{correct,total:s.ids.length,score:Math.round(correct/s.ids.length*1000)/10};}
-function showHome(){app.innerHTML=`<section class="hero"><div><div class="eyebrow">LITTLE STEPS, BIG DISCOVERIES</div><h1>小小練習，<br><span>大大進步。</span></h1><p class="intro">小一上學期 · 期中通用練習卷<br>準備好了嗎？一起完成今天的小挑戰。</p><div class="chips"><span class="chip">✧ 國語注音</span><span class="chip">＋ 數學基礎</span><span class="chip">✓ 自動計分</span></div></div>${ART}</section>${session?`<div class="resume-box"><span>${session.status==='done'?'上次的練習已完成，可以查看成績。':`有一份還沒完成的試卷（已答 ${progress()} / ${session.ids.length} 題）。`}</span><button class="secondary" data-action="resume">${session.status==='done'?'查看上次成績':'繼續上次作答'}</button><button class="text-button" data-action="clear">清除本機紀錄</button></div>`:''}<div class="setup"><section class="panel"><h2 class="section-title"><span class="small-number">1</span> 選一份今天的挑戰</h2><div class="modes" role="group" aria-label="考試科目"><button class="mode" data-mode="mixed" aria-pressed="${mode==='mixed'}"><strong>ㄅ ＋ 1</strong>國語＋數學</button><button class="mode" data-mode="zh" aria-pressed="${mode==='zh'}"><strong>ㄅ ㄆ ㄇ</strong>只考國語</button><button class="mode" data-mode="math" aria-pressed="${mode==='math'}"><strong>1 2 3</strong>只考數學</button></div><div class="field-row"><label>題數<select id="length" aria-label="題數"><option value="20">20 題 · 每題 5 分</option><option value="40">40 題 · 每題 2.5 分</option><option value="50">50 題 · 每題 2 分</option></select></label><label>孩子的小名（可不填）<input id="nickname" maxlength="16" autocomplete="off" placeholder="小小探險家"></label></div><button class="primary start" data-action="start">開始作答 <span aria-hidden="true">→</span></button><p class="tiny" id="paper-summary">${mode==='mixed'?'國語 10 題＋數學 10 題':'單科 20 題'} · 滿分 100 分 · 不限時</p><p class="tiny" style="margin-top:6px">題庫共 200 題，國語、數學各 100 題。每份新卷都有選擇、是非、備選詞填空及短文閱讀；隨機抽題，優先抽上次沒考過的題目，續答保留原卷。</p></section><aside class="panel scope"><h2 class="section-title"><span class="small-number">2</span> 開考前，家長看一下</h2><div class="scope-item"><span class="subject-icon">ㄅ</span><div><strong>國語｜注音與閱讀</strong><p>注音辨識、聲調是非、選詞填空與短文閱讀。<br>題目說明附直排注音，被考的字不標音。</p></div></div><div class="scope-item"><span class="subject-icon">5</span><div><strong>數學｜10 以內的數</strong><p>數量、順序、分合、是非判斷、填空與生活短文。<br>題目及文字選項均附直排注音，包含簡單加減。</p></div></div><div class="note">這是通用複習卷，未對應特定出版社或學校進度。建議先確認孩子已學過上述範圍；填空只要點選備選詞，不用打字；閱讀每篇有兩題。作答時不顯示答案，交卷後才看成績與解析。</div></aside></div>`;}
+function showHome(){app.innerHTML=`<section class="hero"><div><div class="eyebrow">LITTLE STEPS, BIG DISCOVERIES</div><h1>小小練習，<br><span>大大進步。</span></h1><p class="intro">小一上學期 · 期中通用練習卷<br>準備好了嗎？一起完成今天的小挑戰。</p><div class="chips"><span class="chip">✧ 國語注音</span><span class="chip">＋ 數學基礎</span><span class="chip">✓ 自動計分</span></div></div>${ART}</section>${session?`<div class="resume-box"><span>${session.status==='done'?'上次的練習已完成，可以查看成績。':`有一份還沒完成的試卷（已答 ${progress()} / ${session.ids.length} 題）。`}</span><button class="secondary" data-action="resume">${session.status==='done'?'查看上次成績':'繼續上次作答'}</button><button class="text-button" data-action="clear">清除本機紀錄</button></div>`:''}<div class="setup"><section class="panel"><h2 class="section-title"><span class="small-number">1</span> 選一份今天的挑戰</h2><div class="modes" role="group" aria-label="考試科目"><button class="mode" data-mode="mixed" aria-pressed="${mode==='mixed'}"><strong>ㄅ ＋ 1</strong>國語＋數學</button><button class="mode" data-mode="zh" aria-pressed="${mode==='zh'}"><strong>ㄅ ㄆ ㄇ</strong>只考國語</button><button class="mode" data-mode="math" aria-pressed="${mode==='math'}"><strong>1 2 3</strong>只考數學</button></div><div class="field-row"><label>題數<select id="length" aria-label="題數"><option value="20">20 題 · 每題 5 分</option><option value="40">40 題 · 每題 2.5 分</option><option value="50">50 題 · 每題 2 分</option></select></label><label>孩子的小名（可不填）<input id="nickname" maxlength="16" autocomplete="off" placeholder="小小探險家"></label></div><button class="primary start" data-action="start">開始作答 <span aria-hidden="true">→</span></button><p class="tiny" id="paper-summary">${mode==='mixed'?'國語 10 題＋數學 10 題':'單科 20 題'} · 滿分 100 分 · 不限時</p><p class="tiny" style="margin-top:6px">題庫共 ${BANK.length} 題，國語 ${BANK.filter(q=>q.subject==='zh').length} 題、數學 ${BANK.filter(q=>q.subject==='math').length} 題。每份新卷都有選擇、是非、備選詞填空及短文閱讀；隨機抽題，優先抽上次沒考過的題目，續答保留原卷。</p></section><aside class="panel scope"><h2 class="section-title"><span class="small-number">2</span> 開考前，家長看一下</h2><div class="scope-item"><span class="subject-icon">ㄅ</span><div><strong>國語｜注音與閱讀</strong><p>注音辨識、聲調是非、選詞填空與短文閱讀。<br>題目說明附直排注音，被考的字不標音。</p></div></div><div class="scope-item"><span class="subject-icon">5</span><div><strong>數學｜10 以內的數</strong><p>數量、順序、分合、平面形狀、立體的面、數方塊與生活短文。<br>題目及文字選項均附直排注音，包含簡單加減。</p></div></div><div class="note">這是通用複習卷，未對應特定出版社或學校進度。建議先確認孩子已學過上述範圍；填空只要點選備選詞，不用打字；閱讀每篇有四題，短文約五、六句；數學含平面形狀、立體的面和數方塊，比較數量用文字作答。作答時不顯示答案，交卷後才看成績與解析。</div></aside></div>`;}
 
 function drawSubject(subject,count,previous=[]){return mixedTypeDraw(subject,count,previous);}
 
 function start(ids,practice=false){const count=Number(document.getElementById('length')?.value||20),name=document.getElementById('nickname')?.value.trim()||session?.name||'';if(!ids){const previous=session?.ids||[];ids=mode==='mixed'?[...drawSubject('zh',count/2,previous),...drawSubject('math',count/2,previous)]:drawSubject(mode,count,previous);}session={version:VERSION,ids,answers:{},orders:Object.fromEntries(ids.map(id=>[id,byId(id).type==='tf'?[0,1]:shuffle(byId(id).options.map((_,i)=>i))])),flags:[],index:0,status:'active',elapsed:0,since:Date.now(),name,practice,startedAt:new Date().toISOString()};filterWrong=false;persist();renderQuestion();}
-function renderQuestion(focus=true){const q=byId(session.ids[session.index]);app.innerHTML=`<div class="exam-top"><div><div class="eyebrow">${session.practice?'再練一次 · 錯題練習':'一年級上學期 · 期中通用練習'}</div><h1>${esc(session.name||'小小探險家')}，照自己的步調來。</h1></div><div style="text-align:right"><div class="time">已用 <span id="timer">${formatTime(elapsed())}</span></div><button class="text-button" data-action="pause">暫停休息</button></div></div><div class="progress-label"><span>已完成 ${progress()} / ${session.ids.length} 題</span><span>每題 ${Math.round(100/session.ids.length*100)/100} 分</span></div><div class="progress-track"><div class="progress-fill" style="width:${progress()/session.ids.length*100}%"></div></div><div class="exam-grid"><div><section id="question-card" class="question-card" data-kind="${q.type}" data-question-id="${q.id}"><div class="question-meta"><span class="subject-pill">${q.subject==='zh'?'國語':'數學'}</span><span class="type-pill">${TYPE_NAMES[q.type]}</span><span class="question-number">第 ${session.index+1} 題 / ${session.ids.length} 題</span></div>${typeHelp(q)}${passageView(q)}<h2 id="question-title" class="question-text" tabindex="-1">${promptView(q,session.answers[q.id])}</h2>${visualView(q)}${q.type==='fill'?'<div class="bank-label">'+R('備選詞','ㄅㄟˋ ㄒㄩㄢˇ ㄘˊ')+'</div>':''}<div class="answers ${q.type==='tf'?'tf-options':q.type==='fill'?'word-bank':''} ${q.options.some(o=>o.includes('<ruby'))?'word-answers':''}" role="group" aria-labelledby="question-title">${session.orders[q.id].map((opt,i)=>`<button class="answer" data-answer="${opt}" aria-pressed="${session.answers[q.id]===opt}"><span class="answer-letter">${session.answers[q.id]===opt?'✓':''}</span><span class="answer-value">${q.options[opt]}</span></button>`).join('')}</div>${q.type==='fill'&&session.answers[q.id]!==undefined?'<button class="text-button clear-fill" data-action="clear-answer">'+R('清空重選','ㄑㄧㄥ ㄎㄨㄥ ㄔㄨㄥˊ ㄒㄩㄢˇ')+'</button>':''}<div class="question-footer"><button class="secondary" data-action="previous" ${session.index===0?'disabled':''}>← ${R('上一題','ㄕㄤˋ ㄧˋ ㄊㄧˊ')}</button><button class="primary" data-action="next">${R(session.index===session.ids.length-1?'檢查試卷':'下一題',session.index===session.ids.length-1?'ㄐㄧㄢˇ ㄔㄚˊ ㄕˋ ㄐㄩㄢˋ':'ㄒㄧㄚˋ ㄧˋ ㄊㄧˊ')} →</button></div></section><div class="under-question"><button class="text-button flag-button" data-action="flag" aria-pressed="${session.flags.includes(q.id)}">${session.flags.includes(q.id)?'★ 已標記，等一下檢查':'☆ 這題等一下再檢查'}</button><span class="status" role="status">${storageOK?'作答已自動儲存':'瀏覽器無法儲存，請勿關閉頁面'}</span></div></div><aside class="side"><h2>我的作答進度</h2><nav class="numbers" aria-label="選擇題號">${session.ids.map((id,i)=>`<button class="qnum ${session.answers[id]!==undefined?'done':''} ${session.index===i?'current':''} ${session.flags.includes(id)?'flag':''}" data-question="${i}" aria-label="第${i+1}題，${session.answers[id]!==undefined?'已作答':'未作答'}${session.flags.includes(id)?'，待檢查':''}" ${session.index===i?'aria-current="step"':''}>${i+1}</button>`).join('')}</nav><div class="legend">綠色：已作答　白色：未作答<br>橘點：想再檢查　點題號可跳題</div><button class="primary" data-action="submit">${R('我要交卷','ㄨㄛˇ ㄧㄠˋ ㄐㄧㄠ ㄐㄩㄢˋ')} ✓</button></aside></div>`;if(focus){document.getElementById('question-title').focus({preventScroll:true});document.getElementById('question-card').scrollIntoView?.({block:'start',behavior:'instant'});}}
+function renderQuestion(focus=true){const q=byId(session.ids[session.index]);app.innerHTML=`<div class="exam-top"><div><div class="eyebrow">${session.practice?'再練一次 · 錯題練習':'一年級上學期 · 期中通用練習'}</div><h1>${esc(session.name||'小小探險家')}，照自己的步調來。</h1></div><div style="text-align:right"><div class="time">已用 <span id="timer">${formatTime(elapsed())}</span></div><button class="text-button" data-action="pause">暫停休息</button></div></div><div class="progress-label"><span>已完成 ${progress()} / ${session.ids.length} 題</span><span>每題 ${Math.round(100/session.ids.length*100)/100} 分</span></div><div class="progress-track"><div class="progress-fill" style="width:${progress()/session.ids.length*100}%"></div></div><div class="exam-grid"><div><section id="question-card" class="question-card" data-kind="${q.type}" data-question-id="${q.id}"><div class="question-meta"><span class="subject-pill">${q.subject==='zh'?'國語':'數學'}</span><span class="type-pill">${TYPE_NAMES[q.type]}</span><span class="question-number">第 ${session.index+1} 題 / ${session.ids.length} 題</span></div>${typeHelp(q)}${passageView(q,true)}${q.passageId?'<a class="reading-jump back-to-story" href="#passage-'+q.id+'">↑ '+R('回看短文','ㄏㄨㄟˊ ㄎㄢˋ ㄉㄨㄢˇ ㄨㄣˊ')+'</a>':''}<h2 id="question-title" class="question-text" tabindex="-1">${promptView(q,session.answers[q.id])}</h2>${visualView(q)}${q.type==='fill'?'<div class="bank-label">'+R('備選詞','ㄅㄟˋ ㄒㄩㄢˇ ㄘˊ')+'</div>':''}<div class="answers ${q.type==='tf'?'tf-options':q.type==='fill'?'word-bank':''} ${q.options.some(o=>o.includes('<ruby'))?'word-answers':''}" role="group" aria-labelledby="question-title">${session.orders[q.id].map((opt,i)=>`<button class="answer" data-answer="${opt}" aria-pressed="${session.answers[q.id]===opt}"><span class="answer-letter">${session.answers[q.id]===opt?'✓':''}</span><span class="answer-value">${q.options[opt]}</span></button>`).join('')}</div>${q.type==='fill'&&session.answers[q.id]!==undefined?'<button class="text-button clear-fill" data-action="clear-answer">'+R('清空重選','ㄑㄧㄥ ㄎㄨㄥ ㄔㄨㄥˊ ㄒㄩㄢˇ')+'</button>':''}<div class="question-footer"><button class="secondary" data-action="previous" ${session.index===0?'disabled':''}>← ${R('上一題','ㄕㄤˋ ㄧˋ ㄊㄧˊ')}</button><button class="primary" data-action="next">${R(session.index===session.ids.length-1?'檢查試卷':'下一題',session.index===session.ids.length-1?'ㄐㄧㄢˇ ㄔㄚˊ ㄕˋ ㄐㄩㄢˋ':'ㄒㄧㄚˋ ㄧˋ ㄊㄧˊ')} →</button></div></section><div class="under-question"><button class="text-button flag-button" data-action="flag" aria-pressed="${session.flags.includes(q.id)}">${session.flags.includes(q.id)?'★ 已標記，等一下檢查':'☆ 這題等一下再檢查'}</button><span class="status" role="status">${storageOK?'作答已自動儲存':'瀏覽器無法儲存，請勿關閉頁面'}</span></div></div><aside class="side"><h2>我的作答進度</h2><nav class="numbers" aria-label="選擇題號">${session.ids.map((id,i)=>`<button class="qnum ${session.answers[id]!==undefined?'done':''} ${session.index===i?'current':''} ${session.flags.includes(id)?'flag':''}" data-question="${i}" aria-label="第${i+1}題，${session.answers[id]!==undefined?'已作答':'未作答'}${session.flags.includes(id)?'，待檢查':''}" ${session.index===i?'aria-current="step"':''}>${i+1}</button>`).join('')}</nav><div class="legend">綠色：已作答　白色：未作答<br>橘點：想再檢查　點題號可跳題</div><button class="primary" data-action="submit">${R('我要交卷','ㄨㄛˇ ㄧㄠˋ ㄐㄧㄠ ㄐㄩㄢˋ')} ✓</button></aside></div>`;if(focus){document.getElementById('question-title').focus({preventScroll:true});document.getElementById(q.type==='reading'&&q.passagePart>1?'question-title':'question-card').scrollIntoView?.({block:'start',behavior:'instant'});}}
 function pause(){stopClock();session.status='paused';persist();app.innerHTML=`<section class="panel pause"><div style="font-size:54px">☁</div><h2>休息一下，也很好。</h2><p>答案已保留，計時已暫停。<br>已完成 ${progress()} / ${session.ids.length} 題。</p><button class="primary" data-action="resume">繼續作答 →</button><button class="text-button" data-action="home">回到首頁</button></section>`;}
 function ask(title,message,ok,fn,cancel='繼續作答'){document.getElementById('dialog-title').textContent=title;document.getElementById('dialog-message').textContent=message;document.getElementById('dialog-ok').textContent=ok;document.getElementById('dialog-cancel').textContent=cancel;dialogAction=fn;document.getElementById('confirm-dialog').showModal();}
 function submit(){const missing=session.ids.length-progress(),flags=session.flags.length;ask(missing?`還有 ${missing} 題沒有作答`:'準備好交卷了嗎？',`${missing?'未作答的題目會以 0 分計算。':'你已經完成所有題目。'}${flags?` 還有 ${flags} 題標記待檢查。`:''} 交卷後會顯示成績與答案。`,'確定交卷',()=>{stopClock();session.status='done';session.finishedAt=new Date().toISOString();persist();showResult();});}
