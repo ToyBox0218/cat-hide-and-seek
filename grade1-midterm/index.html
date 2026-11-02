@@ -628,7 +628,7 @@ const objectGroup=(icon,n)=>'<span class="object-group" role="img" aria-label="�
 const groupBox=(icon,n)=>'<div class="object-box">'+objectGroup(icon,n)+'</div>';
 function bond(top,left,right,inverted=false){return '<div class="number-bond '+(inverted?'inverted':'')+'"><svg viewBox="0 0 260 150" aria-hidden="true"><path d="M130 42L60 105M130 42L200 105"/></svg><span class="bond-top">'+top+'</span><span class="bond-left">'+left+'</span><span class="bond-right">'+right+'</span></div>';}
 const nums=Array.from({length:11},(_,i)=>String(i));
-const splits=[[5,2],[6,3],[7,2],[8,5],[9,4],[10,6],[8,1],[10,3]];
+const splits=[[5,2],[6,3],[7,2],[8,5],[9,4],[10,6],[8,1],[10,3],[4,1],[5,1],[6,2],[7,1],[7,3],[8,2],[9,2],[9,3],[10,1],[10,2]];
 splits.forEach(([total,left],i)=>{
  const right=total-left;
  schoolQ('msplit'+(i+1),'math','split','multi','看圖，把數分成兩部分。','ㄎㄢˋ ㄊㄨˊ ㄅㄚˇ ㄕㄨˋ ㄈㄣ ㄔㄥˊ ㄌㄧㄤˇ ㄅㄨˋ ㄈㄣˋ','<div class="object-pair">'+groupBox('🐸',left)+groupBox('🐟',right)+'</div>',nums,[left,right],total+'可以分成'+left+'和'+right+'。',{slots:2,fillTemplate:bond(total,'{{0}}','{{1}}'),parts:[total,left,right]});
@@ -650,6 +650,174 @@ splits.forEach(([total,left],i)=>{
  schoolQ('mmatch'+(i+1),'math','match','match','每排要配哪一張圖？','ㄇㄟˇ ㄆㄞˊ ㄧㄠˋ ㄆㄟˋ ㄋㄚˇ ㄧˋ ㄓㄤ ㄊㄨˊ','',right.map(n=>groupBox('🐟',n)),[0,1,2],left.map((n,j)=>n+'和'+right[j]+'合起來是10').join('；')+'。',{slots:3,leftCounts:left,rightCounts:right,fillTemplate:'<div class="matching-rows">'+left.map((n,j)=>'<div class="matching-row">'+groupBox('🐟',n)+'<span>＋</span>{{'+j+'}}<span>＝ 10</span></div>').join('')+'</div>'});
 });
 
+// Content audit, 2026-11-02. Legacy records keep their original scoring.
+function retireForAudit(q,reason){q.retired=true;q.retiredReason=reason;}
+function auditPlain(html){return String(html||'').replace(/<r[tp]\b[^>]*>[\s\S]*?<\/r[tp]>/g,'').replace(/<[^>]+>/g,'');}
+// A single distractor exceeded the agreed 0–10 range; its answer index is unchanged.
+BANK.find(q=>q.id==='m8').options[3]='5';
+// Standalone tone names and symbol order add little beyond the applied sound tasks.
+BANK.filter(q=>q.subject==='zh'&&(q.topic==='聲調辨識'||q.topic==='符號辨識'||/^zt(?:9|10|11|12)$/.test(q.id))).forEach(q=>retireForAudit(q,'改以看圖、缺音與實際詞語辨聲調評量'));
+
+const AUDITED_ZH_READING={
+ dog:[
+  ['誰帶著小黑出門？','ㄕㄟˊ ㄉㄞˋ ㄓㄜ˙ ㄒㄧㄠˇ ㄏㄟ ㄔㄨ ㄇㄣˊ',[['小明','ㄒㄧㄠˇ ㄇㄧㄥˊ'],['小美','ㄒㄧㄠˇ ㄇㄟˇ'],['小安','ㄒㄧㄠˇ ㄢ']],'小黑是小明養的狗，出門時由小明帶著。','detail'],
+  ['小黑最愛吃哪一種食物？','ㄒㄧㄠˇ ㄏㄟ ㄗㄨㄟˋ ㄞˋ ㄔ ㄋㄚˇ ㄧˋ ㄓㄨㄥˇ ㄕˊ ㄨˋ',[['肉','ㄖㄡˋ'],['草','ㄘㄠˇ'],['米','ㄇㄧˇ']],'小黑就是小狗；文中說牠最愛吃肉。','detail'],
+  ['小黑先做哪件事？','ㄒㄧㄠˇ ㄏㄟ ㄒㄧㄢ ㄗㄨㄛˋ ㄋㄚˇ ㄐㄧㄢˋ ㄕˋ',[['跑去找球','ㄆㄠˇ ㄑㄩˋ ㄓㄠˇ ㄑㄧㄡˊ'],['喝小明拿來的水','ㄏㄜ ㄒㄧㄠˇ ㄇㄧㄥˊ ㄋㄚˊ ㄌㄞˊ ㄉㄜ˙ ㄕㄨㄟˇ'],['和小明回家','ㄏㄢˋ ㄒㄧㄠˇ ㄇㄧㄥˊ ㄏㄨㄟˊ ㄐㄧㄚ']],'先找球，玩累後喝水，最後回家。','sequence'],
+  ['小明拿水給小黑，最可能是因為什麼？','ㄒㄧㄠˇ ㄇㄧㄥˊ ㄋㄚˊ ㄕㄨㄟˇ ㄍㄟˇ ㄒㄧㄠˇ ㄏㄟ ㄗㄨㄟˋ ㄎㄜˇ ㄋㄥˊ ㄕˋ ㄧㄣ ㄨㄟˋ ㄕㄣˊ ㄇㄜ˙',[['小黑玩過後需要喝水','ㄒㄧㄠˇ ㄏㄟ ㄨㄢˊ ㄍㄨㄛˋ ㄏㄡˋ ㄒㄩ ㄧㄠˋ ㄏㄜ ㄕㄨㄟˇ'],['小黑要用水洗球','ㄒㄧㄠˇ ㄏㄟ ㄧㄠˋ ㄩㄥˋ ㄕㄨㄟˇ ㄒㄧˇ ㄑㄧㄡˊ'],['小黑要用水畫畫','ㄒㄧㄠˇ ㄏㄟ ㄧㄠˋ ㄩㄥˋ ㄕㄨㄟˇ ㄏㄨㄚˋ ㄏㄨㄚˋ']],'小黑剛跑動、玩累了，小明是在照顧牠。','reason']
+ ],
+ rain:[
+  ['小美出門時，外面的天氣怎麼樣？','ㄒㄧㄠˇ ㄇㄟˇ ㄔㄨ ㄇㄣˊ ㄕˊ ㄨㄞˋ ㄇㄧㄢˋ ㄉㄜ˙ ㄊㄧㄢ ㄑㄧˋ ㄗㄣˇ ㄇㄜ˙ ㄧㄤˋ',[['下雨','ㄒㄧㄚˋ ㄩˇ'],['出太陽','ㄔㄨ ㄊㄞˋ ㄧㄤˊ'],['下雪','ㄒㄧㄚˋ ㄒㄩㄝˇ']],'開頭說早上下雨，小美因此帶傘出門。','detail'],
+  ['小美帶的是哪一把傘？','ㄒㄧㄠˇ ㄇㄟˇ ㄉㄞˋ ㄉㄜ˙ ㄕˋ ㄋㄚˇ ㄧˋ ㄅㄚˇ ㄙㄢˇ',[['紅色的傘','ㄏㄨㄥˊ ㄙㄜˋ ㄉㄜ˙ ㄙㄢˇ'],['黃色的傘','ㄏㄨㄤˊ ㄙㄜˋ ㄉㄜ˙ ㄙㄢˇ'],['藍色的傘','ㄌㄢˊ ㄙㄜˋ ㄉㄜ˙ ㄙㄢˇ']],'文中提到小美帶著紅雨傘。','detail'],
+  ['小美先做了哪件事？','ㄒㄧㄠˇ ㄇㄟˇ ㄒㄧㄢ ㄗㄨㄛˋ ㄌㄜ˙ ㄋㄚˇ ㄐㄧㄢˋ ㄕˋ',[['看見小安站在樹下','ㄎㄢˋ ㄐㄧㄢˋ ㄒㄧㄠˇ ㄢ ㄓㄢˋ ㄗㄞˋ ㄕㄨˋ ㄒㄧㄚˋ'],['和小安走到學校','ㄏㄢˋ ㄒㄧㄠˇ ㄢ ㄗㄡˇ ㄉㄠˋ ㄒㄩㄝˊ ㄒㄧㄠˋ'],['聽小安說謝謝','ㄊㄧㄥ ㄒㄧㄠˇ ㄢ ㄕㄨㄛ ㄒㄧㄝˋ ㄒㄧㄝ˙']],'先看見小安，才一起撐傘到學校。','sequence'],
+  ['小安為什麼向小美道謝？','ㄒㄧㄠˇ ㄢ ㄨㄟˋ ㄕㄣˊ ㄇㄜ˙ ㄒㄧㄤˋ ㄒㄧㄠˇ ㄇㄟˇ ㄉㄠˋ ㄒㄧㄝˋ',[['小美幫他擋雨','ㄒㄧㄠˇ ㄇㄟˇ ㄅㄤ ㄊㄚ ㄉㄤˇ ㄩˇ'],['小美送他書包','ㄒㄧㄠˇ ㄇㄟˇ ㄙㄨㄥˋ ㄊㄚ ㄕㄨ ㄅㄠ'],['小美陪他玩球','ㄒㄧㄠˇ ㄇㄟˇ ㄆㄟˊ ㄊㄚ ㄨㄢˊ ㄑㄧㄡˊ']],'沒有帶傘的小安得到小美的幫助，免得繼續淋雨。','reason']
+ ],
+ fruit:[
+  ['誰拿了蘋果？','ㄕㄟˊ ㄋㄚˊ ㄌㄜ˙ ㄆㄧㄥˊ ㄍㄨㄛˇ',[['小安','ㄒㄧㄠˇ ㄢ'],['妹妹','ㄇㄟˋ ㄇㄟ˙'],['媽媽','ㄇㄚ ㄇㄚ˙']],'小安拿蘋果，妹妹拿香蕉。','detail'],
+  ['妹妹把哪一種水果分給小安？','ㄇㄟˋ ㄇㄟ˙ ㄅㄚˇ ㄋㄚˇ ㄧˋ ㄓㄨㄥˇ ㄕㄨㄟˇ ㄍㄨㄛˇ ㄈㄣ ㄍㄟˇ ㄒㄧㄠˇ ㄢ',[['香蕉','ㄒㄧㄤ ㄐㄧㄠ'],['蘋果','ㄆㄧㄥˊ ㄍㄨㄛˇ'],['葡萄','ㄆㄨˊ ㄊㄠˊ']],'妹妹把自己拿的香蕉分一半給小安。','detail'],
+  ['他們先洗手，接著才做什麼？','ㄊㄚ ㄇㄣ˙ ㄒㄧㄢ ㄒㄧˇ ㄕㄡˇ ㄐㄧㄝ ㄓㄜ˙ ㄘㄞˊ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['拿水果來吃','ㄋㄚˊ ㄕㄨㄟˇ ㄍㄨㄛˇ ㄌㄞˊ ㄔ'],['躺下來睡覺','ㄊㄤˇ ㄒㄧㄚˋ ㄌㄞˊ ㄕㄨㄟˋ ㄐㄧㄠˋ'],['出門去買水果','ㄔㄨ ㄇㄣˊ ㄑㄩˋ ㄇㄞˇ ㄕㄨㄟˇ ㄍㄨㄛˇ']],'水果是媽媽先買回來的；孩子洗手後才拿來吃。','sequence'],
+  ['把果皮放進垃圾桶，可以讓哪裡保持乾淨？','ㄅㄚˇ ㄍㄨㄛˇ ㄆㄧˊ ㄈㄤˋ ㄐㄧㄣˋ ㄌㄜˋ ㄙㄜˋ ㄊㄨㄥˇ ㄎㄜˇ ㄧˇ ㄖㄤˋ ㄋㄚˇ ㄌㄧˇ ㄅㄠˇ ㄔˊ ㄍㄢ ㄐㄧㄥˋ',[['吃水果的地方','ㄔ ㄕㄨㄟˇ ㄍㄨㄛˇ ㄉㄜ˙ ㄉㄧˋ ㄈㄤ'],['還沒削皮的水果','ㄏㄞˊ ㄇㄟˊ ㄒㄧㄠ ㄆㄧˊ ㄉㄜ˙ ㄕㄨㄟˇ ㄍㄨㄛˇ'],['外面的天空','ㄨㄞˋ ㄇㄧㄢˋ ㄉㄜ˙ ㄊㄧㄢ ㄎㄨㄥ']],'收好果皮，就不會把桌邊或地板弄髒。','reason']
+ ],
+ park:[
+  ['陪小華出門的是誰？','ㄆㄟˊ ㄒㄧㄠˇ ㄏㄨㄚˊ ㄔㄨ ㄇㄣˊ ㄉㄜ˙ ㄕˋ ㄕㄟˊ',[['爸爸','ㄅㄚˋ ㄅㄚ˙'],['媽媽','ㄇㄚ ㄇㄚ˙'],['哥哥','ㄍㄜ ㄍㄜ˙']],'開頭說小華和爸爸一起去公園。','detail'],
+  ['在樹下看書的人是誰？','ㄗㄞˋ ㄕㄨˋ ㄒㄧㄚˋ ㄎㄢˋ ㄕㄨ ㄉㄜ˙ ㄖㄣˊ ㄕˋ ㄕㄟˊ',[['爸爸','ㄅㄚˋ ㄅㄚ˙'],['小華','ㄒㄧㄠˇ ㄏㄨㄚˊ'],['哥哥','ㄍㄜ ㄍㄜ˙']],'爸爸在看書，小華在玩球，要分清楚兩個人做的事。','detail'],
+  ['小華先做了哪件事？','ㄒㄧㄠˇ ㄏㄨㄚˊ ㄒㄧㄢ ㄗㄨㄛˋ ㄌㄜ˙ ㄋㄚˇ ㄐㄧㄢˋ ㄕˋ',[['在爸爸旁邊玩球','ㄗㄞˋ ㄅㄚˋ ㄅㄚ˙ ㄆㄤˊ ㄅㄧㄢ ㄨㄢˊ ㄑㄧㄡˊ'],['坐下來喝水','ㄗㄨㄛˋ ㄒㄧㄚˋ ㄌㄞˊ ㄏㄜ ㄕㄨㄟˇ'],['把空水瓶收進袋子','ㄅㄚˇ ㄎㄨㄥ ㄕㄨㄟˇ ㄆㄧㄥˊ ㄕㄡ ㄐㄧㄣˋ ㄉㄞˋ ㄗ˙']],'先玩球，累了才喝水，離開前再收水瓶。','sequence'],
+  ['最後爸爸為什麼開心地笑了？','ㄗㄨㄟˋ ㄏㄡˋ ㄅㄚˋ ㄅㄚ˙ ㄨㄟˋ ㄕㄣˊ ㄇㄜ˙ ㄎㄞ ㄒㄧㄣ ㄉㄜ˙ ㄒㄧㄠˋ ㄌㄜ˙',[['他們沒有留下垃圾','ㄊㄚ ㄇㄣ˙ ㄇㄟˊ ㄧㄡˇ ㄌㄧㄡˊ ㄒㄧㄚˋ ㄌㄜˋ ㄙㄜˋ'],['小華把球丟到樹上','ㄒㄧㄠˇ ㄏㄨㄚˊ ㄅㄚˇ ㄑㄧㄡˊ ㄉㄧㄡ ㄉㄠˋ ㄕㄨˋ ㄕㄤˋ'],['他們把水瓶留在草地','ㄊㄚ ㄇㄣ˙ ㄅㄚˇ ㄕㄨㄟˇ ㄆㄧㄥˊ ㄌㄧㄡˊ ㄗㄞˋ ㄘㄠˇ ㄉㄧˋ']],'最後兩句連起來看：收好水瓶，公園沒有留下垃圾，爸爸很開心。','reason']
+ ],
+ cat:[
+  ['小白是哪一種動物？','ㄒㄧㄠˇ ㄅㄞˊ ㄕˋ ㄋㄚˇ ㄧˋ ㄓㄨㄥˇ ㄉㄨㄥˋ ㄨˋ',[['貓','ㄇㄠ'],['狗','ㄍㄡˇ'],['鳥','ㄋㄧㄠˇ']],'名字是小白，牠是一隻貓。','detail'],
+  ['妹妹想找小白，應該往哪裡看？','ㄇㄟˋ ㄇㄟ˙ ㄒㄧㄤˇ ㄓㄠˇ ㄒㄧㄠˇ ㄅㄞˊ ㄧㄥ ㄍㄞ ㄨㄤˇ ㄋㄚˇ ㄌㄧˇ ㄎㄢˋ',[['桌子下面','ㄓㄨㄛ ㄗ˙ ㄒㄧㄚˋ ㄇㄧㄢˋ'],['樹上','ㄕㄨˋ ㄕㄤˋ'],['床上','ㄔㄨㄤˊ ㄕㄤˋ']],'小白躲在桌子下面睡覺。','detail'],
+  ['小白在睡覺以前做了什麼？','ㄒㄧㄠˇ ㄅㄞˊ ㄗㄞˋ ㄕㄨㄟˋ ㄐㄧㄠˋ ㄧˇ ㄑㄧㄢˊ ㄗㄨㄛˋ ㄌㄜ˙ ㄕㄣˊ ㄇㄜ˙',[['玩球，玩累了','ㄨㄢˊ ㄑㄧㄡˊ ㄨㄢˊ ㄌㄟˋ ㄌㄜ˙'],['坐著看書','ㄗㄨㄛˋ ㄓㄜ˙ ㄎㄢˋ ㄕㄨ'],['去外面買東西','ㄑㄩˋ ㄨㄞˋ ㄇㄧㄢˋ ㄇㄞˇ ㄉㄨㄥ ㄒㄧ']],'先提到追球跑、玩累了，才寫牠去睡覺。','sequence'],
+  ['大家小聲說話，是為了什麼？','ㄉㄚˋ ㄐㄧㄚ ㄒㄧㄠˇ ㄕㄥ ㄕㄨㄛ ㄏㄨㄚˋ ㄕˋ ㄨㄟˋ ㄌㄜ˙ ㄕㄣˊ ㄇㄜ˙',[['讓小白好好休息','ㄖㄤˋ ㄒㄧㄠˇ ㄅㄞˊ ㄏㄠˇ ㄏㄠˇ ㄒㄧㄡ ㄒㄧˊ'],['讓小白快點起床','ㄖㄤˋ ㄒㄧㄠˇ ㄅㄞˊ ㄎㄨㄞˋ ㄉㄧㄢˇ ㄑㄧˇ ㄔㄨㄤˊ'],['叫小白出來玩球','ㄐㄧㄠˋ ㄒㄧㄠˇ ㄅㄞˊ ㄔㄨ ㄌㄞˊ ㄨㄢˊ ㄑㄧㄡˊ']],'小白正在睡覺，小聲說話才不會吵醒牠。','reason']
+ ],
+ flower:[
+  ['小青照顧的是什麼？','ㄒㄧㄠˇ ㄑㄧㄥ ㄓㄠˋ ㄍㄨˋ ㄉㄜ˙ ㄕˋ ㄕㄣˊ ㄇㄜ˙',[['一盆花','ㄧˋ ㄆㄣˊ ㄏㄨㄚ'],['一隻鳥','ㄧˋ ㄓ ㄋㄧㄠˇ'],['一條魚','ㄧˋ ㄊㄧㄠˊ ㄩˊ']],'小青和媽媽種了一盆花，之後每天照顧它。','detail'],
+  ['小青每天早上會做什麼？','ㄒㄧㄠˇ ㄑㄧㄥ ㄇㄟˇ ㄊㄧㄢ ㄗㄠˇ ㄕㄤˋ ㄏㄨㄟˋ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['幫花澆水','ㄅㄤ ㄏㄨㄚ ㄐㄧㄠ ㄕㄨㄟˇ'],['把花搬進書包','ㄅㄚˇ ㄏㄨㄚ ㄅㄢ ㄐㄧㄣˋ ㄕㄨ ㄅㄠ'],['把花送給小安','ㄅㄚˇ ㄏㄨㄚ ㄙㄨㄥˋ ㄍㄟˇ ㄒㄧㄠˇ ㄢ']],'她每天早上幫花澆水。','detail'],
+  ['花開了以後，小青接著做什麼？','ㄏㄨㄚ ㄎㄞ ㄌㄜ˙ ㄧˇ ㄏㄡˋ ㄒㄧㄠˇ ㄑㄧㄥ ㄐㄧㄝ ㄓㄜ˙ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['畫花的圖送給媽媽','ㄏㄨㄚˋ ㄏㄨㄚ ㄉㄜ˙ ㄊㄨˊ ㄙㄨㄥˋ ㄍㄟˇ ㄇㄚ ㄇㄚ˙'],['第一次把花種下去','ㄉㄧˋ ㄧ ㄘˋ ㄅㄚˇ ㄏㄨㄚ ㄓㄨㄥˋ ㄒㄧㄚˋ ㄑㄩˋ'],['把圖從牆上拿下來','ㄅㄚˇ ㄊㄨˊ ㄘㄨㄥˊ ㄑㄧㄤˊ ㄕㄤˋ ㄋㄚˊ ㄒㄧㄚˋ ㄌㄞˊ']],'種花、照顧、開花、畫圖送媽媽，是故事的順序。','sequence'],
+  ['媽媽為什麼稱讚小青？','ㄇㄚ ㄇㄚ˙ ㄨㄟˋ ㄕㄣˊ ㄇㄜ˙ ㄔㄥ ㄗㄢˋ ㄒㄧㄠˇ ㄑㄧㄥ',[['她用心照顧花','ㄊㄚ ㄩㄥˋ ㄒㄧㄣ ㄓㄠˋ ㄍㄨˋ ㄏㄨㄚ'],['她把花盆藏起來','ㄊㄚ ㄅㄚˇ ㄏㄨㄚ ㄆㄣˊ ㄘㄤˊ ㄑㄧˇ ㄌㄞˊ'],['她一直忘記澆水','ㄊㄚ ㄧˋ ㄓˊ ㄨㄤˋ ㄐㄧˋ ㄐㄧㄠ ㄕㄨㄟˇ']],'她每天澆水，也讓花得到陽光，媽媽因此稱讚她。','reason']
+ ],
+ school:[
+  ['小文早上到哪裡畫圖？','ㄒㄧㄠˇ ㄨㄣˊ ㄗㄠˇ ㄕㄤˋ ㄉㄠˋ ㄋㄚˇ ㄌㄧˇ ㄏㄨㄚˋ ㄊㄨˊ',[['學校','ㄒㄩㄝˊ ㄒㄧㄠˋ'],['公園','ㄍㄨㄥ ㄩㄢˊ'],['商店','ㄕㄤ ㄉㄧㄢˋ']],'小文去學校，在教室裡畫圖。','detail'],
+  ['小文的圖裡有哪一種動物？','ㄒㄧㄠˇ ㄨㄣˊ ㄉㄜ˙ ㄊㄨˊ ㄌㄧˇ ㄧㄡˇ ㄋㄚˇ ㄧˋ ㄓㄨㄥˇ ㄉㄨㄥˋ ㄨˋ',[['兔子','ㄊㄨˋ ㄗ˙'],['小魚','ㄒㄧㄠˇ ㄩˊ'],['小鳥','ㄒㄧㄠˇ ㄋㄧㄠˇ']],'小文畫了一隻兔子和兩根紅蘿蔔。','detail'],
+  ['拿出畫紙和彩色筆以前，小文先做什麼？','ㄋㄚˊ ㄔㄨ ㄏㄨㄚˋ ㄓˇ ㄏㄢˋ ㄘㄞˇ ㄙㄜˋ ㄅㄧˇ ㄧˇ ㄑㄧㄢˊ ㄒㄧㄠˇ ㄨㄣˊ ㄒㄧㄢ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['放好水壺','ㄈㄤˋ ㄏㄠˇ ㄕㄨㄟˇ ㄏㄨˊ'],['拿畫給小安看','ㄋㄚˊ ㄏㄨㄚˋ ㄍㄟˇ ㄒㄧㄠˇ ㄢ ㄎㄢˋ'],['收好畫好的圖','ㄕㄡ ㄏㄠˇ ㄏㄨㄚˋ ㄏㄠˇ ㄉㄜ˙ ㄊㄨˊ']],'文中說先把水壺放好，再拿出畫紙和彩色筆。','sequence'],
+  ['小文把圖拿給小安看，最可能想做什麼？','ㄒㄧㄠˇ ㄨㄣˊ ㄅㄚˇ ㄊㄨˊ ㄋㄚˊ ㄍㄟˇ ㄒㄧㄠˇ ㄢ ㄎㄢˋ ㄗㄨㄟˋ ㄎㄜˇ ㄋㄥˊ ㄒㄧㄤˇ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['和朋友分享自己的畫','ㄏㄢˋ ㄆㄥˊ ㄧㄡˇ ㄈㄣ ㄒㄧㄤˇ ㄗˋ ㄐㄧˇ ㄉㄜ˙ ㄏㄨㄚˋ'],['請小安把水壺藏起來','ㄑㄧㄥˇ ㄒㄧㄠˇ ㄢ ㄅㄚˇ ㄕㄨㄟˇ ㄏㄨˊ ㄘㄤˊ ㄑㄧˇ ㄌㄞˊ'],['請小安帶他去商店','ㄑㄧㄥˇ ㄒㄧㄠˇ ㄢ ㄉㄞˋ ㄊㄚ ㄑㄩˋ ㄕㄤ ㄉㄧㄢˋ']],'畫好了拿給朋友看，是在分享自己的作品。','reason']
+ ],
+ picnic:[
+  ['麵包是誰準備的？','ㄇㄧㄢˋ ㄅㄠ ㄕˋ ㄕㄟˊ ㄓㄨㄣˇ ㄅㄟˋ ㄉㄜ˙',[['姐姐','ㄐㄧㄝˇ ㄐㄧㄝ˙'],['我','ㄨㄛˇ'],['爸爸','ㄅㄚˋ ㄅㄚ˙']],'姐姐帶麵包，故事中的我帶牛奶。','detail'],
+  ['故事中的我帶了哪一種飲料？','ㄍㄨˋ ㄕˋ ㄓㄨㄥ ㄉㄜ˙ ㄨㄛˇ ㄉㄞˋ ㄌㄜ˙ ㄋㄚˇ ㄧˋ ㄓㄨㄥˇ ㄧㄣˇ ㄌㄧㄠˋ',[['牛奶','ㄋㄧㄡˊ ㄋㄞˇ'],['果汁','ㄍㄨㄛˇ ㄓ'],['水','ㄕㄨㄟˇ']],'要分清楚姐姐和我各自帶的東西。','detail'],
+  ['把食物放上去以前，要先做什麼？','ㄅㄚˇ ㄕˊ ㄨˋ ㄈㄤˋ ㄕㄤˋ ㄑㄩˋ ㄧˇ ㄑㄧㄢˊ ㄧㄠˋ ㄒㄧㄢ ㄗㄨㄛˋ ㄕㄣˊ ㄇㄜ˙',[['鋪好墊子','ㄆㄨ ㄏㄠˇ ㄉㄧㄢˋ ㄗ˙'],['收好墊子','ㄕㄡ ㄏㄠˇ ㄉㄧㄢˋ ㄗ˙'],['把所有食物吃完','ㄅㄚˇ ㄙㄨㄛˇ ㄧㄡˇ ㄕˊ ㄨˋ ㄔ ㄨㄢˊ']],'先鋪好墊子，才把食物放上去。','sequence'],
+  ['把垃圾帶回家，最主要是為了什麼？','ㄅㄚˇ ㄌㄜˋ ㄙㄜˋ ㄉㄞˋ ㄏㄨㄟˊ ㄐㄧㄚ ㄗㄨㄟˋ ㄓㄨˇ ㄧㄠˋ ㄕˋ ㄨㄟˋ ㄌㄜ˙ ㄕㄣˊ ㄇㄜ˙',[['讓野餐的地方保持乾淨','ㄖㄤˋ ㄧㄝˇ ㄘㄢ ㄉㄜ˙ ㄉㄧˋ ㄈㄤ ㄅㄠˇ ㄔˊ ㄍㄢ ㄐㄧㄥˋ'],['讓墊子變得更大','ㄖㄤˋ ㄉㄧㄢˋ ㄗ˙ ㄅㄧㄢˋ ㄉㄜ˙ ㄍㄥˋ ㄉㄚˋ'],['讓牛奶變得更多','ㄖㄤˋ ㄋㄧㄡˊ ㄋㄞˇ ㄅㄧㄢˋ ㄉㄜ˙ ㄍㄥˋ ㄉㄨㄛ']],'帶走垃圾，可以保持環境乾淨，讓別人也能使用。','reason']
+ ]
+};
+let nextAuditedReading=1;
+for(const [sourceId,questions] of Object.entries(AUDITED_ZH_READING)){
+ const id='audit-'+sourceId;PASSAGES[id]={...PASSAGES[sourceId],id};
+ if(sourceId==='rain'){PASSAGES[id].title=R('一起上學','ㄧˋ ㄑㄧˇ ㄕㄤˋ ㄒㄩㄝˊ');PASSAGES[id].plainTitle='一起上學';}
+ if(sourceId==='flower'){PASSAGES[id].title=R('小青的一天','ㄒㄧㄠˇ ㄑㄧㄥ ㄉㄜ˙ ㄧˋ ㄊㄧㄢ');PASSAGES[id].plainTitle='小青的一天';}
+ BANK.filter(q=>q.passageId===sourceId).forEach(q=>retireForAudit(q,'換成兩題細節、一題順序、一題原因的閱讀組'));
+ questions.forEach(([text,reading,options,why,skill],i)=>schoolQ('zar'+nextAuditedReading++,'zh','reading','reading',text,reading,'',options.map(([t,r])=>R(t,r)),0,why,{passageId:id,passagePart:i+1,readingSkill:skill}));
+}
+
+// These questions require one calculation or comparison; no question just copies a stated count.
+const AUDITED_MATH_READING={
+ carrot:[
+  ['現在一共有幾根紅蘿蔔？','ㄒㄧㄢˋ ㄗㄞˋ ㄧˊ ㄍㄨㄥˋ ㄧㄡˇ ㄐㄧˇ ㄍㄣ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙',5,'原來3根，再得到2根，3加2是5。','add',[3,2]],
+  ['原來的紅蘿蔔，比媽媽給的多幾根？','ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙ ㄅㄧˇ ㄇㄚ ㄇㄚ˙ ㄍㄟˇ ㄉㄜ˙ ㄉㄨㄛ ㄐㄧˇ ㄍㄣ',1,'原來3根，媽媽給2根，3比2多1。','difference',[3,2]],
+  ['把原來的3根分成兩盤，一盤1根，另一盤幾根？','ㄅㄚˇ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄍㄣ ㄈㄣ ㄔㄥˊ ㄌㄧㄤˇ ㄆㄢˊ ㄧˋ ㄆㄢˊ ㄍㄣ ㄌㄧㄥˋ ㄧˋ ㄆㄢˊ ㄐㄧˇ ㄍㄣ',2,'這題只分原來的3根。3可以分成1和2。','subtract',[3,1]],
+  ['媽媽給的2根，再加上2根，合起來是幾根？','ㄇㄚ ㄇㄚ˙ ㄍㄟˇ ㄉㄜ˙ ㄍㄣ ㄗㄞˋ ㄐㄧㄚ ㄕㄤˋ ㄍㄣ ㄏㄜˊ ㄑㄧˇ ㄌㄞˊ ㄕˋ ㄐㄧˇ ㄍㄣ',4,'2根再加2根，合起來是4根。','add',[2,2]]
+ ],
+ cookie:[
+  ['盤子上還有幾個餅乾？','ㄆㄢˊ ㄗ˙ ㄕㄤˋ ㄏㄞˊ ㄧㄡˇ ㄐㄧˇ ㄍㄜ˙ ㄅㄧㄥˇ ㄍㄢ',5,'原來8個，吃掉3個，還有5個。','subtract',[8,3]],
+  ['把原來的8個分成兩盤，一盤2個，另一盤幾個？','ㄅㄚˇ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄍㄜ˙ ㄈㄣ ㄔㄥˊ ㄌㄧㄤˇ ㄆㄢˊ ㄧˋ ㄆㄢˊ ㄍㄜ˙ ㄌㄧㄥˋ ㄧˋ ㄆㄢˊ ㄐㄧˇ ㄍㄜ˙',6,'這題分原來的8個，8可以分成2和6。','subtract',[8,2]],
+  ['如果原來的8個只吃掉1個，會剩下幾個？','ㄖㄨˊ ㄍㄨㄛˇ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄍㄜ˙ ㄓˇ ㄔ ㄉㄧㄠˋ ㄍㄜ˙ ㄏㄨㄟˋ ㄕㄥˋ ㄒㄧㄚˋ ㄐㄧˇ ㄍㄜ˙',7,'這題改成只吃1個，所以8減1是7。','subtract',[8,1]],
+  ['原來有8個，要變成10個，還要放幾個？','ㄩㄢˊ ㄌㄞˊ ㄧㄡˇ ㄍㄜ˙ ㄧㄠˋ ㄅㄧㄢˋ ㄔㄥˊ ㄍㄜ˙ ㄏㄞˊ ㄧㄠˋ ㄈㄤˋ ㄐㄧˇ ㄍㄜ˙',2,'8再加2就是10。','subtract',[10,8]]
+ ],
+ pencil:[
+  ['兩人一共有幾枝鉛筆？','ㄌㄧㄤˇ ㄖㄣˊ ㄧˊ ㄍㄨㄥˋ ㄧㄡˇ ㄐㄧˇ ㄓ ㄑㄧㄢ ㄅㄧˇ',10,'哥哥4枝，妹妹6枝，合起來有10枝。','add',[4,6]],
+  ['妹妹比哥哥多幾枝鉛筆？','ㄇㄟˋ ㄇㄟ˙ ㄅㄧˇ ㄍㄜ ㄍㄜ˙ ㄉㄨㄛ ㄐㄧˇ ㄓ ㄑㄧㄢ ㄅㄧˇ',2,'6比4多2。','difference',[6,4]],
+  ['妹妹原來的6枝，借給同學1枝，自己還有幾枝？','ㄇㄟˋ ㄇㄟ˙ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄓ ㄐㄧㄝˋ ㄍㄟˇ ㄊㄨㄥˊ ㄒㄩㄝˊ ㄓ ㄗˋ ㄐㄧˇ ㄏㄞˊ ㄧㄡˇ ㄐㄧˇ ㄓ',5,'妹妹原來有6枝，借出1枝，自己還有5枝。','subtract',[6,1]],
+  ['哥哥從自己的4枝中借出1枝，還有幾枝？','ㄍㄜ ㄍㄜ˙ ㄘㄨㄥˊ ㄗˋ ㄐㄧˇ ㄉㄜ˙ ㄓ ㄓㄨㄥ ㄐㄧㄝˋ ㄔㄨ ㄓ ㄏㄞˊ ㄧㄡˇ ㄐㄧˇ ㄓ',3,'哥哥原來4枝，借出1枝，還有3枝。','subtract',[4,1]]
+ ],
+ candy:[
+  ['分給小兔後，小熊還有幾顆糖果？','ㄈㄣ ㄍㄟˇ ㄒㄧㄠˇ ㄊㄨˋ ㄏㄡˋ ㄒㄧㄠˇ ㄒㄩㄥˊ ㄏㄞˊ ㄧㄡˇ ㄐㄧˇ ㄎㄜ ㄊㄤˊ ㄍㄨㄛˇ',5,'原來7顆，分出2顆，還有5顆。','subtract',[7,2]],
+  ['小兔拿到的2顆，再加上1顆，會有幾顆？','ㄒㄧㄠˇ ㄊㄨˋ ㄋㄚˊ ㄉㄠˋ ㄉㄜ˙ ㄎㄜ ㄗㄞˋ ㄐㄧㄚ ㄕㄤˋ ㄎㄜ ㄏㄨㄟˋ ㄧㄡˇ ㄐㄧˇ ㄎㄜ',3,'2顆再加1顆，就有3顆。','add',[2,1]],
+  ['把原來的7顆分成兩袋，一袋3顆，另一袋幾顆？','ㄅㄚˇ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄎㄜ ㄈㄣ ㄔㄥˊ ㄌㄧㄤˇ ㄉㄞˋ ㄧˊ ㄉㄞˋ ㄎㄜ ㄌㄧㄥˋ ㄧˊ ㄉㄞˋ ㄐㄧˇ ㄎㄜ',4,'這題分原來的7顆，7可以分成3和4。','subtract',[7,3]],
+  ['如果原來的7顆只分出1顆，小熊會剩幾顆？','ㄖㄨˊ ㄍㄨㄛˇ ㄩㄢˊ ㄌㄞˊ ㄉㄜ˙ ㄎㄜ ㄓˇ ㄈㄣ ㄔㄨ ㄎㄜ ㄒㄧㄠˇ ㄒㄩㄥˊ ㄏㄨㄟˋ ㄕㄥˋ ㄐㄧˇ ㄎㄜ',6,'這題改成只分出1顆，所以7減1是6。','subtract',[7,1]]
+ ]
+};
+let nextMathReading=1;
+for(const [sourceId,questions] of Object.entries(AUDITED_MATH_READING)){
+ const id='audit-'+sourceId;PASSAGES[id]={...PASSAGES[sourceId],id};
+ BANK.filter(q=>q.passageId===sourceId).forEach(q=>retireForAudit(q,'改為需要一步計算或數量比較的生活題'));
+ questions.forEach(([text,reading,n,why,operation,operands],i)=>schoolQ('mar'+nextMathReading++,'math','reading','reading',text,reading,'',numberOptions(n),0,why,{passageId:id,passagePart:i+1,mathOperation:operation,operands}));
+}
+
+// Replace ambiguous or word-matching clozes while retaining old answer IDs for saved work.
+const AUDITED_CLOZES=[
+ ['zf7','我坐好，打開故事書，開始','ㄨㄛˇ ㄗㄨㄛˋ ㄏㄠˇ ㄉㄚˇ ㄎㄞ ㄍㄨˋ ㄕˋ ㄕㄨ ㄎㄞ ㄕˇ',[['閱讀','ㄩㄝˋ ㄉㄨˊ'],['游泳','ㄧㄡˊ ㄩㄥˇ'],['踢球','ㄊㄧ ㄑㄧㄡˊ']],'打開故事書，開始閱讀。'],
+ ['zf9','下雨了，我撐開','ㄒㄧㄚˋ ㄩˇ ㄌㄜ˙ ㄨㄛˇ ㄔㄥ ㄎㄞ',[['雨傘','ㄩˇ ㄙㄢˇ'],['雨衣','ㄩˇ ㄧ'],['雨鞋','ㄩˇ ㄒㄧㄝˊ']],'雨傘是撐開來用的；雨衣、雨鞋是穿在身上的。'],
+ ['zf11','睡覺以前，要讓牙齒乾淨，我先','ㄕㄨㄟˋ ㄐㄧㄠˋ ㄧˇ ㄑㄧㄢˊ ㄧㄠˋ ㄖㄤˋ ㄧㄚˊ ㄔˇ ㄍㄢ ㄐㄧㄥˋ ㄨㄛˇ ㄒㄧㄢ',[['刷牙','ㄕㄨㄚ ㄧㄚˊ'],['洗臉','ㄒㄧˇ ㄌㄧㄢˇ'],['洗手','ㄒㄧˇ ㄕㄡˇ']],'刷牙可以清潔牙齒。']
+];
+AUDITED_CLOZES.forEach(([old,text,reading,options,why],i)=>{
+ retireForAudit(BANK.find(q=>q.id===old),'改掉語意不明或只靠重複字詞作答的填空');
+ fill('zaf'+(i+1),'zh',text+'＿＿。',R(text,reading)+'{{blank}}。','',options.map(([t,r])=>R(t,r)),0,why);
+});
+
+// More familiar pictured words allow different skills without giving the same word away elsewhere.
+const AUDIT_WORDS=[
+ ['馬','🐴','ㄇㄚˇ'],['羊','🐑','ㄧㄤˊ'],['熊','🐻','ㄒㄩㄥˊ'],['鹿','🦌','ㄌㄨˋ'],
+ ['虎','🐅','ㄏㄨˇ'],['蛇','🐍','ㄕㄜˊ'],['鴨','🦆','ㄧㄚ'],['豬','🐷','ㄓㄨ'],
+ ['猴','🐒','ㄏㄡˊ'],['蜂','🐝','ㄈㄥ'],['香蕉','🍌','ㄒㄧㄤ ㄐㄧㄠ'],['鉛筆','✏️','ㄑㄧㄢ ㄅㄧˇ'],
+ ['剪刀','✂️','ㄐㄧㄢˇ ㄉㄠ'],['汽車','🚗','ㄑㄧˋ ㄔㄜ'],['書本','📖','ㄕㄨ ㄅㄣˇ'],
+ ['帽子','🧢','ㄇㄠˋ ㄗ˙'],['襪子','🧦','ㄨㄚˋ ㄗ˙'],['鞋子','👟','ㄒㄧㄝˊ ㄗ˙'],
+ ['眼鏡','👓','ㄧㄢˇ ㄐㄧㄥˋ'],['鼻子','👃','ㄅㄧˊ ㄗ˙'],['氣球','🎈','ㄑㄧˋ ㄑㄧㄡˊ'],
+ ['風箏','🪁','ㄈㄥ ㄓㄥ'],['足球','⚽','ㄗㄨˊ ㄑㄧㄡˊ'],['草莓','🍓','ㄘㄠˇ ㄇㄟˊ']
+];
+AUDIT_WORDS.forEach(([word,icon,sounds],i)=>{
+ const syllables=sounds.split(' '),target=0,stem=syllables[target].replace(/[ˊˇˋ˙]/g,''),tone=(syllables[target].match(/[ˊˇˋ˙]/)||[''])[0];
+ const wrong=['','ˊ','ˇ','ˋ'].filter(t=>t!==tone).slice(0,2).map(t=>[stem+t,...syllables.slice(1)].join(' '));
+ const common={cueWords:[word]};
+ schoolQ('zap'+(i+1),'zh','picture','picture','圖中是什麼？','ㄊㄨˊ ㄓㄨㄥ ㄕˋ ㄕㄣˊ ㄇㄜ˙',picture(icon),[sounds,...wrong],0,word+'的注音是'+sounds+'。',common);
+ const shown=i%2?sounds:wrong[0];
+ schoolQ('zatf'+(i+1),'zh','picturetf','picturetf','圖和注音一樣嗎？','ㄊㄨˊ ㄏㄢˋ ㄓㄨˋ ㄧㄣ ㄧˊ ㄧㄤˋ ㄇㄚ˙',picture(icon)+'<span class="picture-sound">'+shown+'</span>',[...TF_OPTIONS],shown===sounds?0:1,word+'的注音是'+sounds+'。',common);
+ const others=[AUDIT_WORDS[(i+5)%AUDIT_WORDS.length][1],AUDIT_WORDS[(i+11)%AUDIT_WORDS.length][1]];
+ schoolQ('zas'+(i+1),'zh','sound','sound','念一念，選出對的圖。','ㄋㄧㄢˋ ㄧˊ ㄋㄧㄢˋ ㄒㄩㄢˇ ㄔㄨ ㄉㄨㄟˋ ㄉㄜ˙ ㄊㄨˊ','<span class="symbol">'+sounds+'</span>',[icon,...others].map(picture),0,sounds+'是'+word+'的注音。',common);
+ const opts=['ˊ','ˇ','ˋ','˙',R('不加符號','ㄅㄨˋ ㄐㄧㄚ ㄈㄨˊ ㄏㄠˋ')];
+ schoolQ('zatn'+(i+1),'zh','tone','tone','少了哪個聲調？','ㄕㄠˇ ㄌㄜ˙ ㄋㄚˇ ㄍㄜ˙ ㄕㄥ ㄉㄧㄠˋ',picture(icon),opts,tone?opts.indexOf(tone):4,word+'：'+sounds+'。',{...common,fillTemplate:[stem+'{{blank}}',...syllables.slice(1)].join('　')});
+ // Dictation is an independent word, not a matching option supplied to another task.
+ if(syllables.length===2)schoolQ('zad'+(i+1),'zh','dictation','dictation','聽一聽，填入注音。','ㄊㄧㄥ ㄧˋ ㄊㄧㄥ ㄊㄧㄢˊ ㄖㄨˋ ㄓㄨˋ ㄧㄣ','',[],syllables,word+'：'+sounds+'。',{...common,spoken:word,slots:2});
+});
+[
+ ['馬','🐴','ㄇ','ㄚ','ˇ'],['鹿','🦌','ㄌ','ㄨ','ˋ'],['虎','🐅','ㄏ','ㄨ','ˇ'],['蛇','🐍','ㄕ','ㄜ','ˊ'],
+ ['豬','🐷','ㄓ','ㄨ',''],['猴','🐒','ㄏ','ㄡ','ˊ'],['蜂','🐝','ㄈ','ㄥ',''],['熊','🐻','ㄒ','ㄩㄥ','ˊ']
+].forEach(([word,icon,initial,final,tone],i)=>{
+ const instruction=R('看圖，把注音填完整。','ㄎㄢˋ ㄊㄨˊ ㄅㄚˇ ㄓㄨˋ ㄧㄣ ㄊㄧㄢˊ ㄨㄢˊ ㄓㄥˇ');
+ for(const part of ['initial','final']){
+  const missing=part==='initial'?initial:final,before=part==='initial'?'':initial,after=part==='initial'?final+tone:tone;
+  const choices=word==='熊'?(part==='initial'?['ㄒ','ㄐ','ㄑ']:['ㄩㄥ','ㄧㄥ','ㄩㄣ']):part==='initial'?['ㄇ','ㄋ','ㄌ','ㄍ','ㄎ','ㄏ','ㄓ','ㄕ','ㄒ','ㄈ']:['ㄚ','ㄛ','ㄜ','ㄨ','ㄡ','ㄥ','ㄩㄥ'];
+  addQuestion({id:'zag'+part+(i+1),subject:'zh',category:'picturefill',fillPart:part,type:'fill',plain:'看圖，把注音填完整。'+before+'＿＿'+after,p:instruction+before+'＿＿'+after,fillTemplate:instruction+'<div class="tone-work">'+before+'{{blank}}'+after+'</div>',visual:picture(icon),options:[missing,...choices.filter(s=>s!==missing).slice(0,2)],answer:0,explanation:word+'的注音是'+initial+final+tone+'。',cueWords:[word]});
+ }
+});
+
+// Canonical targets are used only for drawing, never rendered as a picture label or answer hint.
+const ROOT_WORDS={'小狗':'狗','白兔':'兔','小鳥':'鳥','小貓':'貓','花朵':'花','高山':'山','月亮':'月'};
+const rootWord=word=>ROOT_WORDS[word]||word;
+const tagCues=(prefix,words)=>words.forEach((word,i)=>{const q=BANK.find(q=>q.id===prefix+(i+1));if(q)q.cueWords=[rootWord(word)];});
+tagCues('zp',PICTURE_WORDS.map(row=>row[0]));tagCues('zpt',PICTURE_WORDS.map(row=>row[0]));
+tagCues('ztn',TONE_WORDS.map(row=>row[0]));tagCues('zd',DICTATION_WORDS.map(row=>row[0]));
+tagCues('zsp',['貓','花','魚','兔','山','牛','狗','月']);
+tagCues('zpf',['貓','魚','兔','牛','火','傘','花','山','手','狗','鳥','月']);tagCues('zpi',['貓','手','牛','狗','兔','花']);
+for(const q of BANK){
+ if(q.subject!=='zh')continue;
+ if(!q.cueWords&&q.testTargets?.length)q.cueWords=q.testTargets.map(rootWord);
+ if(!q.cueWords&&q.topic==='注音拼讀')q.cueWords=[rootWord(q.plain.match(/^「([^」]+)」/)[1])];
+ const displayed=[q.p,q.visual,q.fillTemplate||'',...q.options,TYPE_HELP[q.type]||''].join('');
+ q.annotatedText=[...displayed.matchAll(/<ruby\b[^>]*>([\s\S]*?)<\/ruby>/g)].map(m=>auditPlain(m[1])).join('');
+ if(q.passageId)q.annotatedText+=PASSAGES[q.passageId].plain+PASSAGES[q.passageId].plainTitle;
+ if(q.cueWords?.some(word=>q.annotatedText.includes(word)))retireForAudit(q,'題目說明或選項的注音會提示被考字');
+}
+for(const q of BANK.filter(q=>q.parts))q.factKey=q.parts[0]+':'+q.parts.slice(1).sort((a,b)=>a-b).join(',');
+
+
 // Keep retired IDs only so existing answers and scores remain readable.
 // These tasks can be solved by copying symbols, without decoding the sound.
 BANK.forEach(q=>{if(q.subject==='zh'&&(q.topic==='注音拼合'||q.category==='word'||q.plain.includes('可以拼成')||q.plain.includes('完全一樣')))q.retired=true;});
@@ -659,33 +827,67 @@ const SCHOOL_PLANS={
  zh:{picture:5,tone:5,sound:3,picturetf:4,dictation:5,reading:8,fill:3,choice:1,picturefill:6},
  math:{flat:4,solid:4,cubes:8,reading:4,split:2,merge:2,hidden:2,complete:2,shopping:2,match:2,pair:2,tf:2,fill:2,choice:2}
 };
+function categoryPool(pool,category){
+ return pool.filter(q=>{
+  if(category==='flat'||category==='solid')return q.geometry===category;
+  if(q.category)return q.category===category;
+  if(category==='choice')return q.type==='choice'&&!q.geometry&&q.topic!=='注音拼合';
+  return q.type===category;
+ });
+}
+function cueConflict(a,b){
+ const aw=a.cueWords||[],bw=b.cueWords||[];
+ return aw.some(w=>bw.some(v=>w.includes(v)||v.includes(w))||(b.annotatedText||'').includes(w))
+  ||bw.some(w=>(a.annotatedText||'').includes(w));
+}
+function readingGroups(pool,previous){
+ const avoid=new Set(previous),groups=[...new Set(pool.filter(q=>q.type==='reading').map(q=>q.passageId))].map(id=>pool.filter(q=>q.passageId===id).sort((a,b)=>a.passagePart-b.passagePart));
+ return [...shuffle(groups.filter(g=>g.every(q=>!avoid.has(q.id)))),...shuffle(groups.filter(g=>g.some(q=>avoid.has(q.id))))];
+}
 function schoolDraw(subject,previous=[]){
- const pool=ACTIVE_BANK.filter(q=>q.subject===subject),plan=SCHOOL_PLANS[subject],blocks=[],avoid=new Set(previous);
- for(const [category,count] of Object.entries(plan)){
-  if(category==='reading'){
-   const ids=[...new Set(pool.filter(q=>q.type==='reading').map(q=>q.passageId))];
-   const groups=ids.map(id=>pool.filter(q=>q.passageId===id).sort((a,b)=>a.passagePart-b.passagePart));
-   const fresh=shuffle(groups.filter(g=>g.every(q=>!avoid.has(q.id)))),seen=shuffle(groups.filter(g=>g.some(q=>avoid.has(q.id))));
-   blocks.push(...[...fresh,...seen].slice(0,count/4).map(g=>g.map(q=>q.id)));continue;
+ const pool=ACTIVE_BANK.filter(q=>q.subject===subject),plan=SCHOOL_PLANS[subject];
+ if(subject==='zh'){
+  const groups=readingGroups(pool,previous),slots=[];
+  for(const [category,count] of Object.entries(plan)){
+   if(category==='reading')continue;
+   if(category==='picturefill'){
+    for(const part of ['initial','final'])for(let i=0;i<count/2;i++)slots.push({key:category+'-'+part,pool:pickType(pool.filter(q=>q.category===category&&q.fillPart===part),pool.length,previous)});
+   }else for(let i=0;i<count;i++)slots.push({key:category,pool:pickType(categoryPool(pool,category),pool.length,previous)});
   }
+  // Search the most constrained skill first; never fill a paper with a leaking fallback.
+  let visits=0;
+  function complete(remaining,chosen){
+   if(!remaining.length)return chosen;
+   if(++visits>30000)return null;
+   let best=-1,candidates=null;
+   for(let i=0;i<remaining.length;i++){
+    const valid=remaining[i].pool.filter(q=>!chosen.some(other=>q.id===other.id||cueConflict(q,other)));
+    if(!valid.length)return null;
+    if(!candidates||valid.length<candidates.length){best=i;candidates=valid;}
+   }
+   const rest=remaining.filter((_,i)=>i!==best);
+   for(const q of candidates){const result=complete(rest,[...chosen,q]);if(result)return result;}
+   return null;
+  }
+  for(let a=0;a<groups.length;a++)for(let b=a+1;b<groups.length;b++){
+   visits=0;const selected=complete(slots,[...groups[a],...groups[b]]);
+   if(selected){const blocks=[groups[a].map(q=>q.id),groups[b].map(q=>q.id),...selected.filter(q=>q.type!=='reading').map(q=>[q.id])];return shuffle(blocks).flat();}
+  }
+  throw Error('無法組成不互相提示的國語卷，請回報此問題。');
+ }
+ const blocks=[],usedFacts=new Set();
+ for(const [category,count] of Object.entries(plan)){
+  if(category==='reading'){blocks.push(...readingGroups(pool,previous).slice(0,count/4).map(g=>g.map(q=>q.id)));continue;}
   if(category==='cubes'){
    ['stairs','stack','floor'].forEach((family,i)=>pickType(pool.filter(q=>q.cubeFamily===family),Math.floor((count+2-i)/3),previous).forEach(q=>blocks.push([q.id])));continue;
   }
-  if(category==='picturefill'){
-   for(const part of ['initial','final'])pickType(pool.filter(q=>q.category==='picturefill'&&q.fillPart===part),count/2,previous).forEach(q=>blocks.push([q.id]));
-   continue;
-  }
-  const choices=pool.filter(q=>{
-   if(category==='flat'||category==='solid')return q.geometry===category;
-   if(q.category)return q.category===category;
-   if(category==='choice')return q.type==='choice'&&!q.geometry&&q.topic!=='注音拼合';
-   return q.type===category;
-  });
+  const choices=categoryPool(pool,category).filter(q=>!q.factKey||!usedFacts.has(q.factKey));
   const chosen=pickType(choices,count,previous);if(chosen.length!==count)throw Error('題庫不足：'+subject+'/'+category);
-  chosen.forEach(q=>blocks.push([q.id]));
+  chosen.forEach(q=>{blocks.push([q.id]);if(q.factKey)usedFacts.add(q.factKey);});
  }
  const ids=shuffle(blocks).flat();if(ids.length!==40||new Set(ids).size!==40)throw Error('試卷題數錯誤');return ids;
 }
+
 
 function keepPunctuation(html){return html.replace(/(<ruby\b[^>]*>(?:(?!<\/ruby>)[\s\S])*<\/ruby>)([，。！？：」]+)/g,'<span class="reading-word">$1$2</span>');}
 function passageView(q,interactive=false){if(!q.passageId)return '';const p=PASSAGES[q.passageId],ids=session?.ids.filter(id=>byId(id).passageId===q.passageId)||BANK.filter(other=>other.passageId===q.passageId).sort((a,b)=>a.passagePart-b.passagePart).map(other=>other.id);return '<section id="passage-'+q.id+'" class="passage" aria-label="閱讀短文"><div class="passage-meta"><strong>'+p.title+'</strong><span>本篇第 '+(ids.indexOf(q.id)+1)+' / '+ids.length+' 題</span></div>'+(interactive?'<a class="reading-jump" href="#question-title">'+R('回答問題','ㄏㄨㄟˊ ㄉㄚˊ ㄨㄣˋ ㄊㄧˊ')+' ↓</a>':'')+'<div class="passage-body">'+p.lines.map(line=>'<p>'+keepPunctuation(line)+'</p>').join('')+'</div></section>';}
