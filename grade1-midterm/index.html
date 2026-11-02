@@ -181,10 +181,10 @@ for(const [animals,side,target,name,reading] of [
 
 // Old question IDs and answer orders remain compatible with saved attempts.
 BANK.forEach(q=>{q.type='choice';});
-const TYPE_NAMES={choice:'選擇題',tf:'是非題',fill:'選詞填空',reading:'閱讀測驗'};
+const TYPE_NAMES={choice:'選擇題',tf:'是非題',fill:'備選填空',reading:'閱讀測驗'};
 const TYPE_HELP={
   tf:R('對的選○，錯的選×。','ㄉㄨㄟˋ ㄉㄜ˙ ㄒㄩㄢˇ ㄘㄨㄛˋ ㄉㄜ˙ ㄒㄩㄢˇ'),
-  fill:R('選詞填空。','ㄒㄩㄢˇ ㄘˊ ㄊㄧㄢˊ ㄎㄨㄥˋ'),
+  fill:R('選答案，填入空格。','ㄒㄩㄢˇ ㄉㄚˊ ㄢˋ ㄊㄧㄢˊ ㄖㄨˋ ㄎㄨㄥˋ ㄍㄜˊ'),
   reading:R('讀短文，再回答。','ㄉㄨˊ ㄉㄨㄢˇ ㄨㄣˊ ㄗㄞˋ ㄏㄨㄟˊ ㄉㄚˊ')
 };
 const TF_OPTIONS=['<span class="tf-symbol">○</span>'+R('對','ㄉㄨㄟˋ'),'<span class="tf-symbol">×</span>'+R('錯','ㄘㄨㄛˋ')];
