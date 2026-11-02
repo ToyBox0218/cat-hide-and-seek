@@ -605,7 +605,15 @@ TONE_WORDS.forEach(([word,icon,sounds,target],i)=>{
  ['🐦','ㄋㄧ','ㄠ',['ㄡ','ㄢ'],'鳥','ˇ'],['🌙','ㄩ','ㄝ',['ㄜ','ㄟ'],'月','ˋ']
 ].forEach(([icon,before,missing,others,word,tone=''],i)=>{
  const instruction=R('看圖，把注音填完整。','ㄎㄢˋ ㄊㄨˊ ㄅㄚˇ ㄓㄨˋ ㄧㄣ ㄊㄧㄢˊ ㄨㄢˊ ㄓㄥˇ');
- addQuestion({id:'zpf'+(i+1),subject:'zh',category:'picturefill',type:'fill',plain:'看圖，把注音填完整。'+before+'＿＿'+tone,p:instruction+before+'＿＿'+tone,fillTemplate:instruction+'<div class="tone-work">'+before+'{{blank}}'+tone+'</div>',visual:picture(icon),options:[missing,...others],answer:0,explanation:word+'的注音是'+before+missing+tone+'。'});
+ addQuestion({id:'zpf'+(i+1),subject:'zh',category:'picturefill',fillPart:'final',type:'fill',plain:'看圖，把注音填完整。'+before+'＿＿'+tone,p:instruction+before+'＿＿'+tone,fillTemplate:instruction+'<div class="tone-work">'+before+'{{blank}}'+tone+'</div>',visual:picture(icon),options:[missing,...others],answer:0,explanation:word+'的注音是'+before+missing+tone+'。'});
+});
+[
+ ['🐈','ㄠ',['ㄇ','ㄋ','ㄌ'],'貓'],['✋','ㄡˇ',['ㄕ','ㄙ','ㄘ'],'手'],
+ ['🐄','ㄧㄡˊ',['ㄋ','ㄌ','ㄇ'],'牛'],['🐕','ㄡˇ',['ㄍ','ㄎ','ㄏ'],'狗'],
+ ['🐇','ㄨˋ',['ㄊ','ㄉ','ㄋ'],'兔'],['🌼','ㄨㄚ',['ㄏ','ㄈ','ㄍ'],'花']
+].forEach(([icon,after,options,word],i)=>{
+ const instruction=R('看圖，把注音填完整。','ㄎㄢˋ ㄊㄨˊ ㄅㄚˇ ㄓㄨˋ ㄧㄣ ㄊㄧㄢˊ ㄨㄢˊ ㄓㄥˇ');
+ addQuestion({id:'zpi'+(i+1),subject:'zh',category:'picturefill',fillPart:'initial',type:'fill',plain:'看圖，把注音填完整。＿＿'+after,p:instruction+'＿＿'+after,fillTemplate:instruction+'<div class="tone-work">{{blank}}'+after+'</div>',visual:picture(icon),options,answer:0,explanation:word+'的注音是'+options[0]+after+'。'});
 });
 // Every dictation word is unambiguous; no target word is put into the active DOM.
 const DICTATION_WORDS=[
@@ -642,13 +650,17 @@ splits.forEach(([total,left],i)=>{
  schoolQ('mmatch'+(i+1),'math','match','match','每排要配哪一張圖？','ㄇㄟˇ ㄆㄞˊ ㄧㄠˋ ㄆㄟˋ ㄋㄚˇ ㄧˋ ㄓㄤ ㄊㄨˊ','',right.map(n=>groupBox('🐟',n)),[0,1,2],left.map((n,j)=>n+'和'+right[j]+'合起來是10').join('；')+'。',{slots:3,leftCounts:left,rightCounts:right,fillTemplate:'<div class="matching-rows">'+left.map((n,j)=>'<div class="matching-row">'+groupBox('🐟',n)+'<span>＋</span>{{'+j+'}}<span>＝ 10</span></div>').join('')+'</div>'});
 });
 
+// Keep retired IDs only so existing answers and scores remain readable.
+// These tasks can be solved by copying symbols, without decoding the sound.
+BANK.forEach(q=>{if(q.subject==='zh'&&(q.topic==='注音拼合'||q.category==='word'||q.plain.includes('可以拼成')||q.plain.includes('完全一樣')))q.retired=true;});
+const ACTIVE_BANK=BANK.filter(q=>!q.retired);
 // Fixed 40-question papers: new formats and geometry appear in every paper.
 const SCHOOL_PLANS={
- zh:{picture:4,tone:4,sound:3,word:3,picturetf:3,dictation:5,reading:8,fill:3,choice:1,blend:3,picturefill:3},
+ zh:{picture:5,tone:5,sound:3,picturetf:4,dictation:5,reading:8,fill:3,choice:1,picturefill:6},
  math:{flat:4,solid:4,cubes:8,reading:4,split:2,merge:2,hidden:2,complete:2,shopping:2,match:2,pair:2,tf:2,fill:2,choice:2}
 };
 function schoolDraw(subject,previous=[]){
- const pool=BANK.filter(q=>q.subject===subject),plan=SCHOOL_PLANS[subject],blocks=[],avoid=new Set(previous);
+ const pool=ACTIVE_BANK.filter(q=>q.subject===subject),plan=SCHOOL_PLANS[subject],blocks=[],avoid=new Set(previous);
  for(const [category,count] of Object.entries(plan)){
   if(category==='reading'){
    const ids=[...new Set(pool.filter(q=>q.type==='reading').map(q=>q.passageId))];
@@ -659,10 +671,13 @@ function schoolDraw(subject,previous=[]){
   if(category==='cubes'){
    ['stairs','stack','floor'].forEach((family,i)=>pickType(pool.filter(q=>q.cubeFamily===family),Math.floor((count+2-i)/3),previous).forEach(q=>blocks.push([q.id])));continue;
   }
+  if(category==='picturefill'){
+   for(const part of ['initial','final'])pickType(pool.filter(q=>q.category==='picturefill'&&q.fillPart===part),count/2,previous).forEach(q=>blocks.push([q.id]));
+   continue;
+  }
   const choices=pool.filter(q=>{
    if(category==='flat'||category==='solid')return q.geometry===category;
    if(q.category)return q.category===category;
-   if(category==='blend')return q.type==='choice'&&q.topic==='注音拼合';
    if(category==='choice')return q.type==='choice'&&!q.geometry&&q.topic!=='注音拼合';
    return q.type===category;
   });
@@ -816,7 +831,7 @@ function stopClock(){session.elapsed=elapsed();session.since=null;}
 function progress(){return session.ids.filter(id=>answered(byId(id),session.answers[id])).length;}
 function score(s=session){const correct=s.ids.filter(id=>correctAnswer(byId(id),s.answers[id])).length;return{correct,total:s.ids.length,score:Math.round(correct/s.ids.length*1000)/10};}
 function showHome(){stopSpeech();app.innerHTML=`<section class="hero"><div><div class="eyebrow">LITTLE STEPS, BIG DISCOVERIES</div><h1>小小練習，<br><span>大大進步。</span></h1><p class="intro">小一上學期 · 期中通用練習卷<br>準備好了嗎？一起完成今天的小挑戰。</p><div class="chips"><span class="chip">✧ 國語注音</span><span class="chip">＋ 數學基礎</span><span class="chip">✓ 自動計分</span></div></div>${ART}</section>${session?`<div class="resume-box"><span>${session.status==='done'?'上次的練習已完成，可以查看成績。':`有一份還沒完成的試卷（已答 ${progress()} / ${session.ids.length} 題）。`}</span><button class="secondary" data-action="resume">${session.status==='done'?'查看上次成績':'繼續上次作答'}</button><button class="text-button" data-action="clear">清除本機紀錄</button></div>`:''}<div class="setup"><section class="panel"><h2 class="section-title"><span class="small-number">1</span> 選一份今天的挑戰</h2><div class="modes" role="group" aria-label="考試科目"><button class="mode" data-mode="zh" aria-pressed="${mode==='zh'}"><strong>ㄅ ㄆ ㄇ</strong>國語卷 · 40 題</button><button class="mode" data-mode="math" aria-pressed="${mode==='math'}"><strong>1 2 3</strong>數學卷 · 40 題</button></div><div class="field-row"><label>每份試卷<input type="hidden" id="length" value="40"><div class="fixed-length">40 題 · 每題 2.5 分</div></label>
-<label>孩子的小名（可不填）<input id="nickname" maxlength="16" autocomplete="off" placeholder="小小探險家"></label></div><button class="primary start" data-action="start">開始作答 <span aria-hidden="true">→</span></button><p class="tiny" id="paper-summary">${mode==='zh'?'國語 40 題':'數學 40 題'} · 滿分 100 分 · 不限時</p><p class="tiny" id="geometry-summary" style="margin-top:6px">${mode==='math'?'平面形狀 4 題、立體的面 4 題、數方塊 8 題（混合階梯、堆疊、平鋪）。':'含注音聽寫 5 題、短文閱讀 8 題（2 篇，每篇 4 題）。'}</p><p class="tiny" style="margin-top:6px">題庫共 ${BANK.length} 題，國語 ${BANK.filter(q=>q.subject==='zh').length} 題、數學 ${BANK.filter(q=>q.subject==='math').length} 題。依照片題型編寫新題，每份固定混合多種題型。隨機抽題，優先抽上次沒考過的題目，續答保留原卷。</p></section><aside class="panel scope"><h2 class="section-title"><span class="small-number">2</span> 開考前，家長看一下</h2><div class="scope-item"><span class="subject-icon">ㄅ</span><div><strong>國語｜注音、閱讀與聽寫</strong><p>看圖選注音、聲調填空、找圖、拼音造詞、圖文是非、閱讀與注音聽寫。<br>題目說明附直排注音，被考的字不標音。</p></div></div><div class="scope-item"><span class="subject-icon">5</span><div><strong>數學｜10 以內的數</strong><p>分與合、遮住求數量、補足數量、湊十配對、圈選兩數、形狀、數方塊與生活短文。<br>題目及文字選項均附直排注音，包含簡單加減。</p></div></div><div class="note">依提供的考卷題型新增練習，並非原卷逐題翻印。一般填空可點選備選答案；聽寫用完整注音鍵盤填答，也可先寫在紙上再輸入。語音若無法播放，可由家長開啟代念提示。每題 2.5 分，多格題要全部填對才得分。作答時不顯示正解，交卷後才看成績與解析。</div></aside></div>`;}
+<label>孩子的小名（可不填）<input id="nickname" maxlength="16" autocomplete="off" placeholder="小小探險家"></label></div><button class="primary start" data-action="start">開始作答 <span aria-hidden="true">→</span></button><p class="tiny" id="paper-summary">${mode==='zh'?'國語 40 題':'數學 40 題'} · 滿分 100 分 · 不限時</p><p class="tiny" id="geometry-summary" style="margin-top:6px">${mode==='math'?'平面形狀 4 題、立體的面 4 題、數方塊 8 題（混合階梯、堆疊、平鋪）。':'含注音聽寫 5 題、短文閱讀 8 題（2 篇，每篇 4 題）。'}</p><p class="tiny" style="margin-top:6px">題庫共 ${ACTIVE_BANK.length} 題，國語 ${ACTIVE_BANK.filter(q=>q.subject==='zh').length} 題、數學 ${ACTIVE_BANK.filter(q=>q.subject==='math').length} 題。依照片題型編寫新題，每份固定混合多種題型。隨機抽題，優先抽上次沒考過的題目，續答保留原卷。</p></section><aside class="panel scope"><h2 class="section-title"><span class="small-number">2</span> 開考前，家長看一下</h2><div class="scope-item"><span class="subject-icon">ㄅ</span><div><strong>國語｜注音、閱讀與聽寫</strong><p>看圖選注音、補聲母與韻母、聲調填空、注音找圖、圖文是非、閱讀與注音聽寫。<br>題目說明附直排注音，被考的字不標音。</p></div></div><div class="scope-item"><span class="subject-icon">5</span><div><strong>數學｜10 以內的數</strong><p>分與合、遮住求數量、補足數量、湊十配對、圈選兩數、形狀、數方塊與生活短文。<br>題目及文字選項均附直排注音，包含簡單加減。</p></div></div><div class="note">依提供的考卷題型新增練習，並非原卷逐題翻印。一般填空可點選備選答案；聽寫用完整注音鍵盤填答，也可先寫在紙上再輸入。語音若無法播放，可由家長開啟代念提示。每題 2.5 分，多格題要全部填對才得分。作答時不顯示正解，交卷後才看成績與解析。</div></aside></div>`;}
 
 function drawSubject(subject,count,previous=[]){return mixedTypeDraw(subject,count,previous);}
 
